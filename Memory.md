@@ -67,10 +67,12 @@
 - Supervisor rejected candidate `4dd48af` because whitespace-only secrets bypassed the new length
   check. The finding was accepted; trimmed content is now measured and both secret fields have
   regressions. See `docs/reviews/INT-003.md`.
-- Final local-milestone review is pending. PostgreSQL execution evidence for the race remains blocked.
+- Supervisor accepted exact commit `ad3b54e` for the local development milestone; see
+  `docs/reviews/INT-004.md`. This is not Core v1 or production acceptance. PostgreSQL execution
+  evidence for the race remains blocked.
 
 ## Next three actions
 
-1. Commit the second remediated candidate and obtain independent Supervisor review of that exact commit.
-2. Start Docker engine and run `python scripts/tasks.py test-integration` without a mock substitute.
-3. Extend Phase 4–7 scope only after the local milestone is accepted.
+1. Start Docker engine and run `python scripts/tasks.py test-integration` without a mock substitute.
+2. Implement the incomplete Phase 4–7 production-auth, worker, reconciliation and admin surfaces.
+3. Configure approved providers/billing/channel/deployment, then execute the remaining release gates.
