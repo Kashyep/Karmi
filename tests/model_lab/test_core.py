@@ -1,6 +1,18 @@
 import json
 
-from model_lab.core import candidate_record, exact_json_grade, import_attempts, prompt_hash, render_report, validate_cases
+from model_lab.core import (
+    LabStore,
+    candidate_record,
+    coverage_metrics,
+    exact_json_grade,
+    fake_run,
+    import_attempts,
+    prompt_hash,
+    render_report,
+    router_recommendation,
+    static_svg_chart,
+    validate_cases,
+)
 
 
 def test_seed_suite_validates_and_candidate_export_is_protected(tmp_path):
@@ -33,3 +45,32 @@ def test_import_preserves_unknowns_and_quarantines_duplicates(tmp_path):
     assert len(attempts) == 1
     assert attempts[0]["latency_ms"] is None
     assert len(quarantine) == 2
+
+
+def test_fake_run_is_bounded_and_sqlite_attempts_are_immutable(tmp_path):
+    cases = [
+        {"case_id": "a", "messages": [{"content": "x"}], "evaluation": {"method": "exact_json", "reference_answer": 1}},
+        {"case_id": "b", "messages": [{"content": "y"}], "evaluation": {"method": "exact_json", "reference_answer": 2}},
+        {"case_id": "c", "messages": [{"content": "z"}], "evaluation": {"method": "exact_json", "reference_answer": 3}},
+    ]
+    attempts = fake_run(cases, budget=2, fail_every=2)
+    assert len(attempts) == 2 and attempts[1]["status"] == "failed"
+    assert coverage_metrics(cases, attempts)["missing_cases"] == ["c"]
+    store = LabStore(tmp_path / "lab.sqlite")
+    store.add_attempt(attempts[0])
+    try:
+        store.add_attempt(attempts[0])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("duplicate attempt was accepted")
+    assert len(store.attempts()) == 1
+    store.close()
+
+
+def test_router_draft_and_svg_are_local_artifacts():
+    attempts = [{"case_id": "a", "status": "completed"}]
+    grades = [{"case_id": "a", "status": "pass", "evidence": "exact", "grader": "test"}]
+    recommendation = router_recommendation([{"case_id": "a"}], attempts, grades, "fake-v1")
+    assert recommendation["draft"] is True and recommendation["eligible"] is True
+    assert "<svg" in static_svg_chart(grades)
