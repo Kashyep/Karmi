@@ -1,0 +1,9 @@
+{
+  "name": "Daily assistant",
+  "short_name": "Daily assistant",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7F8FA",
+  "theme_color": "#254EDB",
+  "description": "A calm, accessible workspace for daily tasks."
+}
