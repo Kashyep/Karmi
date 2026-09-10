@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "daily-agent"
+version = "0.1.0"
+description = "A bounded daily assistant backend and offline model evaluation lab"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.16,<2",
+  "fastapi[standard]==0.141.1",
+  "pydantic==2.13.5",
+  "pydantic-settings>=2.10,<3",
+  "psycopg[binary]>=3.2,<4",
+  "redis>=6,<7",
+  "rich>=14,<15",
+  "sqlalchemy==2.0.52",
+  "typer==0.27.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1",
+  "mypy>=1.17,<2",
+  "pytest==9.1.1",
+  "pytest-cov>=6,<8",
+  "ruff>=0.12,<1",
+]
+
+[project.scripts]
+daily-agent = "daily_agent.main:run"
+model-lab = "model_lab.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/daily_agent", "src/model_lab"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"
+testpaths = ["tests"]
+markers = [
+  "integration: requires disposable PostgreSQL and Redis",
+  "e2e: exercises the local HTTP/UI boundary",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "S"]
+ignore = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["daily_agent", "model_lab"]
+
