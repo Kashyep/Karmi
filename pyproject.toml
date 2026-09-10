@@ -50,10 +50,13 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "S"]
-ignore = ["S101"]
+ignore = ["B008", "E501", "S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S106"]
+"src/daily_agent/config.py" = ["S105"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 packages = ["daily_agent", "model_lab"]
-

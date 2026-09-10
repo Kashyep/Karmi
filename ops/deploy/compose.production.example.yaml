@@ -1,0 +1,26 @@
+services:
+  api:
+    build: ../..
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      DAILY_AGENT_ENVIRONMENT: production
+      DAILY_AGENT_DATABASE_URL: ${DAILY_AGENT_DATABASE_URL:?required}
+      DAILY_AGENT_REDIS_URL: ${DAILY_AGENT_REDIS_URL:?required}
+      DAILY_AGENT_AUTH_SECRET: ${DAILY_AGENT_AUTH_SECRET:?required}
+      DAILY_AGENT_WEBHOOK_SECRET: ${DAILY_AGENT_WEBHOOK_SECRET:?required}
+      DAILY_AGENT_ALLOW_DEVELOPMENT_AUTH: "false"
+      DAILY_AGENT_LIVE_MODELS_ENABLED: "false"
+      DAILY_AGENT_PAID_CHECKOUT_ENABLED: "false"
+      DAILY_AGENT_WHATSAPP_ENABLED: "false"
+      DAILY_AGENT_PRODUCTION_PERIOD_BUDGET_MICRO: ${DAILY_AGENT_PRODUCTION_PERIOD_BUDGET_MICRO:?required}
+      DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO: ${DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO:?required}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready')"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+

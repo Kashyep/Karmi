@@ -1,9 +1,9 @@
 # Daily Agent implementation memory
 
-- Updated UTC: 2026-09-10T14:30:00Z
+- Updated UTC: 2026-09-10T14:50:54Z
 - Branch: `main`
 - Baseline commit: `b67c964288e24bf5d3494368766b9c5a7ed25e7f`
-- Current phase: Phase 0 complete; Phase 1 implementation started
+- Current phase: Phase 0 complete; local foundations for Phases 1–3 and 6 implemented
 - Canonical source: `docs/blueprint/`
 
 ## Verified baseline
@@ -23,21 +23,41 @@
 - Use a modular FastAPI/PostgreSQL design and an offline SQLite ModelLab. Development policies
   are unmistakably synthetic; paid checkout and live model/provider calls default off.
 
-## Active work
+## Accepted implementation
 
-- Boss: contracts, persistence, identity, entitlements, budgets, actions, orchestration and integration.
-- LAB-001: offline ModelLab worker.
-- WEB-001: accessible owned-channel shell worker.
-- Supervisor: independent integrated-candidate review after implementation.
+- Worker commits accepted for integration: WEB-001 `4488110`; LAB-001 `53e72d4`; LAB-002 `0ad6849`.
+- Backend: signed local sessions, tenant-scoped notes, idempotent tasks/reminders/messages,
+  plan usage, atomic conditional reservations, conservative unknown-cost settlement, signed/deduped
+  inbox and version-aware billing sandbox events, durable run/outbox rows, redacted admin endpoints.
+- ModelLab: validates/protects the 60-case bank, imports, grades exact JSON, preserves null/provenance,
+  runs a bounded fake provider, persists SQLite evidence, reports JSON/CSV/Markdown/HTML/SVG and
+  writes non-promoting router drafts.
+- Owned channel: responsive accessible shell wired to the synthetic local backend.
+
+## Validation
+
+- Ruff plus repository secret scan: PASS 2026-09-10.
+- Strict mypy over 15 source files: PASS 2026-09-10.
+- Unit/ModelLab/web: 13 passed; API E2E: 5 passed; two upstream TestClient warnings.
+- Alembic clean bootstrap and no-drift check: PASS on fresh SQLite database.
+- ModelLab offline demo: PASS; 60 cases validated, bounded five-case run, one injected failure,
+  all five report formats and non-promoting router draft produced.
+- Browser: local page loaded, synthetic account usage appeared, one draft journey completed and
+  showed `Completed`; server logs showed successful root/token/usage/message requests.
+- Browser CLI from the verification skill was unavailable; Windows computer-use fallback was used.
+- Docker Compose config: PASS. PostgreSQL/Redis integration: NOT RUN because Docker Desktop engine
+  did not become ready after launch; no mock was substituted.
 
 ## Blockers
 
 - WhatsApp live launch: blocked by current eligibility evidence for the intended India audience.
 - Live providers, payment sandbox, deployment, real messages and paid benchmarks: not authorized/configured.
-- Real PostgreSQL/Redis integration and restore evidence: pending local container implementation.
+- Real PostgreSQL/Redis concurrency and restore evidence: blocked by the unavailable Docker engine.
+- Full admin UI, production OIDC, remote-action reconciliation, complete context/routing/recovery,
+  queue workers, payment-provider sandbox and live deployment are not implemented.
 
 ## Next three actions
 
-1. Establish and test canonical API/persistence contracts and finite-budget accounting.
-2. Integrate worker handoffs and run focused plus repository-wide checks.
-3. Obtain Supervisor review of the exact integrated candidate and remediate material findings.
+1. Commit the integrated candidate and obtain independent Supervisor review of that exact commit.
+2. Remediate release-blocking review findings and rerun affected checks.
+3. Start Docker engine, run `python scripts/tasks.py test-integration`, then extend Phase 4–7 scope.
