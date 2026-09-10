@@ -1,5 +1,6 @@
 import json
 
+from model_lab.cli import quarantine_unknown_cases
 from model_lab.core import (
     LabStore,
     candidate_record,
@@ -32,6 +33,32 @@ def test_exact_json_and_html_escaping():
     html = render_report([{"case_id": "x", "response": "<script>alert(1)</script>"}], [{"case_id": "x", "status": "fail", "evidence": "bad"}], "html")
     assert "&lt;script&gt;" in html
     assert "<script>alert" not in html
+
+
+def test_csv_report_neutralizes_formula_cells():
+    report = render_report(
+        [
+            {
+                "case_id": "x",
+                "response": '=HYPERLINK("https://attacker.invalid","click")',
+                "source_label": "+malicious-source",
+            }
+        ],
+        [{"case_id": "x", "status": "fail", "evidence": "@SUM(1,1)"}],
+        "csv",
+    )
+    assert "'=HYPERLINK" in report
+    assert "'+malicious-source" in report
+    assert "'@SUM(1,1)" in report
+
+
+def test_unknown_case_ids_are_explicitly_quarantined():
+    known, quarantine = quarantine_unknown_cases(
+        [{"case_id": "known"}, {"case_id": "not-in-suite"}],
+        {"known": {"case_id": "known"}},
+    )
+    assert known == [{"case_id": "known"}]
+    assert quarantine[0]["reason"] == "unknown case_id"
 
 
 def test_import_preserves_unknowns_and_quarantines_duplicates(tmp_path):

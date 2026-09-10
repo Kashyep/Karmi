@@ -354,6 +354,8 @@ def create_app() -> FastAPI:
     ) -> dict[str, object]:
         from daily_agent.models import BillingEvent
 
+        if settings.environment not in {"development", "test"}:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         raw = await request.body()
         verify_hmac(raw, x_signature_sha256, settings.webhook_secret)
         payload = json.loads(raw)

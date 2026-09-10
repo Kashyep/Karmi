@@ -38,7 +38,7 @@
 
 - Ruff plus repository secret scan: PASS 2026-09-10.
 - Strict mypy over 15 source files: PASS 2026-09-10.
-- Unit/ModelLab/web: 13 passed; API E2E: 5 passed; two upstream TestClient warnings.
+- Unit/ModelLab/web: 16 passed; API E2E: 6 passed; two upstream TestClient warnings.
 - Alembic clean bootstrap and no-drift check: PASS on fresh SQLite database.
 - ModelLab offline demo: PASS; 60 cases validated, bounded five-case run, one injected failure,
   all five report formats and non-promoting router draft produced.
@@ -55,6 +55,13 @@
 - Real PostgreSQL/Redis concurrency and restore evidence: blocked by the unavailable Docker engine.
 - Full admin UI, production OIDC, remote-action reconciliation, complete context/routing/recovery,
   queue workers, payment-provider sandbox and live deployment are not implemented.
+
+## Review
+
+- Supervisor rejected candidate `5342079` with P0 production sandbox/placeholder-secret exposure,
+  P1 ModelLab CSV formula injection, P2 first-use platform-budget race and P2 silent unknown-case
+  omission. All findings were accepted and remediated with regressions; see `docs/reviews/INT-001.md`.
+- Remediated candidate review is pending. PostgreSQL execution evidence for the race remains blocked.
 
 ## Next three actions
 

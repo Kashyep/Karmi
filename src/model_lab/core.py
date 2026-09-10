@@ -160,6 +160,18 @@ def _number_or_none(value: Any) -> int | float | None:
     return int(number) if number.is_integer() else number
 
 
+def _csv_safe(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    else:
+        text = str(value)
+    if text.startswith(("=", "+", "-", "@")):
+        return "'" + text
+    return text
+
+
 def render_report(attempts: list[dict[str, Any]], grades: list[dict[str, Any]], fmt: str) -> str:
     rows = [{**attempt, **{f"grade_{k}": v for k, v in grade.items() if k != "case_id"}}
             for attempt in attempts for grade in grades if grade["case_id"] == attempt["case_id"]]
@@ -171,7 +183,7 @@ def render_report(attempts: list[dict[str, Any]], grades: list[dict[str, Any]], 
         stream = io.StringIO()
         writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows({field: _csv_safe(row.get(field)) for field in fields} for row in rows)
         return stream.getvalue()
     if fmt == "html":
         cells = "".join(f"<th>{html.escape(str(field))}</th>" for field in sorted({k for r in rows for k in r}))

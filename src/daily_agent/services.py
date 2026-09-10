@@ -68,11 +68,11 @@ def ensure_usage_window(session: Session, account_id: str, settings: Settings) -
             spend_limit_micro=policy.period_cost_cap_micro,
             reset_at=reset,
         )
-        session.add(window)
         try:
-            session.flush()
+            with session.begin_nested():
+                session.add(window)
+                session.flush()
         except IntegrityError:
-            session.rollback()
             window = session.scalar(
                 select(UsageWindow).where(
                     UsageWindow.account_id == account_id, UsageWindow.window_key == key
@@ -82,8 +82,19 @@ def ensure_usage_window(session: Session, account_id: str, settings: Settings) -
                 raise
     platform = session.get(PlatformBudget, key)
     if platform is None:
-        session.add(PlatformBudget(window_key=key, spend_limit_micro=settings.global_daily_budget_micro))
-        session.flush()
+        try:
+            with session.begin_nested():
+                session.add(
+                    PlatformBudget(
+                        window_key=key,
+                        spend_limit_micro=settings.global_daily_budget_micro,
+                    )
+                )
+                session.flush()
+        except IntegrityError:
+            platform = session.get(PlatformBudget, key)
+            if platform is None:
+                raise
     return window
 
 

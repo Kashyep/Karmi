@@ -30,6 +30,8 @@ class Settings(BaseSettings):
                 raise ValueError("development authentication must be disabled in production")
             if self.auth_secret == "development-only-change-me":
                 raise ValueError("production authentication secret is unset")
+            if self.webhook_secret == "development-webhook-only":
+                raise ValueError("production webhook secret is unset")
             if self.paid_checkout_enabled and self.production_period_budget_micro is None:
                 raise ValueError("paid checkout requires an approved finite period budget")
             if self.live_models_enabled and self.production_period_budget_micro is None:
@@ -44,4 +46,3 @@ def get_settings() -> Settings:
     settings = Settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     return settings
-

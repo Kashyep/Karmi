@@ -4,6 +4,7 @@ import json
 
 from sqlalchemy import select
 
+from daily_agent.config import Settings, get_settings
 from daily_agent.models import Subscription, UsageWindow
 from tests.conftest import create_identity
 
@@ -115,3 +116,46 @@ def test_admin_endpoints_are_role_scoped_and_redacted(test_context: dict[str, ob
     runs = client.get("/admin/runs", headers=auth(admin_token))  # type: ignore[union-attr]
     assert runs.status_code == 200
     assert all(row["response"] == "redacted" for row in runs.json())
+
+
+def test_billing_sandbox_is_not_routed_in_production(test_context: dict[str, object]) -> None:
+    client = test_context["client"]
+    factory = test_context["factory"]
+    test_settings = test_context["settings"]
+    with factory() as session:  # type: ignore[operator]
+        account, _user, _token = create_identity(
+            session, test_settings, name="Production target"  # type: ignore[arg-type]
+        )
+    production_settings = Settings(
+        environment="production",
+        database_url="postgresql+psycopg://example.invalid/db",
+        allow_development_auth=False,
+        auth_secret="production-auth-fixture",  # noqa: S106
+        webhook_secret="production-webhook-fixture",  # noqa: S106
+    )
+    client.app.dependency_overrides[get_settings] = lambda: production_settings  # type: ignore[union-attr]
+    raw = json.dumps(
+        {
+            "event_id": "production-sandbox-1",
+            "account_id": account.id,
+            "version": 99,
+            "type": "activated",
+            "plan_id": "part",
+        },
+        separators=(",", ":"),
+    ).encode()
+    response = client.post(  # type: ignore[union-attr]
+        "/webhooks/billing-sandbox",
+        content=raw,
+        headers={
+            "X-Signature-SHA256": sign(raw, production_settings.webhook_secret),
+            "Content-Type": "application/json",
+        },
+    )
+    assert response.status_code == 404
+    with factory() as session:  # type: ignore[operator]
+        subscription = session.scalar(
+            select(Subscription).where(Subscription.account_id == account.id)
+        )
+        assert subscription is not None
+        assert subscription.plan_id == "ananta"
