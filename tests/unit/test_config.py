@@ -45,3 +45,20 @@ def test_production_rejects_documented_example_secret() -> None:
             auth_secret="a9f2c7e8b4d61093a5c8e2f7d1b40699",
             webhook_secret="replace-for-any-shared-environment",
         )
+
+
+@pytest.mark.parametrize("field", ["auth_secret", "webhook_secret"])
+def test_production_rejects_whitespace_only_secrets(field: str) -> None:
+    values = {
+        "environment": "production",
+        "database_url": "postgresql+psycopg://example.invalid/db",
+        "allow_development_auth": False,
+        "auth_secret": "a9f2c7e8b4d61093a5c8e2f7d1b40699",
+        "webhook_secret": "7d3b9f1a6c2048e5b7d0a2c4f9e18365",
+    }
+    values[field] = " " * 32
+    with pytest.raises(
+        ValidationError,
+        match=f"production {'authentication' if field == 'auth_secret' else 'webhook'} secret is unset",
+    ):
+        Settings(**values)  # type: ignore[arg-type]

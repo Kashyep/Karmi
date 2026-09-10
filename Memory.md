@@ -38,7 +38,7 @@
 
 - Ruff plus repository secret scan: PASS 2026-09-10.
 - Strict mypy over 15 source files: PASS 2026-09-10.
-- Unit/ModelLab/web: 17 passed; API E2E: 6 passed; two upstream TestClient warnings.
+- Unit/ModelLab/web: 19 passed; API E2E: 6 passed; two upstream TestClient warnings.
 - Alembic clean bootstrap and no-drift check: PASS on fresh SQLite database.
 - ModelLab offline demo: PASS; 60 cases validated, bounded five-case run, one injected failure,
   all five report formats and non-promoting router draft produced.
@@ -64,6 +64,9 @@
 - Supervisor rejected candidate `f88c0ca` because the documented production secret placeholder and
   whitespace/control-prefixed CSV formulas still bypassed the first repairs. Both findings were
   accepted and remediated with regressions; see `docs/reviews/INT-002.md`.
+- Supervisor rejected candidate `4dd48af` because whitespace-only secrets bypassed the new length
+  check. The finding was accepted; trimmed content is now measured and both secret fields have
+  regressions. See `docs/reviews/INT-003.md`.
 - Final local-milestone review is pending. PostgreSQL execution evidence for the race remains blocked.
 
 ## Next three actions

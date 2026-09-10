@@ -18,7 +18,7 @@ _PLACEHOLDER_MARKERS = (
 
 def _is_unsafe_production_secret(value: str) -> bool:
     normalized = value.strip().lower()
-    return len(value) < 32 or any(marker in normalized for marker in _PLACEHOLDER_MARKERS)
+    return len(normalized) < 32 or any(marker in normalized for marker in _PLACEHOLDER_MARKERS)
 
 
 class Settings(BaseSettings):
