@@ -163,11 +163,14 @@ def _number_or_none(value: Any) -> int | float | None:
 def _csv_safe(value: Any) -> str:
     if value is None:
         return ""
-    if isinstance(value, (dict, list)):
+    if isinstance(value, dict | list):
         text = json.dumps(value, ensure_ascii=False, sort_keys=True)
     else:
         text = str(value)
-    if text.startswith(("=", "+", "-", "@")):
+    candidate = text
+    while candidate and (candidate[0].isspace() or ord(candidate[0]) < 32 or ord(candidate[0]) == 127):
+        candidate = candidate[1:]
+    if candidate.startswith(("=", "+", "-", "@")):
         return "'" + text
     return text
 

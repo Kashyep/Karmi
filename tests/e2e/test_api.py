@@ -130,8 +130,8 @@ def test_billing_sandbox_is_not_routed_in_production(test_context: dict[str, obj
         environment="production",
         database_url="postgresql+psycopg://example.invalid/db",
         allow_development_auth=False,
-        auth_secret="production-auth-fixture",  # noqa: S106
-        webhook_secret="production-webhook-fixture",  # noqa: S106
+        auth_secret="a9f2c7e8b4d61093a5c8e2f7d1b40699",  # noqa: S106
+        webhook_secret="7d3b9f1a6c2048e5b7d0a2c4f9e18365",  # noqa: S106
     )
     client.app.dependency_overrides[get_settings] = lambda: production_settings  # type: ignore[union-attr]
     raw = json.dumps(

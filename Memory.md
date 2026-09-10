@@ -38,7 +38,7 @@
 
 - Ruff plus repository secret scan: PASS 2026-09-10.
 - Strict mypy over 15 source files: PASS 2026-09-10.
-- Unit/ModelLab/web: 16 passed; API E2E: 6 passed; two upstream TestClient warnings.
+- Unit/ModelLab/web: 17 passed; API E2E: 6 passed; two upstream TestClient warnings.
 - Alembic clean bootstrap and no-drift check: PASS on fresh SQLite database.
 - ModelLab offline demo: PASS; 60 cases validated, bounded five-case run, one injected failure,
   all five report formats and non-promoting router draft produced.
@@ -61,10 +61,13 @@
 - Supervisor rejected candidate `5342079` with P0 production sandbox/placeholder-secret exposure,
   P1 ModelLab CSV formula injection, P2 first-use platform-budget race and P2 silent unknown-case
   omission. All findings were accepted and remediated with regressions; see `docs/reviews/INT-001.md`.
-- Remediated candidate review is pending. PostgreSQL execution evidence for the race remains blocked.
+- Supervisor rejected candidate `f88c0ca` because the documented production secret placeholder and
+  whitespace/control-prefixed CSV formulas still bypassed the first repairs. Both findings were
+  accepted and remediated with regressions; see `docs/reviews/INT-002.md`.
+- Final local-milestone review is pending. PostgreSQL execution evidence for the race remains blocked.
 
 ## Next three actions
 
-1. Commit the integrated candidate and obtain independent Supervisor review of that exact commit.
-2. Remediate release-blocking review findings and rerun affected checks.
-3. Start Docker engine, run `python scripts/tasks.py test-integration`, then extend Phase 4–7 scope.
+1. Commit the second remediated candidate and obtain independent Supervisor review of that exact commit.
+2. Start Docker engine and run `python scripts/tasks.py test-integration` without a mock substitute.
+3. Extend Phase 4–7 scope only after the local milestone is accepted.

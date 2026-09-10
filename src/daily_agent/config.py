@@ -4,6 +4,22 @@ from pathlib import Path
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_PLACEHOLDER_MARKERS = (
+    "change-me",
+    "development",
+    "example",
+    "fixture",
+    "placeholder",
+    "replace-for",
+    "sample",
+    "test-secret",
+)
+
+
+def _is_unsafe_production_secret(value: str) -> bool:
+    normalized = value.strip().lower()
+    return len(value) < 32 or any(marker in normalized for marker in _PLACEHOLDER_MARKERS)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAILY_AGENT_", env_file=".env", extra="ignore")
@@ -28,9 +44,9 @@ class Settings(BaseSettings):
                 raise ValueError("production requires PostgreSQL")
             if self.allow_development_auth:
                 raise ValueError("development authentication must be disabled in production")
-            if self.auth_secret == "development-only-change-me":
+            if _is_unsafe_production_secret(self.auth_secret):
                 raise ValueError("production authentication secret is unset")
-            if self.webhook_secret == "development-webhook-only":
+            if _is_unsafe_production_secret(self.webhook_secret):
                 raise ValueError("production webhook secret is unset")
             if self.paid_checkout_enabled and self.production_period_budget_micro is None:
                 raise ValueError("paid checkout requires an approved finite period budget")

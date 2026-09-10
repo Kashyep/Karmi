@@ -42,6 +42,9 @@ def test_csv_report_neutralizes_formula_cells():
                 "case_id": "x",
                 "response": '=HYPERLINK("https://attacker.invalid","click")',
                 "source_label": "+malicious-source",
+                "tab_prefixed": "\t=HYPERLINK(\"https://attacker.invalid\",\"tab\")",
+                "newline_prefixed": "\n@SUM(1,1)",
+                "space_prefixed": "  -2+3",
             }
         ],
         [{"case_id": "x", "status": "fail", "evidence": "@SUM(1,1)"}],
@@ -50,6 +53,9 @@ def test_csv_report_neutralizes_formula_cells():
     assert "'=HYPERLINK" in report
     assert "'+malicious-source" in report
     assert "'@SUM(1,1)" in report
+    assert "'\t=HYPERLINK" in report
+    assert "'\n@SUM(1,1)" in report
+    assert "'  -2+3" in report
 
 
 def test_unknown_case_ids_are_explicitly_quarantined():

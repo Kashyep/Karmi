@@ -20,8 +20,8 @@ def test_paid_checkout_requires_finite_approved_budget() -> None:
             environment="production",
             database_url="postgresql+psycopg://example.invalid/db",
             allow_development_auth=False,
-            auth_secret="not-the-development-secret",
-            webhook_secret="not-the-development-webhook-secret",
+            auth_secret="a9f2c7e8b4d61093a5c8e2f7d1b40699",
+            webhook_secret="7d3b9f1a6c2048e5b7d0a2c4f9e18365",
             paid_checkout_enabled=True,
         )
 
@@ -32,5 +32,16 @@ def test_production_rejects_known_webhook_placeholder() -> None:
             environment="production",
             database_url="postgresql+psycopg://example.invalid/db",
             allow_development_auth=False,
-            auth_secret="not-the-development-secret",
+            auth_secret="a9f2c7e8b4d61093a5c8e2f7d1b40699",
+        )
+
+
+def test_production_rejects_documented_example_secret() -> None:
+    with pytest.raises(ValidationError, match="production webhook secret is unset"):
+        Settings(
+            environment="production",
+            database_url="postgresql+psycopg://example.invalid/db",
+            allow_development_auth=False,
+            auth_secret="a9f2c7e8b4d61093a5c8e2f7d1b40699",
+            webhook_secret="replace-for-any-shared-environment",
         )
