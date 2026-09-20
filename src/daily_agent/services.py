@@ -43,7 +43,11 @@ LOCAL_FAKE_COST_MICRO = 100
 
 
 class BudgetDenied(Exception):
-    pass
+    """Reservation rejected; ``reset_at`` is when the binding limit lifts."""
+
+    def __init__(self, message: str, *, reset_at: datetime) -> None:
+        super().__init__(message)
+        self.reset_at = reset_at
 
 
 class IdempotencyConflict(Exception):
@@ -194,7 +198,7 @@ def reserve_budget(
         )
     )
     if not isinstance(account_result, CursorResult) or account_result.rowcount != 1:
-        raise BudgetDenied("account allowance exhausted")
+        raise BudgetDenied("account allowance exhausted", reset_at=window.reset_at)
     _subscription, policy = policy_for(session, account_id)
     period = ensure_usage_period(session, account_id, policy)
     period_result = session.execute(
@@ -207,7 +211,7 @@ def reserve_budget(
         .values(reserved_micro=UsagePeriod.reserved_micro + amount_micro)
     )
     if not isinstance(period_result, CursorResult) or period_result.rowcount != 1:
-        raise BudgetDenied("account period budget exhausted")
+        raise BudgetDenied("account period budget exhausted", reset_at=period.reset_at)
     platform_result = session.execute(
         update(PlatformBudget)
         .where(
@@ -218,7 +222,9 @@ def reserve_budget(
         .values(reserved_micro=PlatformBudget.reserved_micro + amount_micro)
     )
     if not isinstance(platform_result, CursorResult) or platform_result.rowcount != 1:
-        raise BudgetDenied("platform spending is temporarily paused")
+        raise BudgetDenied(
+            "platform spending is temporarily paused", reset_at=window.reset_at
+        )
     reservation = BudgetReservation(
         logical_request_id=logical_request_id,
         account_id=account_id,

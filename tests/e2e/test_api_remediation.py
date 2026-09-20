@@ -124,6 +124,7 @@ def test_usage_endpoint_does_not_mutate(test_context: dict[str, object]) -> None
     body = response.json()  # type: ignore[union-attr]
     assert body["everyday_used"] == 0
     assert body["reserved_micro"] == 0 and body["settled_micro"] == 0
+    assert "period_reset_at" in body and body["reset_at"] != body["period_reset_at"]
     with factory() as session:  # type: ignore[operator]
         assert session.scalar(select(func.count()).select_from(UsageWindow)) == 0
         assert session.scalar(select(func.count()).select_from(UsagePeriod)) == 0

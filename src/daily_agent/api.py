@@ -52,7 +52,6 @@ from daily_agent.services import (
     create_task_idempotent,
     current_period_key,
     current_window_key,
-    ensure_usage_window,
     estimate_request_cost_micro,
     fake_generate,
     measured_cost_micro,
@@ -152,11 +151,13 @@ def create_app() -> FastAPI:
             select(Subscription).where(Subscription.account_id == principal.account_id)
         )
         policy = SYNTHETIC_POLICIES.get(
-            subscription.plan_id if subscription is not None else "ananta",
+            subscription.plan_id
+            if subscription is not None and subscription.status == "active"
+            else "ananta",
             SYNTHETIC_POLICIES["ananta"],
         )
         day_key, day_reset = current_window_key()
-        period_key, _period_reset = current_period_key()
+        period_key, period_reset = current_period_key()
         window = session.scalar(
             select(UsageWindow).where(
                 UsageWindow.account_id == principal.account_id,
@@ -178,6 +179,7 @@ def create_app() -> FastAPI:
             settled_micro=period.settled_micro if period else 0,
             spend_limit_micro=period.spend_limit_micro if period else policy.period_cost_cap_micro,
             reset_at=window.reset_at if window else day_reset,
+            period_reset_at=period.reset_at if period else period_reset,
             policy_version=subscription.policy_version if subscription else "synthetic-dev-v1",
         )
 
@@ -428,11 +430,9 @@ def create_app() -> FastAPI:
             session.commit()
         except BudgetDenied as exc:
             session.rollback()
-            window = ensure_usage_window(session, principal.account_id, settings)
-            session.commit()
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": window.reset_at.isoformat()},
+                detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": exc.reset_at.isoformat()},
             ) from exc
         except IntegrityError:
             session.rollback()
