@@ -26,12 +26,24 @@ def build_engine(settings: Settings) -> Engine:
     return engine
 
 
-settings = get_settings()
-engine = build_engine(settings)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+# Lazy: building the engine at import time would run get_settings() (and its
+# sqlite data_dir side effect) on every import — tests and CLI tools included.
+_engine: Engine | None = None
+
+
+def get_engine() -> Engine:
+    global _engine
+    if _engine is None:
+        _engine = build_engine(get_settings())
+    return _engine
+
+
+SessionLocal = sessionmaker(autoflush=False, expire_on_commit=False)
 
 
 def get_session() -> Generator[Session, None, None]:
+    if SessionLocal.kw.get("bind") is None:
+        SessionLocal.configure(bind=get_engine())
     with SessionLocal() as session:
         yield session
 
@@ -39,5 +51,5 @@ def get_session() -> Generator[Session, None, None]:
 def create_schema(target_engine: Engine | None = None) -> None:
     from daily_agent import models  # noqa: F401
 
-    Base.metadata.create_all(target_engine or engine)
+    Base.metadata.create_all(target_engine or get_engine())
 

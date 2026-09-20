@@ -110,7 +110,7 @@ def render_shell(*, tasks: tuple[WebTask, ...] = ()) -> str:
         <p class="lede">Ask for a draft, a summary, or help organizing your next step.</p>
         <form class="composer" aria-label="Start a task">
           <label for="request">Your request</label>
-          <textarea id="request" name="request" rows="3" maxlength="12000"
+          <textarea id="request" name="request" rows="3" maxlength="100000"
                     placeholder="Write a request…"></textarea>
           <div class="composer-actions"><span class="muted">The server keeps your account and limits authoritative.</span>
             <button class="button button-primary" type="submit">Start task</button>

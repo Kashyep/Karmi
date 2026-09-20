@@ -110,6 +110,8 @@ def report(
     out: Annotated[Path, typer.Option("--out")],
     fmt: Annotated[str, typer.Option("--format")] = "md",
 ) -> None:
+    if fmt not in {"md", "json", "csv", "html"}:
+        raise typer.BadParameter(f"unsupported format {fmt!r}; use md, json, csv, or html")
     cases = {case["case_id"]: case for case in read_jsonl(suite)}
     attempts, quarantine = import_attempts(responses, "report-input")
     known, unknown = quarantine_unknown_cases(attempts, cases)
@@ -158,6 +160,8 @@ def db_report(
     out: Annotated[Path, typer.Option("--out")],
     fmt: Annotated[str, typer.Option("--format")] = "md",
 ) -> None:
+    if fmt not in {"md", "json", "csv", "html", "svg"}:
+        raise typer.BadParameter(f"unsupported format {fmt!r}; use md, json, csv, html, or svg")
     cases = read_jsonl(suite)
     store = LabStore(db)
     attempts, grades = store.attempts(), store.grades()
