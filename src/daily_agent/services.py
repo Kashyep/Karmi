@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -26,7 +27,18 @@ from daily_agent.models import (
     User,
 )
 from daily_agent.plans import SYNTHETIC_POLICIES, PlanPolicy
+from daily_agent.providers import (
+    TYPESAFE_CALL_ESTIMATE_MICRO,
+    ProviderCall,
+    classify_intent,
+    score_notes_relevance,
+)
 from daily_agent.schemas import Outcome
+
+logger = logging.getLogger(__name__)
+
+# Fixed cost of the local deterministic route per completed request.
+LOCAL_FAKE_COST_MICRO = 100
 
 
 class BudgetDenied(Exception):
@@ -163,34 +175,70 @@ def settle_budget(
     *,
     attempt_id: str,
     actual_micro: int | None,
+    calls: list[ProviderCall] | None = None,
 ) -> None:
     if reservation.status != ReservationStatus.RESERVED:
+        return
+    known = actual_micro is not None
+    settled = reservation.reserved_micro if actual_micro is None else actual_micro
+    new_status = ReservationStatus.SETTLED if known else ReservationStatus.UNKNOWN
+    # Claim the reservation atomically: concurrent settlers must not double-apply.
+    claimed = session.execute(
+        update(BudgetReservation)
+        .where(
+            BudgetReservation.id == reservation.id,
+            BudgetReservation.status == ReservationStatus.RESERVED,
+        )
+        .values(status=new_status, actual_micro=actual_micro)
+    )
+    if not isinstance(claimed, CursorResult) or claimed.rowcount != 1:
         return
     window = session.get(UsageWindow, reservation.usage_window_id)
     if window is None:
         raise RuntimeError("reservation window missing")
-    platform = session.get(PlatformBudget, window.window_key)
-    if platform is None:
-        raise RuntimeError("platform budget missing")
-    known = actual_micro is not None
-    settled = reservation.reserved_micro if actual_micro is None else actual_micro
-    window.reserved_micro -= reservation.reserved_micro
-    window.settled_micro += settled
-    platform.reserved_micro -= reservation.reserved_micro
-    platform.settled_micro += settled
-    reservation.actual_micro = actual_micro
-    reservation.status = ReservationStatus.SETTLED if known else ReservationStatus.UNKNOWN
-    session.add(
-        CostLedger(
-            reservation_id=reservation.id,
-            attempt_id=attempt_id,
-            provider="local-fake",
-            model_id="fake-economy",
-            cost_micro=actual_micro,
-            measurement="measured" if known else "unknown",
-            rate_version="synthetic-v1" if known else None,
+    session.execute(
+        update(UsageWindow)
+        .where(UsageWindow.id == window.id)
+        .values(
+            reserved_micro=UsageWindow.reserved_micro - reservation.reserved_micro,
+            settled_micro=UsageWindow.settled_micro + settled,
         )
     )
+    session.execute(
+        update(PlatformBudget)
+        .where(PlatformBudget.window_key == window.window_key)
+        .values(
+            reserved_micro=PlatformBudget.reserved_micro - reservation.reserved_micro,
+            settled_micro=PlatformBudget.settled_micro + settled,
+        )
+    )
+    reservation.actual_micro = actual_micro
+    reservation.status = new_status
+    if calls:
+        for call in calls:
+            session.add(
+                CostLedger(
+                    reservation_id=reservation.id,
+                    attempt_id=f"{attempt_id}:{call.operation}",
+                    provider=call.provider,
+                    model_id=call.model_id,
+                    cost_micro=call.cost_micro,
+                    measurement=call.measurement,
+                    rate_version=call.rate_version,
+                )
+            )
+    else:
+        session.add(
+            CostLedger(
+                reservation_id=reservation.id,
+                attempt_id=attempt_id,
+                provider="local-fake",
+                model_id="fake-economy",
+                cost_micro=actual_micro,
+                measurement="measured" if known else "unknown",
+                rate_version="synthetic-v1" if known else None,
+            )
+        )
 
 
 def scoped_note_query(account_id: str, user_id: str) -> Select[tuple[Note]]:
@@ -220,34 +268,31 @@ class ContextManifest:
     estimated_tokens: int
     omitted_source_ids: tuple[str, ...]
     counting_method: str = "utf8-bytes-divided-by-4-estimate"
+    provider_calls: tuple[ProviderCall, ...] = ()
 
 
 def build_note_context(
-    session: Session, *, account_id: str, user_id: str, max_tokens: int, query_text: str | None = None
+    session: Session,
+    *,
+    account_id: str,
+    user_id: str,
+    max_tokens: int,
+    query_text: str | None = None,
+    settings: Settings | None = None,
 ) -> ContextManifest:
     notes = list(session.scalars(scoped_note_query(account_id, user_id).order_by(Note.updated_at.desc())))
-    
-    # Use TypeSafe Score to sort notes by relevance to the query if provided
-    if query_text and notes:
-        try:
-            from typesafe_sdk import TypeSafeClient, Score
-            from typing import Any
-            with TypeSafeClient() as client:
-                state: dict[str, Any] = {"user_query": query_text, "notes": {f"note_{i}": note.content for i, note in enumerate(notes)}}
-                questions = {
-                    f"relevance_{i}": Score(
-                        instructions=f"How relevant is `notes.note_{i}` to answering the user's query?",
-                        criteria=["Irrelevant", "Tangential", "Directly Relevant"]
-                    ) for i in range(len(notes))
-                }
-                
-                response = client.system_one(state=state, questions=questions)
-                
-                scored_notes = [(notes[i], response.scores[f"relevance_{i}"].score) for i in range(len(notes))]
-                scored_notes.sort(key=lambda x: x[1], reverse=True)
-                notes = [sn[0] for sn in scored_notes]
-        except Exception:
-            pass # Fallback to chronological ordering
+
+    provider_calls: list[ProviderCall] = []
+    if query_text and notes and settings is not None and settings.live_models_enabled:
+        scores, calls = score_notes_relevance(query_text, notes)
+        provider_calls.extend(calls)
+        if scores is not None:
+            notes = [
+                note
+                for _score, note in sorted(
+                    zip(scores, notes, strict=True), key=lambda pair: pair[0], reverse=True
+                )
+            ]
 
     parts: list[str] = []
     source_ids: list[str] = []
@@ -261,55 +306,95 @@ def build_note_context(
         parts.append(note.content)
         source_ids.append(note.id)
         used += estimate
-    return ContextManifest("\n".join(parts), tuple(source_ids), used, tuple(omitted))
+    return ContextManifest(
+        "\n".join(parts), tuple(source_ids), used, tuple(omitted), provider_calls=tuple(provider_calls)
+    )
 
 
-def fake_generate(text: str, context: ContextManifest) -> tuple[str, Outcome]:
+@dataclass(frozen=True)
+class GenerationResult:
+    response: str
+    outcome: Outcome
+    intent: str | None
+    route: str
+    provider_calls: tuple[ProviderCall, ...] = ()
+
+
+def fake_generate(
+    text: str, context: ContextManifest, *, settings: Settings | None = None
+) -> GenerationResult:
     lowered = text.casefold().strip()
     if len(text) > 20_000:
-        return (
+        return GenerationResult(
             "This request is too large for the current bounded route. Choose a smaller section.",
             Outcome.DEFERRED,
+            intent=None,
+            route="fake-economy",
         )
-        
-    try:
-        from typesafe_sdk import TypeSafeClient, Choice
-        with TypeSafeClient() as client:
-            response = client.system_one(
-                state={"user_message": text, "retrieved_context": context.text},
-                questions={
-                    "intent": Choice(
-                        instructions="What is the primary action the user is asking the assistant to take?",
-                        criteria={
-                            "query_memory": "The user is asking to retrieve, search, or recall saved facts.",
-                            "store_memory": "The user is providing a new fact or note to be remembered.",
-                            "create_task": "The user is instructing the assistant to create a to-do, task, or reminder.",
-                            "general_draft": "The user is asking for text generation, drafting, or general chat."
-                        }
-                    )
-                }
-            )
-            intent = response.choices["intent"].choice
-            
-            if intent == "query_memory":
-                if context.text:
-                    return f"From your saved notes: {context.text}", Outcome.ACCEPT
-                return "I could not find that in your saved notes.", Outcome.ASK_USER
-            elif intent == "store_memory":
-                return f"I have saved your note: {text.strip()}", Outcome.ACCEPT
-            elif intent == "create_task":
-                return f"Task created from your message: {text.strip()}", Outcome.ACCEPT
-            else:
-                return f"Draft ready: {text.strip()}", Outcome.ACCEPT
-    except Exception:
-        # Fallback to heuristics if TypeSafe is unconfigured or fails
-        if lowered.startswith("remember") and not context.text:
-            return "I do not have a saved fact for that yet.", Outcome.ASK_USER
-        if "my notes" in lowered or "remember" in lowered:
+
+    if settings is not None and settings.live_models_enabled:
+        intent, calls = classify_intent(text, context.text)
+        if intent == "query_memory":
             if context.text:
-                return f"From your saved notes: {context.text}", Outcome.ACCEPT
-            return "I could not find that in your saved notes.", Outcome.ASK_USER
-        return f"Draft ready: {text.strip()}", Outcome.ACCEPT
+                return GenerationResult(
+                    f"From your saved notes: {context.text}", Outcome.ACCEPT,
+                    intent=intent, route="typesafe-system-one", provider_calls=tuple(calls),
+                )
+            return GenerationResult(
+                "I could not find that in your saved notes.", Outcome.ASK_USER,
+                intent=intent, route="typesafe-system-one", provider_calls=tuple(calls),
+            )
+        if intent in {"store_memory", "create_task"}:
+            # The caller performs the actual Note/Task write for these intents so the
+            # response copy is only returned when the mutation really happens.
+            label = "note" if intent == "store_memory" else "task"
+            return GenerationResult(
+                f"I have saved your {label}: {text.strip()}", Outcome.ACCEPT,
+                intent=intent, route="typesafe-system-one", provider_calls=tuple(calls),
+            )
+        if intent is not None:
+            return GenerationResult(
+                f"Draft ready: {text.strip()}", Outcome.ACCEPT,
+                intent=intent, route="typesafe-system-one", provider_calls=tuple(calls),
+            )
+        # Provider unreachable or malformed response: fall through to heuristics.
+
+    if lowered.startswith("remember") and not context.text:
+        return GenerationResult(
+            "I do not have a saved fact for that yet.", Outcome.ASK_USER,
+            intent=None, route="fake-economy",
+        )
+    if "my notes" in lowered or "remember" in lowered:
+        if context.text:
+            return GenerationResult(
+                f"From your saved notes: {context.text}", Outcome.ACCEPT,
+                intent=None, route="fake-economy",
+            )
+        return GenerationResult(
+            "I could not find that in your saved notes.", Outcome.ASK_USER,
+            intent=None, route="fake-economy",
+        )
+    return GenerationResult(
+        f"Draft ready: {text.strip()}", Outcome.ACCEPT,
+        intent=None, route="fake-economy",
+    )
+
+
+def estimate_request_cost_micro(policy: PlanPolicy, settings: Settings) -> int:
+    """Worst-case reservation for one message: local route plus live provider calls."""
+    estimate = LOCAL_FAKE_COST_MICRO
+    if settings.live_models_enabled:
+        estimate += 2 * TYPESAFE_CALL_ESTIMATE_MICRO
+    return min(policy.request_cost_cap_micro, estimate)
+
+
+def measured_cost_micro(calls: list[ProviderCall]) -> int | None:
+    """Total measured provider cost; ``None`` when any call's cost is unknown."""
+    if not calls:
+        return LOCAL_FAKE_COST_MICRO
+    if any(call.cost_micro is None for call in calls):
+        return None
+    return sum(call.cost_micro for call in calls if call.cost_micro is not None)
 
 
 def accept_internal_event(

@@ -2,7 +2,16 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from daily_agent.db import Base
@@ -59,7 +68,7 @@ class Subscription(Base):
     plan_id: Mapped[str] = mapped_column(String(20), default="ananta")
     policy_version: Mapped[str] = mapped_column(String(40), default="synthetic-dev-v1")
     status: Mapped[str] = mapped_column(String(20), default="active")
-    event_version: Mapped[int] = mapped_column(Integer, default=0)
+    event_version: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
 class UsageWindow(Base):
@@ -71,9 +80,9 @@ class UsageWindow(Base):
     window_key: Mapped[str] = mapped_column(String(40))
     everyday_limit: Mapped[int] = mapped_column(Integer)
     everyday_used: Mapped[int] = mapped_column(Integer, default=0)
-    spend_limit_micro: Mapped[int] = mapped_column(Integer)
-    reserved_micro: Mapped[int] = mapped_column(Integer, default=0)
-    settled_micro: Mapped[int] = mapped_column(Integer, default=0)
+    spend_limit_micro: Mapped[int] = mapped_column(BigInteger)
+    reserved_micro: Mapped[int] = mapped_column(BigInteger, default=0)
+    settled_micro: Mapped[int] = mapped_column(BigInteger, default=0)
     reset_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -81,9 +90,9 @@ class PlatformBudget(Base):
     __tablename__ = "platform_budgets"
 
     window_key: Mapped[str] = mapped_column(String(40), primary_key=True)
-    spend_limit_micro: Mapped[int] = mapped_column(Integer)
-    reserved_micro: Mapped[int] = mapped_column(Integer, default=0)
-    settled_micro: Mapped[int] = mapped_column(Integer, default=0)
+    spend_limit_micro: Mapped[int] = mapped_column(BigInteger)
+    reserved_micro: Mapped[int] = mapped_column(BigInteger, default=0)
+    settled_micro: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
 class BudgetReservation(Base):
@@ -95,8 +104,8 @@ class BudgetReservation(Base):
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     usage_window_id: Mapped[str] = mapped_column(ForeignKey("usage_windows.id"))
     stage: Mapped[str] = mapped_column(String(32))
-    reserved_micro: Mapped[int] = mapped_column(Integer)
-    actual_micro: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reserved_micro: Mapped[int] = mapped_column(BigInteger)
+    actual_micro: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default=ReservationStatus.RESERVED)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -109,7 +118,7 @@ class CostLedger(Base):
     attempt_id: Mapped[str] = mapped_column(String(80))
     provider: Mapped[str] = mapped_column(String(80))
     model_id: Mapped[str] = mapped_column(String(120))
-    cost_micro: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_micro: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     measurement: Mapped[str] = mapped_column(String(20))
     rate_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -198,7 +207,7 @@ class BillingEvent(Base):
     provider: Mapped[str] = mapped_column(String(40))
     provider_event_id: Mapped[str] = mapped_column(String(160))
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
-    event_version: Mapped[int] = mapped_column(Integer)
+    event_version: Mapped[int] = mapped_column(BigInteger)
     event_type: Mapped[str] = mapped_column(String(60))
     payload_hash: Mapped[str] = mapped_column(String(64))
 

@@ -55,7 +55,10 @@ checks; it exits nonzero when a required gate is unavailable or fails.
 
 - Production mode requires PostgreSQL, real authentication configuration and finite approved
   monetary budgets. It rejects the development secret and local auth flow.
-- Provider keys remain server-side. No live provider adapter exists in this candidate.
+- Provider keys remain server-side. The TypeSafe adapter is opt-in: it only runs when
+  `DAILY_AGENT_LIVE_MODELS_ENABLED=true`, is bounded by per-attempt budget reservations, and
+  every measured call is recorded in the cost ledger. In production it additionally requires an
+  approved finite `production_period_budget_micro`.
 - WhatsApp activation is hard-disabled for the present India-first release because current terms
   restrict general-purpose AI as the primary service outside the stated EEA/Brazil exception.
 - Billing accepts signed sandbox fixtures only. No checkout or live charge path is present.

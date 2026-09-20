@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e '.[dev]'
+      - name: Lint
+        run: python scripts/tasks.py lint
+      - name: Typecheck
+        run: python scripts/tasks.py typecheck
+      - name: Unit tests
+        run: python scripts/tasks.py test-unit
+      - name: E2E tests
+        run: python scripts/tasks.py test-e2e
+      - name: Benchmark demo
+        run: python scripts/tasks.py benchmark-demo
+      - name: Integration tests (disposable Postgres/Redis)
+        run: python scripts/tasks.py test-integration
