@@ -1,0 +1,43 @@
+name: Auto PR Reviewer & Merger
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review-and-merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required to accurately inspect diffs
+
+      - name: Run Jules PR Reviewer
+        uses: google-labs-code/jules-invoke@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          prompt: |
+            You are an expert autonomous code reviewer. A new pull request (PR #$PR_NUMBER) has been opened or updated.
+            
+            Your task:
+            1. Inspect the changes in this pull request using the GitHub CLI (`gh pr diff $PR_NUMBER`).
+            2. Review the code strictly for:
+               - Security vulnerabilities (SQLi, XSS, hardcoded secrets, etc.)
+               - Variable conflicts, shadowing, or naming collisions
+               - Logical bugs, race conditions, or unhandled edge cases
+               - Merge conflict markers (`<<<<<<<`)
+            3. If you find ANY issues:
+               - Apply fixes if possible, or leave a review requesting changes (`gh pr review $PR_NUMBER --request-changes -b "Found the following issues..."`).
+               - DO NOT merge the PR.
+            4. If the code has absolutely NO issues, is fully secure, and follows best practices:
+               - Approve the PR: `gh pr review $PR_NUMBER --approve -b "All checks passed. Automatically approved by Jules."`
+               - Merge the PR: `gh pr merge $PR_NUMBER --merge`
+            
+            You have access to the GitHub CLI (`gh`). Rely on it to read the diff and submit your reviews/merges.
