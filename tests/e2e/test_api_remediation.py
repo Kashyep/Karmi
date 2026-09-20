@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import time
 
 from sqlalchemy import func, select
 
@@ -24,6 +25,11 @@ def auth(token: str) -> dict[str, str]:
 
 def sign(raw: bytes, secret: str) -> str:
     return hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+
+
+def sign_event(event_id: str, timestamp: str, raw: bytes, secret: str) -> str:
+    signable = f"{event_id}.{timestamp}.".encode() + raw
+    return hmac.new(secret.encode(), signable, hashlib.sha256).hexdigest()
 
 
 def test_idempotency_keys_are_scoped_per_account(test_context: dict[str, object]) -> None:
@@ -130,7 +136,7 @@ def test_usage_endpoint_does_not_mutate(test_context: dict[str, object]) -> None
         assert session.scalar(select(func.count()).select_from(UsagePeriod)) == 0
 
 
-def test_complete_task_is_owner_scoped(test_context: dict[str, object]) -> None:
+def test_tasks_are_shared_within_account(test_context: dict[str, object]) -> None:
     client = test_context["client"]
     factory = test_context["factory"]
     settings = test_context["settings"]
@@ -150,10 +156,9 @@ def test_complete_task_is_owner_scoped(test_context: dict[str, object]) -> None:
         json={"title": "owner task", "idempotency_key": "owner-task-01"},
     )
     task_id = created.json()["id"]  # type: ignore[union-attr]
-    denied = client.patch(f"/v1/tasks/{task_id}/complete", headers=auth(other_token))  # type: ignore[union-attr]
-    assert denied.status_code == 404
-    allowed = client.patch(f"/v1/tasks/{task_id}/complete", headers=auth(owner_token))  # type: ignore[union-attr]
-    assert allowed.status_code == 200
+    # Tasks are shared account-wide: a different member may complete it.
+    shared = client.patch(f"/v1/tasks/{task_id}/complete", headers=auth(other_token))  # type: ignore[union-attr]
+    assert shared.status_code == 200
 
 
 def test_webhook_replay_with_different_payload_is_rejected(test_context: dict[str, object]) -> None:
@@ -161,13 +166,16 @@ def test_webhook_replay_with_different_payload_is_rejected(test_context: dict[st
     settings = test_context["settings"]
     raw_a = b'{"message":"one"}'
     raw_b = b'{"message":"two"}'
+    ts = str(int(time.time()))
     headers_a = {
         "X-Event-ID": "evt-dup",
-        "X-Signature-SHA256": sign(raw_a, settings.webhook_secret),  # type: ignore[union-attr]
+        "X-Timestamp": ts,
+        "X-Signature-SHA256": sign_event("evt-dup", ts, raw_a, settings.webhook_secret),  # type: ignore[union-attr]
     }
     headers_b = {
         "X-Event-ID": "evt-dup",
-        "X-Signature-SHA256": sign(raw_b, settings.webhook_secret),  # type: ignore[union-attr]
+        "X-Timestamp": ts,
+        "X-Signature-SHA256": sign_event("evt-dup", ts, raw_b, settings.webhook_secret),  # type: ignore[union-attr]
     }
     first = client.post("/webhooks/internal-test", content=raw_a, headers=headers_a)  # type: ignore[union-attr]
     mismatch = client.post("/webhooks/internal-test", content=raw_b, headers=headers_b)  # type: ignore[union-attr]
