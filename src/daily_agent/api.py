@@ -2,7 +2,7 @@ import hashlib
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
@@ -42,6 +42,7 @@ from daily_agent.security import (
     issue_development_token,
     require_admin,
     require_principal,
+    verify_event_signature,
     verify_hmac,
 )
 from daily_agent.services import (
@@ -57,10 +58,12 @@ from daily_agent.services import (
     measured_cost_micro,
     persist_completed_run,
     policy_for,
+    release_budget,
     reserve_budget,
     scoped_note_query,
     seed_development_identity,
     settle_budget,
+    subscription_period,
 )
 from daily_agent.web import render_shell
 
@@ -157,19 +160,24 @@ def create_app() -> FastAPI:
             SYNTHETIC_POLICIES["ananta"],
         )
         day_key, day_reset = current_window_key()
-        period_key, period_reset = current_period_key()
+        now = datetime.now(UTC)
         window = session.scalar(
             select(UsageWindow).where(
                 UsageWindow.account_id == principal.account_id,
                 UsageWindow.window_key == day_key,
             )
         )
-        period = session.scalar(
-            select(UsagePeriod).where(
-                UsagePeriod.account_id == principal.account_id,
-                UsagePeriod.period_key == period_key,
-            )
-        )
+        period = session.scalars(
+            select(UsagePeriod)
+            .where(UsagePeriod.account_id == principal.account_id, UsagePeriod.reset_at > now)
+            .order_by(UsagePeriod.reset_at)
+        ).first()
+        if period is not None:
+            period_reset = period.reset_at
+        elif subscription is not None:
+            _key, period_reset = subscription_period(subscription.period_anchor, now)
+        else:
+            _key, period_reset = current_period_key(now)
         return UsageView(
             plan_id=policy.plan_id,
             plan_label=policy.display_name,
@@ -303,11 +311,11 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> TaskView:
+        # Tasks are shared across the account; any member may complete them.
         task = session.scalar(
             select(Task).where(
                 Task.id == task_id,
                 Task.account_id == principal.account_id,
-                Task.owner_user_id == principal.user_id,
             )
         )
         if task is None:
@@ -400,6 +408,16 @@ def create_app() -> FastAPI:
                 stage="execution",
                 amount_micro=amount,
             )
+        except BudgetDenied as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": exc.reset_at.isoformat()},
+            ) from exc
+        # Commit the reservation before provider calls so network latency does
+        # not hold row locks on the account's budget rows.
+        session.commit()
+        try:
             context = build_note_context(
                 session,
                 account_id=principal.account_id,
@@ -409,6 +427,12 @@ def create_app() -> FastAPI:
                 settings=settings,
             )
             result = fake_generate(body.text, context, settings=settings)
+        except Exception:
+            session.rollback()
+            release_budget(session, reservation)
+            session.commit()
+            raise
+        try:
             _apply_intent(session, result.intent, body, principal)
             run = persist_completed_run(
                 session,
@@ -428,14 +452,10 @@ def create_app() -> FastAPI:
                 calls=provider_calls,
             )
             session.commit()
-        except BudgetDenied as exc:
-            session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": exc.reset_at.isoformat()},
-            ) from exc
         except IntegrityError:
             session.rollback()
+            release_budget(session, reservation)
+            session.commit()
             recovered = session.scalar(
                 select(Run).where(
                     Run.account_id == principal.account_id,
@@ -456,6 +476,11 @@ def create_app() -> FastAPI:
                 response=recovered.response_text or "",
                 route=_route_for(session, principal.account_id, body.idempotency_key),
             )
+        except Exception:
+            session.rollback()
+            release_budget(session, reservation)
+            session.commit()
+            raise
         return MessageView(
             run_id=run.id,
             status=run.status,
@@ -468,6 +493,7 @@ def create_app() -> FastAPI:
     async def internal_webhook(
         request: Request,
         x_event_id: str = Header(min_length=1, max_length=160),
+        x_timestamp: str = Header(min_length=1, max_length=20),
         x_signature_sha256: str | None = Header(default=None),
         session: Session = Depends(get_session),
         settings: Settings = Depends(get_settings),
@@ -475,7 +501,9 @@ def create_app() -> FastAPI:
         raw = await request.body()
         if len(raw) > 256_000:
             raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
-        verify_hmac(raw, x_signature_sha256, settings.webhook_secret)
+        verify_event_signature(
+            raw, x_event_id, x_timestamp, x_signature_sha256, settings.webhook_secret
+        )
         try:
             event, created = accept_internal_event(
                 session, channel="internal_test", source_event_id=x_event_id, raw_body=raw

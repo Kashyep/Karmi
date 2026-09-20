@@ -1,16 +1,18 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from uuid import uuid4
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -69,6 +71,12 @@ class Subscription(Base):
     policy_version: Mapped[str] = mapped_column(String(40), default="synthetic-dev-v1")
     status: Mapped[str] = mapped_column(String(20), default="active")
     event_version: Mapped[int] = mapped_column(BigInteger, default=0)
+    # Billing periods are monthly anniversaries of this anchor date.
+    period_anchor: Mapped[date] = mapped_column(
+        Date,
+        default=lambda: datetime.now(UTC).date(),
+        server_default=func.current_date(),
+    )
 
 
 class UsageWindow(Base):

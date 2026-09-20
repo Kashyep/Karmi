@@ -1,8 +1,9 @@
+import calendar
 import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import Select, select, update
 from sqlalchemy.engine import CursorResult
@@ -41,6 +42,10 @@ logger = logging.getLogger(__name__)
 # Fixed cost of the local deterministic route per completed request.
 LOCAL_FAKE_COST_MICRO = 100
 
+# Max notes sent to the live scorer per request — bounds payload size and
+# per-request provider latency.
+MAX_LIVE_SCORE_NOTES = 10
+
 
 class BudgetDenied(Exception):
     """Reservation rejected; ``reset_at`` is when the binding limit lifts."""
@@ -61,13 +66,35 @@ def current_window_key(now: datetime | None = None) -> tuple[str, datetime]:
 
 
 def current_period_key(now: datetime | None = None) -> tuple[str, datetime]:
-    """Billing period key (calendar month) and its reset instant."""
+    """Calendar-month period key and reset instant — fallback for accounts
+    without a subscription anchor."""
     current = (now or datetime.now(UTC)).astimezone(UTC)
     if current.month == 12:
         reset = datetime(current.year + 1, 1, 1, tzinfo=UTC)
     else:
         reset = datetime(current.year, current.month + 1, 1, tzinfo=UTC)
     return current.strftime("%Y-%m"), reset
+
+
+def subscription_period(anchor: date, now: datetime | None = None) -> tuple[str, datetime]:
+    """Current billing period for a subscription anchored to its start date.
+
+    Periods are monthly anniversaries of ``anchor.day``; anchor days beyond a
+    month's length clamp to that month's last day (e.g. day 31 -> Feb 28).
+    Returns ``(period_key, reset)`` where the key is the period's start date."""
+    current = (now or datetime.now(UTC)).astimezone(UTC).date()
+
+    def start_of(year: int, month: int) -> date:
+        last = calendar.monthrange(year, month)[1]
+        return date(year, month, min(anchor.day, last))
+
+    start = start_of(current.year, current.month)
+    if start > current:
+        prev = (current.year - 1, 12) if current.month == 1 else (current.year, current.month - 1)
+        start = start_of(*prev)
+    ny, nm = (start.year + 1, 1) if start.month == 12 else (start.year, start.month + 1)
+    reset = datetime(ny, nm, min(anchor.day, calendar.monthrange(ny, nm)[1]), tzinfo=UTC)
+    return start.isoformat(), reset
 
 
 def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPolicy]:
@@ -132,15 +159,21 @@ def ensure_usage_window(session: Session, account_id: str, settings: Settings) -
 
 
 def ensure_usage_period(
-    session: Session, account_id: str, policy: PlanPolicy
+    session: Session, account_id: str, policy: PlanPolicy, anchor: date | None = None
 ) -> UsagePeriod:
-    key, reset = current_period_key()
-    period = session.scalar(
-        select(UsagePeriod).where(
-            UsagePeriod.account_id == account_id, UsagePeriod.period_key == key
-        )
-    )
+    now = datetime.now(UTC)
+    # The active period is whichever account row resets next in the future —
+    # this transparently covers legacy calendar-keyed rows until they expire.
+    period = session.scalars(
+        select(UsagePeriod)
+        .where(UsagePeriod.account_id == account_id, UsagePeriod.reset_at > now)
+        .order_by(UsagePeriod.reset_at)
+    ).first()
     if period is None:
+        if anchor is not None:
+            key, reset = subscription_period(anchor, now)
+        else:
+            key, reset = current_period_key(now)
         period = UsagePeriod(
             account_id=account_id,
             period_key=key,
@@ -152,11 +185,14 @@ def ensure_usage_period(
                 session.add(period)
                 session.flush()
         except IntegrityError:
-            period = session.scalar(
-                select(UsagePeriod).where(
-                    UsagePeriod.account_id == account_id, UsagePeriod.period_key == key
+            period = session.scalars(
+                select(UsagePeriod)
+                .where(
+                    UsagePeriod.account_id == account_id,
+                    UsagePeriod.reset_at > now,
                 )
-            )
+                .order_by(UsagePeriod.reset_at)
+            ).first()
             if period is None:
                 raise
     return period
@@ -198,9 +234,14 @@ def reserve_budget(
         )
     )
     if not isinstance(account_result, CursorResult) or account_result.rowcount != 1:
+        logger.warning(
+            "budget denied: daily allowance account=%s amount=%s",
+            account_id,
+            amount_micro,
+        )
         raise BudgetDenied("account allowance exhausted", reset_at=window.reset_at)
-    _subscription, policy = policy_for(session, account_id)
-    period = ensure_usage_period(session, account_id, policy)
+    subscription, policy = policy_for(session, account_id)
+    period = ensure_usage_period(session, account_id, policy, subscription.period_anchor)
     period_result = session.execute(
         update(UsagePeriod)
         .where(
@@ -211,6 +252,9 @@ def reserve_budget(
         .values(reserved_micro=UsagePeriod.reserved_micro + amount_micro)
     )
     if not isinstance(period_result, CursorResult) or period_result.rowcount != 1:
+        logger.warning(
+            "budget denied: period cap account=%s amount=%s", account_id, amount_micro
+        )
         raise BudgetDenied("account period budget exhausted", reset_at=period.reset_at)
     platform_result = session.execute(
         update(PlatformBudget)
@@ -222,6 +266,9 @@ def reserve_budget(
         .values(reserved_micro=PlatformBudget.reserved_micro + amount_micro)
     )
     if not isinstance(platform_result, CursorResult) or platform_result.rowcount != 1:
+        logger.warning(
+            "budget denied: platform cap account=%s amount=%s", account_id, amount_micro
+        )
         raise BudgetDenied(
             "platform spending is temporarily paused", reset_at=window.reset_at
         )
@@ -317,6 +364,59 @@ def settle_budget(
                 rate_version="synthetic-v1" if known else None,
             )
         )
+    logger.info(
+        "settled reservation %s account=%s status=%s actual_micro=%s",
+        reservation.id,
+        reservation.account_id,
+        new_status,
+        actual_micro,
+    )
+
+
+def release_budget(session: Session, reservation: BudgetReservation) -> None:
+    """Refund a committed reservation when its request failed before settlement."""
+    claimed = session.execute(
+        update(BudgetReservation)
+        .where(
+            BudgetReservation.id == reservation.id,
+            BudgetReservation.status == ReservationStatus.RESERVED,
+        )
+        .values(status=ReservationStatus.RELEASED)
+    )
+    if not isinstance(claimed, CursorResult) or claimed.rowcount != 1:
+        return
+    window = session.get(UsageWindow, reservation.usage_window_id)
+    if window is None:
+        raise RuntimeError("reservation window missing")
+    session.execute(
+        update(UsageWindow)
+        .where(UsageWindow.id == window.id)
+        .values(
+            reserved_micro=UsageWindow.reserved_micro - reservation.reserved_micro,
+            everyday_used=UsageWindow.everyday_used - 1,
+        )
+    )
+    session.execute(
+        update(PlatformBudget)
+        .where(PlatformBudget.window_key == window.window_key)
+        .values(
+            reserved_micro=PlatformBudget.reserved_micro - reservation.reserved_micro
+        )
+    )
+    if reservation.usage_period_id is not None:
+        session.execute(
+            update(UsagePeriod)
+            .where(UsagePeriod.id == reservation.usage_period_id)
+            .values(
+                reserved_micro=UsagePeriod.reserved_micro - reservation.reserved_micro
+            )
+        )
+    logger.info(
+        "released reservation %s account=%s micro=%s",
+        reservation.id,
+        reservation.account_id,
+        reservation.reserved_micro,
+    )
 
 
 def scoped_note_query(account_id: str, user_id: str) -> Select[tuple[Note]]:
@@ -364,15 +464,18 @@ def build_note_context(
 
     provider_calls: list[ProviderCall] = []
     if query_text and notes and settings is not None and settings.live_models_enabled:
-        scores, calls = score_notes_relevance(query_text, notes)
+        # Bound the scoring fan-out: only the newest N notes go to the provider
+        # (one scored question each); the rest keep chronological order.
+        scored_notes, unscored = notes[:MAX_LIVE_SCORE_NOTES], notes[MAX_LIVE_SCORE_NOTES:]
+        scores, calls = score_notes_relevance(query_text, scored_notes)
         provider_calls.extend(calls)
         if scores is not None:
             notes = [
                 note
                 for _score, note in sorted(
-                    zip(scores, notes, strict=True), key=lambda pair: pair[0], reverse=True
+                    zip(scores, scored_notes, strict=True), key=lambda pair: pair[0], reverse=True
                 )
-            ]
+            ] + unscored
 
     parts: list[str] = []
     source_ids: list[str] = []
