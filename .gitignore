@@ -15,3 +15,5 @@ reports/
 artifacts/
 node_modules/
 
+gh_2.55.0_linux_amd64*
+gh_2.55.0_linux_amd64.tar.gz
