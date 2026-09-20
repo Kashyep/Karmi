@@ -22,6 +22,8 @@ from daily_agent.models import (
     Run,
     Subscription,
     Task,
+    UsagePeriod,
+    UsageWindow,
 )
 from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.schemas import (
@@ -44,9 +46,12 @@ from daily_agent.security import (
 )
 from daily_agent.services import (
     BudgetDenied,
+    IdempotencyConflict,
     accept_internal_event,
     build_note_context,
     create_task_idempotent,
+    current_period_key,
+    current_window_key,
     ensure_usage_window,
     estimate_request_cost_micro,
     fake_generate,
@@ -140,34 +145,91 @@ def create_app() -> FastAPI:
     def usage(
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
-        settings: Settings = Depends(get_settings),
     ) -> UsageView:
-        subscription, policy = policy_for(session, principal.account_id)
-        window = ensure_usage_window(session, principal.account_id, settings)
-        session.commit()
+        # Read-only: a GET must not create subscriptions or budget rows. Missing
+        # rows simply mean the account has not consumed anything this window.
+        subscription = session.scalar(
+            select(Subscription).where(Subscription.account_id == principal.account_id)
+        )
+        policy = SYNTHETIC_POLICIES.get(
+            subscription.plan_id if subscription is not None else "ananta",
+            SYNTHETIC_POLICIES["ananta"],
+        )
+        day_key, day_reset = current_window_key()
+        period_key, _period_reset = current_period_key()
+        window = session.scalar(
+            select(UsageWindow).where(
+                UsageWindow.account_id == principal.account_id,
+                UsageWindow.window_key == day_key,
+            )
+        )
+        period = session.scalar(
+            select(UsagePeriod).where(
+                UsagePeriod.account_id == principal.account_id,
+                UsagePeriod.period_key == period_key,
+            )
+        )
         return UsageView(
             plan_id=policy.plan_id,
             plan_label=policy.display_name,
-            everyday_used=window.everyday_used,
-            everyday_limit=window.everyday_limit,
-            reserved_micro=window.reserved_micro,
-            settled_micro=window.settled_micro,
-            spend_limit_micro=window.spend_limit_micro,
-            reset_at=window.reset_at,
-            policy_version=subscription.policy_version,
+            everyday_used=window.everyday_used if window else 0,
+            everyday_limit=policy.everyday_limit,
+            reserved_micro=period.reserved_micro if period else 0,
+            settled_micro=period.settled_micro if period else 0,
+            spend_limit_micro=period.spend_limit_micro if period else policy.period_cost_cap_micro,
+            reset_at=window.reset_at if window else day_reset,
+            policy_version=subscription.policy_version if subscription else "synthetic-dev-v1",
         )
 
-    @app.post("/v1/notes", response_model=NoteView, status_code=status.HTTP_201_CREATED)
+    @app.post("/v1/notes", response_model=NoteView)
     def create_note(
         body: NoteCreate,
+        response: Response,
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> NoteView:
+        if body.idempotency_key is not None:
+            existing = session.scalar(
+                select(Note).where(
+                    Note.account_id == principal.account_id,
+                    Note.idempotency_key == body.idempotency_key,
+                )
+            )
+            if existing is not None:
+                if existing.content != body.content or existing.owner_user_id != principal.user_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="idempotency key was reused with a different payload",
+                    )
+                response.status_code = status.HTTP_200_OK
+                return NoteView(id=existing.id, content=existing.content, version=existing.version)
         note = Note(
-            account_id=principal.account_id, owner_user_id=principal.user_id, content=body.content
+            account_id=principal.account_id,
+            owner_user_id=principal.user_id,
+            content=body.content,
+            idempotency_key=body.idempotency_key,
         )
         session.add(note)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            existing = session.scalar(
+                select(Note).where(
+                    Note.account_id == principal.account_id,
+                    Note.idempotency_key == body.idempotency_key,
+                )
+            )
+            if existing is None or body.idempotency_key is None:
+                raise
+            if existing.content != body.content or existing.owner_user_id != principal.user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="idempotency key was reused with a different payload",
+                ) from None
+            response.status_code = status.HTTP_200_OK
+            return NoteView(id=existing.id, content=existing.content, version=existing.version)
+        response.status_code = status.HTTP_201_CREATED
         return NoteView(id=note.id, content=note.content, version=note.version)
 
     @app.get("/v1/notes", response_model=list[NoteView])
@@ -209,6 +271,12 @@ def create_app() -> FastAPI:
                 key=body.idempotency_key,
             )
             session.commit()
+        except IdempotencyConflict as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="idempotency key was reused with a different payload",
+            ) from exc
         except IntegrityError:
             session.rollback()
             recovered_task = session.scalar(
@@ -220,6 +288,11 @@ def create_app() -> FastAPI:
             if recovered_task is None:
                 raise
             task = recovered_task
+            if task.title != body.title:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="idempotency key was reused with a different payload",
+                ) from None
         return TaskView(id=task.id, title=task.title, completed=task.completed)
 
     @app.patch("/v1/tasks/{task_id}/complete", response_model=TaskView)
@@ -229,7 +302,11 @@ def create_app() -> FastAPI:
         session: Session = Depends(get_session),
     ) -> TaskView:
         task = session.scalar(
-            select(Task).where(Task.id == task_id, Task.account_id == principal.account_id)
+            select(Task).where(
+                Task.id == task_id,
+                Task.account_id == principal.account_id,
+                Task.owner_user_id == principal.user_id,
+            )
         )
         if task is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found")
@@ -254,6 +331,15 @@ def create_app() -> FastAPI:
                 Reminder.idempotency_key == body.idempotency_key,
             )
         )
+        if existing is not None and (
+            existing.text != body.text
+            or existing.due_at_utc != body.due_at.astimezone(UTC)
+            or existing.timezone != body.timezone
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="idempotency key was reused with a different payload",
+            )
         reminder = existing or Reminder(
             account_id=principal.account_id,
             owner_user_id=principal.user_id,
@@ -281,18 +367,25 @@ def create_app() -> FastAPI:
         session: Session = Depends(get_session),
         settings: Settings = Depends(get_settings),
     ) -> MessageView:
+        request_hash = hashlib.sha256(body.text.encode("utf-8")).hexdigest()
         existing = session.scalar(
-            select(Run).where(Run.logical_request_id == body.idempotency_key)
+            select(Run).where(
+                Run.account_id == principal.account_id,
+                Run.logical_request_id == body.idempotency_key,
+            )
         )
         if existing is not None:
-            if existing.account_id != principal.account_id:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="request key conflict")
+            if existing.request_hash is not None and existing.request_hash != request_hash:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="idempotency key was reused with a different payload",
+                )
             return MessageView(
                 run_id=existing.id,
                 status=existing.status,
                 outcome=Outcome(existing.outcome or "DEFERRED"),
                 response=existing.response_text or "",
-                route=_route_for(session, body.idempotency_key),
+                route=_route_for(session, principal.account_id, body.idempotency_key),
             )
         _subscription, policy = policy_for(session, principal.account_id)
         amount = estimate_request_cost_micro(policy, settings)
@@ -322,6 +415,7 @@ def create_app() -> FastAPI:
                 logical_request_id=body.idempotency_key,
                 response=result.response,
                 outcome=result.outcome,
+                request_hash=request_hash,
             )
             provider_calls = [*context.provider_calls, *result.provider_calls]
             settle_budget(
@@ -343,20 +437,24 @@ def create_app() -> FastAPI:
         except IntegrityError:
             session.rollback()
             recovered = session.scalar(
-                select(Run).where(Run.logical_request_id == body.idempotency_key)
+                select(Run).where(
+                    Run.account_id == principal.account_id,
+                    Run.logical_request_id == body.idempotency_key,
+                )
             )
             if recovered is None:
                 raise
-            if recovered.account_id != principal.account_id:
+            if recovered.request_hash is not None and recovered.request_hash != request_hash:
                 raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT, detail="request key conflict"
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="idempotency key was reused with a different payload",
                 ) from None
             return MessageView(
                 run_id=recovered.id,
                 status=recovered.status,
                 outcome=Outcome(recovered.outcome or "DEFERRED"),
                 response=recovered.response_text or "",
-                route=_route_for(session, body.idempotency_key),
+                route=_route_for(session, principal.account_id, body.idempotency_key),
             )
         return MessageView(
             run_id=run.id,
@@ -378,9 +476,15 @@ def create_app() -> FastAPI:
         if len(raw) > 256_000:
             raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
         verify_hmac(raw, x_signature_sha256, settings.webhook_secret)
-        event, created = accept_internal_event(
-            session, channel="internal_test", source_event_id=x_event_id, raw_body=raw
-        )
+        try:
+            event, created = accept_internal_event(
+                session, channel="internal_test", source_event_id=x_event_id, raw_body=raw
+            )
+        except IdempotencyConflict as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="event id was replayed with a different payload",
+            ) from exc
         session.commit()
         return {"event_id": event.id, "accepted": created, "duplicate": not created}
 
@@ -422,6 +526,11 @@ def create_app() -> FastAPI:
             )
         )
         if existing is not None:
+            if existing.payload_hash != hashlib.sha256(raw).hexdigest():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="billing event id was replayed with a different payload",
+                )
             return {"accepted": False, "duplicate": True}
         session.add(
             BillingEvent(
@@ -482,10 +591,11 @@ def _apply_intent(
         )
 
 
-def _route_for(session: Session, logical_request_id: str) -> str:
+def _route_for(session: Session, account_id: str, logical_request_id: str) -> str:
     """Recover the route taken for an earlier run via its cost ledger rows."""
     reservation = session.scalar(
         select(BudgetReservation).where(
+            BudgetReservation.account_id == account_id,
             BudgetReservation.logical_request_id == logical_request_id,
             BudgetReservation.stage == "execution",
         )

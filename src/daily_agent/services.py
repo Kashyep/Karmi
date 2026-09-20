@@ -23,6 +23,7 @@ from daily_agent.models import (
     RunStatus,
     Subscription,
     Task,
+    UsagePeriod,
     UsageWindow,
     User,
 )
@@ -45,10 +46,24 @@ class BudgetDenied(Exception):
     pass
 
 
-def _window(now: datetime | None = None) -> tuple[str, datetime]:
+class IdempotencyConflict(Exception):
+    """A request reused an idempotency key with a different payload."""
+
+
+def current_window_key(now: datetime | None = None) -> tuple[str, datetime]:
     current = (now or datetime.now(UTC)).astimezone(UTC)
     reset = datetime(current.year, current.month, current.day, tzinfo=UTC) + timedelta(days=1)
     return current.strftime("%Y-%m-%d"), reset
+
+
+def current_period_key(now: datetime | None = None) -> tuple[str, datetime]:
+    """Billing period key (calendar month) and its reset instant."""
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    if current.month == 12:
+        reset = datetime(current.year + 1, 1, 1, tzinfo=UTC)
+    else:
+        reset = datetime(current.year, current.month + 1, 1, tzinfo=UTC)
+    return current.strftime("%Y-%m"), reset
 
 
 def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPolicy]:
@@ -66,7 +81,7 @@ def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPol
 
 def ensure_usage_window(session: Session, account_id: str, settings: Settings) -> UsageWindow:
     _subscription, policy = policy_for(session, account_id)
-    key, reset = _window()
+    key, reset = current_window_key()
     window = session.scalar(
         select(UsageWindow).where(
             UsageWindow.account_id == account_id, UsageWindow.window_key == key
@@ -77,7 +92,9 @@ def ensure_usage_window(session: Session, account_id: str, settings: Settings) -
             account_id=account_id,
             window_key=key,
             everyday_limit=policy.everyday_limit,
-            spend_limit_micro=policy.period_cost_cap_micro,
+            # Daily spend cannot exceed one request's cap times the daily request
+            # count; the real monetary cap is enforced on the UsagePeriod row.
+            spend_limit_micro=policy.request_cost_cap_micro * policy.everyday_limit,
             reset_at=reset,
         )
         try:
@@ -110,6 +127,37 @@ def ensure_usage_window(session: Session, account_id: str, settings: Settings) -
     return window
 
 
+def ensure_usage_period(
+    session: Session, account_id: str, policy: PlanPolicy
+) -> UsagePeriod:
+    key, reset = current_period_key()
+    period = session.scalar(
+        select(UsagePeriod).where(
+            UsagePeriod.account_id == account_id, UsagePeriod.period_key == key
+        )
+    )
+    if period is None:
+        period = UsagePeriod(
+            account_id=account_id,
+            period_key=key,
+            spend_limit_micro=policy.period_cost_cap_micro,
+            reset_at=reset,
+        )
+        try:
+            with session.begin_nested():
+                session.add(period)
+                session.flush()
+        except IntegrityError:
+            period = session.scalar(
+                select(UsagePeriod).where(
+                    UsagePeriod.account_id == account_id, UsagePeriod.period_key == key
+                )
+            )
+            if period is None:
+                raise
+    return period
+
+
 def reserve_budget(
     session: Session,
     *,
@@ -123,6 +171,7 @@ def reserve_budget(
         raise ValueError("reservation must be positive")
     existing = session.scalar(
         select(BudgetReservation).where(
+            BudgetReservation.account_id == account_id,
             BudgetReservation.logical_request_id == logical_request_id,
             BudgetReservation.stage == stage,
         )
@@ -146,6 +195,19 @@ def reserve_budget(
     )
     if not isinstance(account_result, CursorResult) or account_result.rowcount != 1:
         raise BudgetDenied("account allowance exhausted")
+    _subscription, policy = policy_for(session, account_id)
+    period = ensure_usage_period(session, account_id, policy)
+    period_result = session.execute(
+        update(UsagePeriod)
+        .where(
+            UsagePeriod.id == period.id,
+            UsagePeriod.reserved_micro + UsagePeriod.settled_micro + amount_micro
+            <= UsagePeriod.spend_limit_micro,
+        )
+        .values(reserved_micro=UsagePeriod.reserved_micro + amount_micro)
+    )
+    if not isinstance(period_result, CursorResult) or period_result.rowcount != 1:
+        raise BudgetDenied("account period budget exhausted")
     platform_result = session.execute(
         update(PlatformBudget)
         .where(
@@ -161,6 +223,7 @@ def reserve_budget(
         logical_request_id=logical_request_id,
         account_id=account_id,
         usage_window_id=window.id,
+        usage_period_id=period.id,
         stage=stage,
         reserved_micro=amount_micro,
     )
@@ -212,6 +275,15 @@ def settle_budget(
             settled_micro=PlatformBudget.settled_micro + settled,
         )
     )
+    if reservation.usage_period_id is not None:
+        session.execute(
+            update(UsagePeriod)
+            .where(UsagePeriod.id == reservation.usage_period_id)
+            .values(
+                reserved_micro=UsagePeriod.reserved_micro - reservation.reserved_micro,
+                settled_micro=UsagePeriod.settled_micro + settled,
+            )
+        )
     reservation.actual_micro = actual_micro
     reservation.status = new_status
     if calls:
@@ -254,6 +326,8 @@ def create_task_idempotent(
         select(Task).where(Task.account_id == account_id, Task.idempotency_key == key)
     )
     if task is not None:
+        if task.title != title:
+            raise IdempotencyConflict("idempotency key was reused with a different title")
         return task
     task = Task(account_id=account_id, owner_user_id=user_id, title=title, idempotency_key=key)
     session.add(task)
@@ -400,12 +474,17 @@ def measured_cost_micro(calls: list[ProviderCall]) -> int | None:
 def accept_internal_event(
     session: Session, *, channel: str, source_event_id: str, raw_body: bytes
 ) -> tuple[InboxEvent, bool]:
+    payload_hash = hashlib.sha256(raw_body).hexdigest()
     existing = session.scalar(
         select(InboxEvent).where(
             InboxEvent.channel == channel, InboxEvent.source_event_id == source_event_id
         )
     )
     if existing is not None:
+        if existing.payload_hash != payload_hash:
+            raise IdempotencyConflict(
+                "event id was replayed with a different payload"
+            )
         return existing, False
     event = InboxEvent(
         channel=channel,
@@ -425,11 +504,13 @@ def persist_completed_run(
     logical_request_id: str,
     response: str,
     outcome: Outcome,
+    request_hash: str | None = None,
 ) -> Run:
     run = Run(
         account_id=account_id,
         user_id=user_id,
         logical_request_id=logical_request_id,
+        request_hash=request_hash,
         status=RunStatus.COMPLETED if outcome == Outcome.ACCEPT else RunStatus.DEFERRED,
         outcome=outcome,
         response_text=response,
@@ -438,7 +519,7 @@ def persist_completed_run(
     session.flush()
     session.add(
         OutboxEvent(
-            logical_key=f"response:{logical_request_id}",
+            logical_key=f"response:{account_id}:{logical_request_id}",
             run_id=run.id,
             payload=json.dumps({"response": response, "outcome": outcome}),
         )

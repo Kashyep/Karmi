@@ -86,6 +86,26 @@ class UsageWindow(Base):
     reset_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class UsagePeriod(Base):
+    """Non-resetting per-billing-period spend accumulator.
+
+    `UsageWindow` resets daily and enforces the *everyday* request-count allowance;
+    the monetary `period_cost_cap_micro` lives here so it is not re-granted at
+    every midnight boundary.
+    """
+
+    __tablename__ = "usage_periods"
+    __table_args__ = (UniqueConstraint("account_id", "period_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    period_key: Mapped[str] = mapped_column(String(40))
+    spend_limit_micro: Mapped[int] = mapped_column(BigInteger)
+    reserved_micro: Mapped[int] = mapped_column(BigInteger, default=0)
+    settled_micro: Mapped[int] = mapped_column(BigInteger, default=0)
+    reset_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class PlatformBudget(Base):
     __tablename__ = "platform_budgets"
 
@@ -97,12 +117,15 @@ class PlatformBudget(Base):
 
 class BudgetReservation(Base):
     __tablename__ = "budget_reservations"
-    __table_args__ = (UniqueConstraint("logical_request_id", "stage"),)
+    __table_args__ = (UniqueConstraint("account_id", "logical_request_id", "stage"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
-    logical_request_id: Mapped[str] = mapped_column(String(80), index=True)
+    logical_request_id: Mapped[str] = mapped_column(String(160), index=True)
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     usage_window_id: Mapped[str] = mapped_column(ForeignKey("usage_windows.id"))
+    usage_period_id: Mapped[str | None] = mapped_column(
+        ForeignKey("usage_periods.id"), nullable=True
+    )
     stage: Mapped[str] = mapped_column(String(32))
     reserved_micro: Mapped[int] = mapped_column(BigInteger)
     actual_micro: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -126,11 +149,13 @@ class CostLedger(Base):
 
 class Note(Base):
     __tablename__ = "notes"
+    __table_args__ = (UniqueConstraint("account_id", "idempotency_key"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     content: Mapped[str] = mapped_column(Text)
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -176,11 +201,13 @@ class InboxEvent(Base):
 
 class Run(Base):
     __tablename__ = "runs"
+    __table_args__ = (UniqueConstraint("account_id", "logical_request_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    logical_request_id: Mapped[str] = mapped_column(String(80), unique=True)
+    logical_request_id: Mapped[str] = mapped_column(String(160))
+    request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default=RunStatus.QUEUED)
     outcome: Mapped[str | None] = mapped_column(String(30), nullable=True)
     response_text: Mapped[str | None] = mapped_column(Text, nullable=True)

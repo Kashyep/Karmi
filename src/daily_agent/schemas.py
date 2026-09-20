@@ -15,6 +15,7 @@ class Outcome(StrEnum):
 
 class NoteCreate(BaseModel):
     content: str = Field(min_length=1, max_length=20_000)
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
 
 
 class NoteView(BaseModel):
