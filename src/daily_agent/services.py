@@ -223,9 +223,32 @@ class ContextManifest:
 
 
 def build_note_context(
-    session: Session, *, account_id: str, user_id: str, max_tokens: int
+    session: Session, *, account_id: str, user_id: str, max_tokens: int, query_text: str | None = None
 ) -> ContextManifest:
     notes = list(session.scalars(scoped_note_query(account_id, user_id).order_by(Note.updated_at.desc())))
+    
+    # Use TypeSafe Score to sort notes by relevance to the query if provided
+    if query_text and notes:
+        try:
+            from typesafe_sdk import TypeSafeClient, Score
+            from typing import Any
+            with TypeSafeClient() as client:
+                state: dict[str, Any] = {"user_query": query_text, "notes": {f"note_{i}": note.content for i, note in enumerate(notes)}}
+                questions = {
+                    f"relevance_{i}": Score(
+                        instructions=f"How relevant is `notes.note_{i}` to answering the user's query?",
+                        criteria=["Irrelevant", "Tangential", "Directly Relevant"]
+                    ) for i in range(len(notes))
+                }
+                
+                response = client.system_one(state=state, questions=questions)
+                
+                scored_notes = [(notes[i], response.scores[f"relevance_{i}"].score) for i in range(len(notes))]
+                scored_notes.sort(key=lambda x: x[1], reverse=True)
+                notes = [sn[0] for sn in scored_notes]
+        except Exception:
+            pass # Fallback to chronological ordering
+
     parts: list[str] = []
     source_ids: list[str] = []
     omitted: list[str] = []
@@ -248,13 +271,45 @@ def fake_generate(text: str, context: ContextManifest) -> tuple[str, Outcome]:
             "This request is too large for the current bounded route. Choose a smaller section.",
             Outcome.DEFERRED,
         )
-    if lowered.startswith("remember") and not context.text:
-        return "I do not have a saved fact for that yet.", Outcome.ASK_USER
-    if "my notes" in lowered or "remember" in lowered:
-        if context.text:
-            return f"From your saved notes: {context.text}", Outcome.ACCEPT
-        return "I could not find that in your saved notes.", Outcome.ASK_USER
-    return f"Draft ready: {text.strip()}", Outcome.ACCEPT
+        
+    try:
+        from typesafe_sdk import TypeSafeClient, Choice
+        with TypeSafeClient() as client:
+            response = client.system_one(
+                state={"user_message": text, "retrieved_context": context.text},
+                questions={
+                    "intent": Choice(
+                        instructions="What is the primary action the user is asking the assistant to take?",
+                        criteria={
+                            "query_memory": "The user is asking to retrieve, search, or recall saved facts.",
+                            "store_memory": "The user is providing a new fact or note to be remembered.",
+                            "create_task": "The user is instructing the assistant to create a to-do, task, or reminder.",
+                            "general_draft": "The user is asking for text generation, drafting, or general chat."
+                        }
+                    )
+                }
+            )
+            intent = response.choices["intent"].choice
+            
+            if intent == "query_memory":
+                if context.text:
+                    return f"From your saved notes: {context.text}", Outcome.ACCEPT
+                return "I could not find that in your saved notes.", Outcome.ASK_USER
+            elif intent == "store_memory":
+                return f"I have saved your note: {text.strip()}", Outcome.ACCEPT
+            elif intent == "create_task":
+                return f"Task created from your message: {text.strip()}", Outcome.ACCEPT
+            else:
+                return f"Draft ready: {text.strip()}", Outcome.ACCEPT
+    except Exception:
+        # Fallback to heuristics if TypeSafe is unconfigured or fails
+        if lowered.startswith("remember") and not context.text:
+            return "I do not have a saved fact for that yet.", Outcome.ASK_USER
+        if "my notes" in lowered or "remember" in lowered:
+            if context.text:
+                return f"From your saved notes: {context.text}", Outcome.ACCEPT
+            return "I could not find that in your saved notes.", Outcome.ASK_USER
+        return f"Draft ready: {text.strip()}", Outcome.ACCEPT
 
 
 def accept_internal_event(

@@ -299,6 +299,7 @@ def create_app() -> FastAPI:
                 account_id=principal.account_id,
                 user_id=principal.user_id,
                 max_tokens=policy.input_tokens,
+                query_text=body.text,
             )
             response, outcome = fake_generate(body.text, context)
             run = persist_completed_run(
