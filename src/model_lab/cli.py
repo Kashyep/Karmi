@@ -160,8 +160,8 @@ def db_report(
     out: Annotated[Path, typer.Option("--out")],
     fmt: Annotated[str, typer.Option("--format")] = "md",
 ) -> None:
-    if fmt not in {"md", "json", "svg"}:
-        raise typer.BadParameter(f"unsupported format {fmt!r}; use md, json, or svg")
+    if fmt not in {"md", "json", "csv", "html", "svg"}:
+        raise typer.BadParameter(f"unsupported format {fmt!r}; use md, json, csv, html, or svg")
     cases = read_jsonl(suite)
     store = LabStore(db)
     attempts, grades = store.attempts(), store.grades()
