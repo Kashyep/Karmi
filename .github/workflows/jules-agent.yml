@@ -24,8 +24,10 @@ jobs:
             
             1. Security: Identify and fix hardcoded secrets, API keys, passwords, SQL injection, and command injection vulnerabilities.
             2. Code Quality: Refactor brittle code, remove dead code, improve type safety, and ensure adherence to best practices.
-            3. Performance: Address database lock contention, inefficient algorithmic paths, and scalability bottlenecks (like the platform budget hot-row).
-            4. Reliability: Fix race conditions and ensure transactional invariants are maintained.
-            5. Testing: Identify missing test coverage and write unit tests for unhandled edge cases.
+            3. Variable Conflicts: Identify and resolve variable shadowing, naming collisions, and unsafe mutable state overwrites.
+            4. Version Control: Scan for and resolve lingering git merge conflict markers (`<<<<<<<`) or integration issues across the codebase.
+            5. Performance: Address database lock contention, inefficient algorithmic paths, and scalability bottlenecks.
+            6. Reliability: Fix race conditions and ensure transactional invariants are maintained.
+            7. Testing: Identify missing test coverage and write unit tests for unhandled edge cases.
             
             Do not just report issues—actively apply fixes and improvements to the codebase.
