@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 import time
 from dataclasses import dataclass
 
@@ -9,6 +10,11 @@ from sqlalchemy.orm import Session
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import get_session
 from daily_agent.models import User
+
+logger = logging.getLogger(__name__)
+
+# Maximum accepted clock skew between sender and receiver on signed events.
+MAX_EVENT_AGE_SECONDS = 300
 
 
 @dataclass(frozen=True)
@@ -60,5 +66,36 @@ def require_admin(principal: Principal = Depends(require_principal)) -> Principa
 def verify_hmac(raw_body: bytes, supplied: str | None, secret: str) -> None:
     expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
     if supplied is None or not hmac.compare_digest(expected, supplied):
+        logger.warning("rejected request with invalid signature")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid signature")
+
+
+def verify_event_signature(
+    raw_body: bytes,
+    event_id: str,
+    timestamp: str,
+    supplied: str | None,
+    secret: str,
+    *,
+    max_age_seconds: int = MAX_EVENT_AGE_SECONDS,
+) -> None:
+    """Verify an HMAC that binds the body, event id, and timestamp.
+
+    The signature covers ``{event_id}.{timestamp}.{body}``, so a captured
+    signature cannot be replayed under a different event id, and stale
+    events are rejected outright.
+    """
+    try:
+        ts = int(timestamp)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid event timestamp"
+        ) from exc
+    if abs(time.time() - ts) > max_age_seconds:
+        logger.warning("rejected stale event id=%s ts=%s", event_id, timestamp)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="stale event timestamp"
+        )
+    signable = f"{event_id}.{timestamp}.".encode() + raw_body
+    verify_hmac(signable, supplied, secret)
 

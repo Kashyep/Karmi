@@ -64,6 +64,7 @@ class UsageView(BaseModel):
     settled_micro: int
     spend_limit_micro: int
     reset_at: datetime
+    period_reset_at: datetime
     policy_version: str
     synthetic: bool = True
 

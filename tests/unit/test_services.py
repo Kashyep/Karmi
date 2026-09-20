@@ -1,4 +1,6 @@
 
+from datetime import UTC, date, datetime
+
 import pytest
 from sqlalchemy import select
 
@@ -6,10 +8,17 @@ from daily_agent.config import Settings
 from daily_agent.models import (
     BudgetReservation,
     PlatformBudget,
+    Subscription,
     UsagePeriod,
     UsageWindow,
 )
-from daily_agent.services import BudgetDenied, reserve_budget, settle_budget
+from daily_agent.services import (
+    BudgetDenied,
+    release_budget,
+    reserve_budget,
+    settle_budget,
+    subscription_period,
+)
 from tests.conftest import create_identity
 
 
@@ -140,3 +149,74 @@ def test_settle_updates_period_counters(test_context: dict[str, object]) -> None
         assert period is not None
         assert period.reserved_micro == 0
         assert period.settled_micro == 100
+
+
+def test_release_refunds_reserved_spend(test_context: dict[str, object]) -> None:
+    factory = test_context["factory"]
+    settings = test_context["settings"]
+    with factory() as session:  # type: ignore[operator]
+        account, _user, _token = create_identity(session, settings, name="A")  # type: ignore[arg-type]
+        reservation = reserve_budget(
+            session,
+            settings=settings,  # type: ignore[arg-type]
+            account_id=account.id,
+            logical_request_id="release-1",
+            stage="execution",
+            amount_micro=1_000,
+        )
+        session.commit()
+        release_budget(session, reservation)
+        session.commit()
+        reservation = session.get(BudgetReservation, reservation.id)
+        assert reservation is not None
+        assert reservation.status == "released"
+        window = session.scalar(select(UsageWindow).where(UsageWindow.account_id == account.id))
+        assert window is not None
+        assert window.reserved_micro == 0 and window.everyday_used == 0
+        period = session.scalar(select(UsagePeriod).where(UsagePeriod.account_id == account.id))
+        assert period is not None and period.reserved_micro == 0
+        # Releasing again is a no-op, not a double refund.
+        release_budget(session, reservation)
+        session.commit()
+        assert window.reserved_micro == 0
+
+
+def test_period_anchors_to_subscription_start(test_context: dict[str, object]) -> None:
+    factory = test_context["factory"]
+    settings = test_context["settings"]
+    with factory() as session:  # type: ignore[operator]
+        account, _user, _token = create_identity(session, settings, name="A")  # type: ignore[arg-type]
+        subscription = session.scalar(
+            select(Subscription).where(Subscription.account_id == account.id)
+        )
+        assert subscription is not None
+        subscription.period_anchor = date(2020, 1, 15)
+        reserve_budget(
+            session,
+            settings=settings,  # type: ignore[arg-type]
+            account_id=account.id,
+            logical_request_id="anchor-1",
+            stage="execution",
+            amount_micro=1_000,
+        )
+        session.commit()
+        period = session.scalar(select(UsagePeriod).where(UsagePeriod.account_id == account.id))
+        assert period is not None
+        expected_key, expected_reset = subscription_period(date(2020, 1, 15))
+        assert period.period_key == expected_key
+        assert len(expected_key) == 10  # ISO start date, not a calendar month key
+        assert period.reset_at.replace(tzinfo=UTC) == expected_reset
+
+
+def test_subscription_period_clamps_to_short_months() -> None:
+    # Day-31 anchor clamps to month length; the anniversary not yet reached
+    # means the current period started last month.
+    key, reset = subscription_period(date(2024, 1, 31), datetime(2024, 2, 20, tzinfo=UTC))
+    assert key == "2024-01-31"
+    assert reset == datetime(2024, 2, 29, tzinfo=UTC)
+    key, reset = subscription_period(date(2024, 1, 31), datetime(2024, 3, 5, tzinfo=UTC))
+    assert key == "2024-02-29"
+    assert reset == datetime(2024, 3, 31, tzinfo=UTC)
+    key, reset = subscription_period(date(2024, 1, 20), datetime(2024, 1, 10, tzinfo=UTC))
+    assert key == "2023-12-20"
+    assert reset == datetime(2024, 1, 20, tzinfo=UTC)

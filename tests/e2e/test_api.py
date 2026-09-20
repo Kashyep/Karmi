@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import time
 
 from sqlalchemy import select
 
@@ -15,6 +16,11 @@ def auth(token: str) -> dict[str, str]:
 
 def sign(raw: bytes, secret: str) -> str:
     return hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+
+
+def sign_event(event_id: str, timestamp: str, raw: bytes, secret: str) -> str:
+    signable = f"{event_id}.{timestamp}.".encode() + raw
+    return hmac.new(secret.encode(), signable, hashlib.sha256).hexdigest()
 
 
 def test_identity_scopes_private_notes(test_context: dict[str, object]) -> None:
@@ -55,13 +61,28 @@ def test_signed_event_is_deduplicated(test_context: dict[str, object]) -> None:
     client = test_context["client"]
     settings = test_context["settings"]
     raw = b'{"message":"synthetic"}'
+    ts = str(int(time.time()))
     headers = {
         "X-Event-ID": "evt-0001",
-        "X-Signature-SHA256": sign(raw, settings.webhook_secret),  # type: ignore[union-attr]
+        "X-Timestamp": ts,
+        "X-Signature-SHA256": sign_event("evt-0001", ts, raw, settings.webhook_secret),  # type: ignore[union-attr]
         "Content-Type": "application/json",
     }
     bad = client.post("/webhooks/internal-test", content=raw, headers={**headers, "X-Signature-SHA256": "bad"})  # type: ignore[union-attr]
     assert bad.status_code == 401
+    stale = client.post(  # type: ignore[union-attr]
+        "/webhooks/internal-test",
+        content=raw,
+        headers={**headers, "X-Timestamp": "1", "X-Signature-SHA256": sign_event("evt-0001", "1", raw, settings.webhook_secret)},
+    )
+    assert stale.status_code == 401
+    # A valid body signature cannot be replayed under a different event id.
+    rebadged = client.post(  # type: ignore[union-attr]
+        "/webhooks/internal-test",
+        content=raw,
+        headers={**headers, "X-Event-ID": "evt-0002"},
+    )
+    assert rebadged.status_code == 401
     first = client.post("/webhooks/internal-test", content=raw, headers=headers)  # type: ignore[union-attr]
     second = client.post("/webhooks/internal-test", content=raw, headers=headers)  # type: ignore[union-attr]
     assert first.json()["accepted"] is True
