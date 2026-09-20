@@ -48,6 +48,7 @@ from daily_agent.security import (
 from daily_agent.services import (
     BudgetDenied,
     IdempotencyConflict,
+    ReservationInFlight,
     accept_internal_event,
     build_note_context,
     create_task_idempotent,
@@ -413,6 +414,12 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": exc.reset_at.isoformat()},
+            ) from exc
+        except ReservationInFlight as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="request already in flight; retry to observe its result",
             ) from exc
         # Commit the reservation before provider calls so network latency does
         # not hold row locks on the account's budget rows.
