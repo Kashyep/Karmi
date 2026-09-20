@@ -1,0 +1,151 @@
+# Repository Audit — Daily Agent (Karmi)
+
+**Audited commit:** `a04700c` (HEAD, `main`)
+**Date:** 2026-09-20
+**Method:** full source read, fresh-clone install, ran every documented check, live endpoint probes via `TestClient`, concurrency repro, dependency inspection of `typesafe-sdk` wheel. Where a claim could not be executed it is marked **needs verification**.
+
+## Verification results (what was actually run)
+
+| Check | Result |
+|---|---|
+| `pip install -e '.[dev]'` (py3.12 venv) | Pass |
+| `tasks.py doctor` | Pass |
+| `tasks.py lint` | **FAIL** — 2× `I001` unsorted imports + 1× `S110` try/except/pass, all in `src/daily_agent/services.py` (introduced by HEAD commit `a04700c`) |
+| `tasks.py typecheck` (mypy strict) | Pass |
+| `tasks.py test-unit` | 19 passed |
+| `tasks.py test-e2e` | 6 passed |
+| `tasks.py test-integration` | **FAIL** — see H-4; fails on a machine *with* working Docker |
+| `tasks.py benchmark-demo` | Pass |
+| Docker image build / prod compose boot | Not run — but the boot crash was reproduced directly (C-3) |
+
+## 1. Executive summary
+
+**Verdict: not ready for anything beyond local development — and HEAD does not pass its own gates.**
+
+The codebase is small (~2,100 LOC of app code), unusually disciplined in structure (fail-closed config validator, atomic budget reservation, scoped queries, honest synthetic-fixture labeling), and a prior audit (`docs/reviews/RUNTIME-AUDIT-001.md`) already catalogued most structural defects. The problem is that (a) those findings remain unfixed, (b) the most recent commit — the TypeSafe AI integration — introduced the **single largest violation of the project's own core safety boundary** (a live third-party API call in the request path of a codebase that claims "no live provider adapter exists"), and (c) there is no CI, so both the lint failure and the broken integration gate shipped silently.
+
+The three biggest risks:
+1. **Every `/v1/messages` request ships the user's message and *all of their notes* to `api.typesafe.ai` when `TYPESAFE_API_KEY` is set** — contradicting the documented privacy boundary, bypassing the entire budget/ledger machinery, and spending real money as "synthetic" cost.
+2. **The assistant claims side effects it never performs** ("I have saved your note", "Task created") — confirmed code path, silent user-facing data loss.
+3. **Production cannot boot under the shipped compose file**, and `test-integration` — the release gate — is broken by a settings-cache bug that makes alembic migrate the *wrong database*.
+
+---
+
+## 2. Findings by severity
+
+### Critical
+
+**C-1. Live external provider calls in the request path, violating the documented boundary — user data + real spend leave the system.**
+- `src/daily_agent/services.py:230-250` (`build_note_context`) and `src/daily_agent/services.py:275-304` (`fake_generate`)
+- `TypeSafeClient()` resolves `TYPESAFE_API_KEY` and calls `https://api.typesafe.ai` (verified from the installed wheel: `typesafe_sdk/constants.py:15` `DEFAULT_BASE_URL`). `build_note_context` serializes **every note the user owns** into `state`; `fake_generate` sends the raw user message + joined note text. `README.md:58` states "Provider keys remain server-side. No live provider adapter exists in this candidate" — that is now false.
+- Concrete impact: in any environment where `TYPESAFE_API_KEY` is set (e.g. a developer's shell, a staging deploy), each message POST makes two blocking external calls (default 10s timeout, up to 3 attempts — worst ~30s), leaks the user's complete private note store to a third party, and incurs real metered cost that the `CostLedger` records as `provider="local-fake", cost_micro=100` (`services.py:183-191`) — the financial/audit trail is blind to actual spend. AGENTS.md's own rule "enforce ... atomic financial budgets before provider spending" is violated.
+- Fix: remove the SDK calls from the request path, or promote TypeSafe to a declared provider adapter — gated by `live_models_enabled`+budget checks, server-side timeouts, a `CostLedger` row with real `cost_micro`, and a documented data-sharing decision. Until then, delete the integration; the heuristic fallback already produces equivalent output.
+
+**C-2. `fake_generate` claims side effects that never happen — silent data loss presented as success.**
+- `src/daily_agent/services.py:298-301`; persistence in `src/daily_agent/api.py:305-313`
+- For `store_memory` intent it returns `"I have saved your note: {text}"` with `Outcome.ACCEPT`; for `create_task`, `"Task created from your message: {text}"`. `send_message` persists **only a `Run` row** — no `Note`, `Task`, or `Reminder` is created. The user is told an action succeeded; nothing exists afterward.
+- This is precisely the failure mode the repo's own design doc mandates guarding: `docs/reviews/TYPESAFE-AUDIT-002.md` §6 step 4 — "any mutation (`create_task`, `create_reminder`) derived from conversational input [must be] fronted by a `typesafe.noul()` verification guard to prevent hallucinated side-effects" — unimplemented.
+- Fix: either implement real mutations behind the intents (with the `noul` verification guard the doc prescribes), or change the copy to state truthfully that nothing was stored. Do not return `ACCEPT` for unexecuted actions.
+
+**C-3. Production container cannot boot with the shipped compose file.**
+- `src/daily_agent/config.py:63` (`settings.data_dir.mkdir(parents=True, exist_ok=True)` inside `get_settings()`, invoked at import time by `src/daily_agent/db.py:29`) vs. `ops/deploy/compose.production.example.yaml` (`read_only: true`, `USER appuser`, `WORKDIR /app`)
+- Reproduced this session: importing `daily_agent.db` with production env vars in a read-only cwd → `PermissionError: [Errno 13] Permission denied: 'data'`. Uvicorn never starts; the container crash-loops. `DAILY_AGENT_DATA_DIR` is not set in the example compose.
+- Fix: only create `data_dir` for sqlite/dev settings (or when `data_dir` is actually used), and set `DAILY_AGENT_DATA_DIR=/tmp` in the compose example.
+
+**C-4. Fail-open environment handling — any string ≠ `"production"` keeps dev auth live.**
+- `src/daily_agent/config.py:27` (`environment: str` free-form, default `"development"`); validators fire only on the exact value `"production"` (`config.py:42`); `/dev/token` refuses only when `allow_development_auth` is false **or** `environment == "production"` (`src/daily_agent/api.py:84`)
+- `DAILY_AGENT_ENVIRONMENT=staging` (or `"prod"`, `"Production"`, a typo) boots with `/dev/token` open: `POST /dev/token?role=admin` mints an admin token (verified) → full `/admin/*` access. The billing sandbox is gated more carefully (`not in {"development","test"}`, `api.py:358`) — the inconsistency itself shows the pattern is understood but applied unevenly.
+- Fix: treat every environment except an explicit allowlist (`development`, `test`) as production-equivalent; require `environment` explicitly (no default); emit a startup warning whenever dev auth is enabled.
+
+### High
+
+**H-1. Message idempotency collapses under concurrency — verified 500s.**
+- `src/daily_agent/api.py:273-329`
+- Verified: 8 parallel `POST /v1/messages` with one key → **7× HTTP 500, 1× 200**. Both requests miss the `Run` lookup (`api.py:273`), then the loser hits `UniqueConstraint("logical_request_id","stage")` (`models.py:91`) or `runs.logical_request_id UNIQUE` (`models.py:174`) → uncaught `IntegrityError`. Exactly the retry scenario idempotency exists for. `create_task` (`api.py:200-211`) has the correct recover-and-reread pattern; messages don't.
+- Fix: wrap the write block in `except IntegrityError`, rollback, re-select the `Run` by key, return the stored result — same pattern as `create_task`.
+
+**H-2. `settle_budget` is a read-modify-write race on the money counters.**
+- `src/daily_agent/services.py:177-180` — `window.reserved_micro -= ...; window.settled_micro += ...` on ORM objects loaded via `session.get`, for both `UsageWindow` and `PlatformBudget`
+- `reserve_budget` correctly uses conditional atomic `UPDATE`s (`services.py:122-144`); settle does not. Two concurrent settles lose updates → `reserved_micro`/`settled_micro` drift → budget accounting corrupts over time. (The prior audit's C1 "settlement lost-update" — still present.)
+- Fix: settle via the same `update(...).where(...).values(col=col+...)` style, guarded by `reservation.id`/`status` predicates.
+
+**H-3. Money columns are 32-bit integers — overflow at ~$2,147.**
+- `src/daily_agent/models.py:72-99,112` and migration `92174af1e5c5` — `spend_limit_micro`, `reserved_micro`, `settled_micro`, `actual_micro`, `cost_micro`, `event_version` all `sa.Integer`
+- Max int32 = 2,147,483,647 micro ≈ $2,147.48 — tiny for aggregate financial columns (`PlatformBudget` is *global*). Writes overflow → DB errors or wraparound in some drivers.
+- Fix: `BigInteger` migration + model change.
+
+**H-4. `test-integration` fails at HEAD even with Docker — alembic migrates the wrong database.**
+- `migrations/env.py:15` reads `get_settings().database_url`; `get_settings` is `lru_cache`d (`config.py:60`) and `daily_agent.db` populates the cache at import (`db.py:29`). The test sets `os.environ["DAILY_AGENT_DATABASE_URL"]` *after* imports (`tests/integration/test_postgres_redis.py:33`) — too late.
+- Verified this session: `alembic upgrade head` ran against `./data/development.db` (the dev sqlite file) → `sqlite3.OperationalError: table accounts already exists` → test FAILED. The test's "refusing to run outside the declared disposable PostgreSQL" guard checks env vars but `env.py` never re-reads them — the safety check is illusory. `Memory.md` lists running this gate as the next blocker; it is now proven broken, and the Postgres concurrency evidence for H-2 was never collected.
+- Fix: `get_settings.cache_clear()` is not enough — `migrations/env.py` should read `os.environ` (or the alembic `-x`/ini value) directly rather than the cached Settings object.
+
+**H-5. Webhook signature does not bind event ID or timestamp — verified replay.**
+- `src/daily_agent/security.py:60-63` (`verify_hmac` signs only `raw_body`); `api.py:331-347`
+- Verified: one signed body replayed under three different `X-Event-ID` values → three *new* accepted `InboxEvent` rows (dedup key is the unsigned header). No timestamp in the MAC → a captured signed body replays forever.
+- Fix: sign `event_id + timestamp + body`; enforce freshness (e.g. 5 min); compare `payload_hash` on dedup hits so a different body under a reused event id is rejected rather than silently deduped (`api.py:343-347`).
+
+**H-6. Billing sandbox: unknown event types cancel subscriptions; malformed input → 500.**
+- `src/daily_agent/api.py:362-397`
+- Verified: `{"type":"payment_failed"}` → subscription `status="cancelled"` (`api.py:395` — anything not in `{"activated","renewed"}` cancels; typos included). Verified: non-JSON body, non-dict JSON (`42`), and string `version` all → unhandled **500**. A concurrent duplicate `provider_event_id` insert → uncaught `IntegrityError` → 500 (same class as H-1).
+- Fix: whitelist `type` values (`activated`, `renewed`, `cancelled`, …) and 422 others; catch `json.JSONDecodeError`/`TypeError`; mirror the task endpoint's IntegrityError recovery.
+
+**H-7. Daily window applies the *period* cost cap every day.**
+- `src/daily_agent/services.py:57,68` — `UsageWindow.window_key` is a UTC **day** (`_window`, `services.py:36-39`) but `spend_limit_micro=policy.period_cost_cap_micro`
+- A "period" (billing-cycle) budget is re-granted every midnight UTC → up to ~30× intended spend per month. Directly contradicts `docs/blueprint/Tier_Entitlements.md:32` ("resetting everyday capacity must not reset accumulated financial spend incorrectly").
+- Fix: separate daily allowance from the period spend accumulator (two windows, or a non-resetting period ledger row).
+
+### Medium
+
+**M-1. Cross-tenant idempotency-key space.** `Run.logical_request_id` is globally `unique` (`models.py:174`) and the reservation dedup query is unscoped (`services.py:112-117`). Verified: account B reusing account A's key → `409 "request key conflict"` — colliding keys are blocked *and* key existence leaks across accounts. Fix: scope uniqueness/dedup to `(account_id, key)`.
+
+**M-2. No CI at all.** No `.github/` or equivalent. Consequence is already visible: HEAD fails `lint` (the TypeSafe commit was never gated). Fix: a pipeline running `lint`, `typecheck`, `test-unit`, `test-e2e`, and `test-integration` on a Docker-capable runner.
+
+**M-3. `requirements.lock` is stale and polluted.** Contains `sentry-sdk`, `agent-detector`, `fastar`, `librt`, `rignore`, `detect-installer`, `fastapi-cloud-cli` — none imported anywhere in `src/` (verified by grep); and it is **missing** `typesafe-sdk`, `httpx2`, `tenacity`, `httpcore2` — packages actually installed at runtime. `Dockerfile` (`pip install .`) doesn't consume the lock, so builds are unpinned regardless. `typesafe-sdk` itself is a bare dependency with no version bound (`pyproject.toml:21`). Fix: regenerate with `pip-compile`/`uv` from pyproject; pin the SDK.
+
+**M-4. Zero observability + silent degradation.** No logging/metrics anywhere in `daily_agent`; both TypeSafe call sites end `except Exception: pass` (`services.py:249-250`, `services.py:304`) — every failure mode (missing key, outage, timeout, contract change) silently flips behavior between semantic and heuristic routing with no signal. `OutboxEvent` rows are written (`services.py:354-361`) but **no consumer exists** — a durable queue that drains into nothing. `Reminder.state` is always `"scheduled"` — no scheduler exists. Fix: structured logging at minimum on every swallowed exception and on reserve/settle transitions; either implement the outbox worker or stop pretending the table is a queue.
+
+**M-5. `GET /v1/usage` mutates state.** `policy_for` inserts a `Subscription`, `ensure_usage_window` inserts `UsageWindow`+`PlatformBudget`, then `session.commit()` (`api.py:134-147`). A read verb creating financial rows is a layering violation (also noted by the prior audit, still present).
+
+**M-6. Idempotent replays don't verify payload equality.** Verified: `POST /v1/tasks` with key `K`+title `"t1"`, then key `K`+title `"DIFFERENT"` → `201` returning `"t1"` with no signal the request differed (`api.py:202-212`; same for reminders `api.py:240-256` and messages `api.py:273-285`). Meanwhile `POST /v1/notes` has **no** idempotency at all — retries duplicate. Fix: store a request hash alongside the key; `409` on mismatch; add a key to notes.
+
+**M-7. `complete_task` authorization is account-scoped while notes are owner-scoped.** `api.py:220-222` filters `Task.account_id` only — any user in the account can complete (and see) another user's tasks, while `scoped_note_query` requires `owner_user_id` (`services.py:196-199`). Possibly intentional (shared tasks), but it's an undocumented inconsistency — flag as **needs product decision**.
+
+**M-8. External calls hold budget reservations and block worker threads.** Order in `send_message`: `reserve_budget` → TypeSafe score call → TypeSafe choice call → persist → settle (`api.py:288-313`). Each SDK call can take ~30s worst-case (timeout 10s × retries); reservations stay open meanwhile, and each `build_note_context` emits **one Score question per note** with the full corpus serialized (`services.py:236-244`) — O(n) questions, unbounded payload. Under load this exhausts the FastAPI threadpool and pins reservations. (Moot if C-1 is fixed by removal.)
+
+### Low
+
+- **L-1.** `downgrade()` drops every table (`migrations/versions/92174af1e5c5...:198-229`) — fine for dev, dangerous if ever invoked in prod.
+- **L-2.** No token revocation/versioning (`User` has no `token_version`; `security.py:21-41`); expiry check `expires < int(time.time())` (`security.py:36`) leaves the token valid during its expiry second.
+- **L-3.** `require_admin` accepts role `"support"` (`security.py:54-56`) but nothing can mint a support user — dead role path.
+- **L-4.** `alembic.ini` `sqlalchemy.url` is silently overridden by `env.py` from cached settings — two sources of truth, the second surprising (and the root of H-4).
+- **L-5.** `report --format svg` (and any unsupported `--format`) silently emits markdown — only `db-report` handles svg (`src/model_lab/cli.py:106-130`, `core.py:178-197`).
+- **L-6.** Limit drift: shell textarea `maxlength=12000`, schema allows 100,000, defer boundary is 20,000; deferred messages still consume an allowance unit and settle 100µ (`api.py:313`, `services.py:269-273`) — decide whether deferred work should be charged.
+- **L-7.** Import-time side effects: `db.py:29-31` runs `get_settings()` (mkdir) + `create_engine` at import — every test/tool import touches `./data`.
+- **L-8.** `InboxEvent` keeps only `payload_hash` — a *different* body under a replayed event id is silently deduped with no integrity comparison (`services.py:315-332`).
+- **L-9.** `tests/e2e` has no `e2e` markers — the `-m "e2e or not integration"` selector (`tasks.py:132`) degenerates to "not integration"; declared marker is unused. No tests cover `/v1/tasks`, `/v1/reminders`, `/v1/usage`, `/dev/token`, the 429 path, or the >20k defer path.
+- **L-10.** `.codex/` agent tooling config committed to the repo — harmless, but it bakes one contributor's agent setup into the project.
+
+## 3. Cross-cutting patterns
+
+1. **Docs claim more safety than the code provides.** README/Memory.md describe a sealed offline system; HEAD added a live provider call. The repo contains a thorough prior audit whose CONFIRMED items are all still open. Treat docs as aspirational, not descriptive.
+2. **Silent fallback pattern.** Every TypeSafe call is wrapped in `except Exception: pass` — behavior silently varies per request depending on env state. The same swallowing instinct appears in `except IntegrityError` handling done right in tasks but absent in messages/billing.
+3. **Idempotency implemented three different ways** — global keyspace (runs/reservations), account-scoped (tasks/reminders), none (notes) — and none verify payload equality on replay.
+4. **Fail-open-by-default strings.** `environment`, `status`, `stage`, `role` are free strings checked against literal allowlists in some places and not others (endpoints inconsistent).
+5. **Gates exist but nothing runs them.** `lint` fails at HEAD, `test-integration` is broken, there is no CI; `test-release` would catch all of this if anyone ran it.
+
+## 4. Fix-these-5-first
+
+1. **Remove the TypeSafe calls** from `services.py` (or rebuild them as a declared, budgeted, opt-in provider adapter); fix the lint failures the commit introduced; update README's safety section to match reality.
+2. **Stop claiming unperformed side effects** in `fake_generate` — implement the mutations or change the copy.
+3. **Fix environment fail-open + the production boot crash** (C-3, C-4) — one config change each; both verified by reproduction.
+4. **Make the money path race-safe end-to-end**: IntegrityError-recovery in `send_message`/`billing_sandbox` (H-1, H-6), atomic `settle_budget` (H-2), `BigInteger` columns (H-3), and fix `migrations/env.py` so the integration gate actually exercises Postgres (H-4).
+5. **Regenerate `requirements.lock` from pyproject, pin `typesafe-sdk`, and add a CI job** running lint + typecheck + unit + e2e + integration (M-2, M-3).
+
+## 5. Unverified items — do not read as clean
+
+- **Postgres concurrency** for reservation/settlement — the integration gate that would prove it is broken (H-4); reasoning about H-2 is from code, and H-1 was reproduced on sqlite (the same unique-violation path exists on Postgres).
+- **The live TypeSafe path** — no `TYPESAFE_API_KEY` was available, so `system_one` behavior (latency, rate limits, billing, partial-answer edge cases like a missing `relevance_i` key) was verified only against the SDK's type contract, not the live API.
+- **Docker image build** — not run; `pip install .` inside the image resolves latest versions independently of `requirements.lock`.
+- **`alembic check` schema drift on Postgres** — unreachable past the migration failure (H-4).
+- **Reminder delivery, outbox consumption, real auth, checkout, WhatsApp** — intentionally absent/disabled; their *absence* is documented, but nothing about them was verifiable.
+- **`complete_task` account-scoping** (M-7) — flagged as a design inconsistency, not asserted as a bug.
