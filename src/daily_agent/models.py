@@ -59,6 +59,8 @@ class User(Base):
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     display_name: Mapped[str] = mapped_column(String(120))
     role: Mapped[str] = mapped_column(String(20), default="customer")
+    # Bump to revoke all outstanding tokens for this user.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     account: Mapped[Account] = relationship(back_populates="users")
 
 
