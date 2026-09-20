@@ -3,6 +3,7 @@ import hmac
 import json
 import time
 
+import pytest
 from sqlalchemy import func, select
 
 from daily_agent.models import (
@@ -17,6 +18,8 @@ from daily_agent.models import (
 )
 from daily_agent.security import issue_development_token
 from tests.conftest import create_identity
+
+pytestmark = pytest.mark.e2e
 
 
 def auth(token: str) -> dict[str, str]:

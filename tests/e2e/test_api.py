@@ -3,11 +3,15 @@ import hmac
 import json
 import time
 
+import pytest
 from sqlalchemy import select
 
 from daily_agent.config import Settings, get_settings
 from daily_agent.models import Subscription, UsageWindow
 from tests.conftest import create_identity
+
+
+pytestmark = pytest.mark.e2e
 
 
 def auth(token: str) -> dict[str, str]:
