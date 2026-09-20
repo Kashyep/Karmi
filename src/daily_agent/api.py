@@ -13,7 +13,16 @@ from sqlalchemy.orm import Session
 
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_session
-from daily_agent.models import Account, BudgetReservation, Note, Reminder, Run, Subscription, Task
+from daily_agent.models import (
+    Account,
+    BudgetReservation,
+    CostLedger,
+    Note,
+    Reminder,
+    Run,
+    Subscription,
+    Task,
+)
 from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.schemas import (
     MessageCreate,
@@ -39,7 +48,9 @@ from daily_agent.services import (
     build_note_context,
     create_task_idempotent,
     ensure_usage_window,
+    estimate_request_cost_micro,
     fake_generate,
+    measured_cost_micro,
     persist_completed_run,
     policy_for,
     reserve_budget,
@@ -54,7 +65,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         settings = get_settings()
-        if settings.environment in {"development", "test"}:
+        if settings.is_development:
             create_schema()
         yield
 
@@ -81,7 +92,7 @@ def create_app() -> FastAPI:
         role: str = "customer",
         session: Session = Depends(get_session), settings: Settings = Depends(get_settings)
     ) -> dict[str, str]:
-        if not settings.allow_development_auth or settings.environment == "production":
+        if not settings.allow_development_auth or not settings.is_development:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         if role not in {"customer", "admin"}:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
@@ -281,10 +292,10 @@ def create_app() -> FastAPI:
                 status=existing.status,
                 outcome=Outcome(existing.outcome or "DEFERRED"),
                 response=existing.response_text or "",
-                route="fake-economy",
+                route=_route_for(session, body.idempotency_key),
             )
         _subscription, policy = policy_for(session, principal.account_id)
-        amount = min(1_000, policy.request_cost_cap_micro)
+        amount = estimate_request_cost_micro(policy, settings)
         try:
             reservation = reserve_budget(
                 session,
@@ -300,17 +311,26 @@ def create_app() -> FastAPI:
                 user_id=principal.user_id,
                 max_tokens=policy.input_tokens,
                 query_text=body.text,
+                settings=settings,
             )
-            response, outcome = fake_generate(body.text, context)
+            result = fake_generate(body.text, context, settings=settings)
+            _apply_intent(session, result.intent, body, principal)
             run = persist_completed_run(
                 session,
                 account_id=principal.account_id,
                 user_id=principal.user_id,
                 logical_request_id=body.idempotency_key,
-                response=response,
-                outcome=outcome,
+                response=result.response,
+                outcome=result.outcome,
             )
-            settle_budget(session, reservation, attempt_id=f"{run.id}:1", actual_micro=100)
+            provider_calls = [*context.provider_calls, *result.provider_calls]
+            settle_budget(
+                session,
+                reservation,
+                attempt_id=f"{run.id}:1",
+                actual_micro=measured_cost_micro(provider_calls),
+                calls=provider_calls,
+            )
             session.commit()
         except BudgetDenied as exc:
             session.rollback()
@@ -320,12 +340,30 @@ def create_app() -> FastAPI:
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": window.reset_at.isoformat()},
             ) from exc
+        except IntegrityError:
+            session.rollback()
+            recovered = session.scalar(
+                select(Run).where(Run.logical_request_id == body.idempotency_key)
+            )
+            if recovered is None:
+                raise
+            if recovered.account_id != principal.account_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail="request key conflict"
+                ) from None
+            return MessageView(
+                run_id=recovered.id,
+                status=recovered.status,
+                outcome=Outcome(recovered.outcome or "DEFERRED"),
+                response=recovered.response_text or "",
+                route=_route_for(session, body.idempotency_key),
+            )
         return MessageView(
             run_id=run.id,
             status=run.status,
-            outcome=outcome,
-            response=response,
-            route="fake-economy",
+            outcome=result.outcome,
+            response=result.response,
+            route=result.route,
         )
 
     @app.post("/webhooks/internal-test")
@@ -355,16 +393,28 @@ def create_app() -> FastAPI:
     ) -> dict[str, object]:
         from daily_agent.models import BillingEvent
 
-        if settings.environment not in {"development", "test"}:
+        if not settings.is_development:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         raw = await request.body()
         verify_hmac(raw, x_signature_sha256, settings.webhook_secret)
-        payload = json.loads(raw)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail="malformed billing event") from exc
         required = {"event_id", "account_id", "version", "type", "plan_id"}
-        if not required.issubset(payload):
+        if not isinstance(payload, dict) or not required.issubset(payload):
             raise HTTPException(status_code=422, detail="invalid billing event")
+        if not isinstance(payload["version"], int):
+            raise HTTPException(status_code=422, detail="invalid billing event version")
+        if payload["type"] not in {"activated", "renewed", "cancelled"}:
+            raise HTTPException(status_code=422, detail="unknown billing event type")
         if payload["plan_id"] not in SYNTHETIC_POLICIES:
             raise HTTPException(status_code=422, detail="unknown plan")
+        subscription = session.scalar(
+            select(Subscription).where(Subscription.account_id == payload["account_id"])
+        )
+        if subscription is None:
+            raise HTTPException(status_code=404, detail="account not found")
         existing = session.scalar(
             select(BillingEvent).where(
                 BillingEvent.provider == "sandbox",
@@ -373,11 +423,6 @@ def create_app() -> FastAPI:
         )
         if existing is not None:
             return {"accepted": False, "duplicate": True}
-        subscription = session.scalar(
-            select(Subscription).where(Subscription.account_id == payload["account_id"])
-        )
-        if subscription is None:
-            raise HTTPException(status_code=404, detail="account not found")
         session.add(
             BillingEvent(
                 provider="sandbox",
@@ -392,8 +437,14 @@ def create_app() -> FastAPI:
         if not stale:
             subscription.event_version = payload["version"]
             subscription.plan_id = payload["plan_id"]
-            subscription.status = "active" if payload["type"] in {"activated", "renewed"} else "cancelled"
-        session.commit()
+            subscription.status = (
+                "cancelled" if payload["type"] == "cancelled" else "active"
+            )
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            return {"accepted": False, "duplicate": True}
         return {"accepted": True, "duplicate": False, "stale": stale}
 
     @app.get("/", include_in_schema=False)
@@ -406,6 +457,47 @@ def create_app() -> FastAPI:
         return FileResponse(path, media_type="application/manifest+json")
 
     return app
+
+
+def _apply_intent(
+    session: Session, intent: str | None, body: MessageCreate, principal: Principal
+) -> None:
+    """Perform the mutations a generated response claims, so response copy stays true."""
+    if intent == "store_memory":
+        session.add(
+            Note(
+                account_id=principal.account_id,
+                owner_user_id=principal.user_id,
+                content=body.text,
+            )
+        )
+    elif intent == "create_task":
+        session.add(
+            Task(
+                account_id=principal.account_id,
+                owner_user_id=principal.user_id,
+                title=body.text.strip()[:200] or body.text.strip(),
+                idempotency_key=f"{body.idempotency_key}:task",
+            )
+        )
+
+
+def _route_for(session: Session, logical_request_id: str) -> str:
+    """Recover the route taken for an earlier run via its cost ledger rows."""
+    reservation = session.scalar(
+        select(BudgetReservation).where(
+            BudgetReservation.logical_request_id == logical_request_id,
+            BudgetReservation.stage == "execution",
+        )
+    )
+    if reservation is None:
+        return "fake-economy"
+    provider = session.scalar(
+        select(CostLedger.provider)
+        .where(CostLedger.reservation_id == reservation.id)
+        .limit(1)
+    )
+    return "typesafe-system-one" if provider == "typesafe" else "fake-economy"
 
 
 app = create_app()

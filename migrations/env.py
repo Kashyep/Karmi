@@ -6,13 +6,17 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from daily_agent import models  # noqa: F401
-from daily_agent.config import get_settings
+from daily_agent.config import Settings
 from daily_agent.db import Base
 
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# Build a fresh Settings instead of the lru_cached get_settings(): the app may
+# have been imported earlier in this process with a different DAILY_AGENT_DATABASE_URL
+# (e.g. the disposable integration database), and migrating the stale URL would
+# apply migrations to the wrong database.
+config.set_main_option("sqlalchemy.url", Settings().database_url)
 target_metadata = Base.metadata
 
 

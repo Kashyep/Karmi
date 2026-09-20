@@ -21,6 +21,9 @@ def _is_unsafe_production_secret(value: str) -> bool:
     return len(normalized) < 32 or any(marker in normalized for marker in _PLACEHOLDER_MARKERS)
 
 
+DEVELOPMENT_ENVIRONMENTS = frozenset({"development", "test"})
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAILY_AGENT_", env_file=".env", extra="ignore")
 
@@ -37,9 +40,13 @@ class Settings(BaseSettings):
     global_daily_budget_micro: int = Field(default=100_000, ge=1)
     data_dir: Path = Path("data")
 
+    @property
+    def is_development(self) -> bool:
+        return self.environment in DEVELOPMENT_ENVIRONMENTS
+
     @model_validator(mode="after")
     def fail_closed_in_production(self) -> "Settings":
-        if self.environment == "production":
+        if not self.is_development:
             if self.database_url.startswith("sqlite"):
                 raise ValueError("production requires PostgreSQL")
             if self.allow_development_auth:
@@ -60,5 +67,8 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    # Only local SQLite-backed environments need a writable data directory; creating it
+    # unconditionally breaks production containers with read-only filesystems.
+    if settings.database_url.startswith("sqlite"):
+        settings.data_dir.mkdir(parents=True, exist_ok=True)
     return settings
