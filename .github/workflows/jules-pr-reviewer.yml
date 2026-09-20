@@ -17,7 +17,7 @@ jobs:
           fetch-depth: 0 # Required to accurately inspect diffs
 
       - name: Run Jules PR Reviewer
-        uses: google-labs-code/jules-invoke@v1
+        uses: google-labs-code/jules-invoke@v1.0.0
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
