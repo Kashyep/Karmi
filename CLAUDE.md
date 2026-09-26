@@ -16,7 +16,7 @@ src/daily_agent/
   plans.py      synthetic tier policies (ananta free / yanta / trika / part)
   config.py     Settings (DAILY_AGENT_* env); fails closed outside development/test
   security.py   dev tokens, principal/admin deps, HMAC webhook verification
-  db.py         engine + session (built at import from get_settings())
+  db.py         lazy engine (get_engine) + get_session dependency
   web/shell.py  inline HTML/JS shell served at /
 src/model_lab/  offline benchmark CLI (typer) over SQLite; independent of daily_agent
 migrations/     Alembic; env.py reads the DB URL from Settings
@@ -26,6 +26,8 @@ tests/          unit/, e2e/ (TestClient + temp SQLite), web/, model_lab/, integr
 Request flow for `POST /v1/messages`: idempotency check → `reserve_budget` → **commit** →
 `build_note_context` + `fake_generate` (optional live provider calls) → `_apply_intent` →
 `persist_completed_run` → `settle_budget` → commit. Any failure after reserve → `release_budget`.
+A live duplicate request gets 409 (`ReservationInFlight`). Reservations left RESERVED past
+`RESERVATION_LEASE_SECONDS` are reclaimed and charged as unknown cost.
 
 ## Commands
 

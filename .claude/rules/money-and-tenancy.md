@@ -17,6 +17,9 @@ paths:
   new status). Keep that claim first so concurrent settlers cannot double-apply.
 - Reservation lifecycle: reserve → **commit before any provider call** → settle (success) or
   release (failure). Every exit path after reserve must end in exactly one of the two.
+- Leases: a RESERVED row older than `RESERVATION_LEASE_SECONDS` counts as abandoned.
+  `reserve_budget` reclaims it by settling it as unknown (charged, never refunded, because provider
+  work may have run). A retry while the lease is live raises `ReservationInFlight` (409).
 - Unknown provider cost settles the full reserved amount with `measurement="unknown"`: be
   conservative, never zero.
 - Idempotency keys are tenant-scoped `(account_id, key)`. Replays compare a payload hash or
