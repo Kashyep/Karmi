@@ -106,6 +106,7 @@ def main() -> None:
         choices=[
             "doctor",
             "dev",
+            "worker",
             "lint",
             "typecheck",
             "test-unit",
@@ -121,6 +122,8 @@ def main() -> None:
         doctor()
     elif task == "dev":
         run([str(PYTHON), "-m", "uvicorn", "daily_agent.api:app", "--host", "127.0.0.1", "--port", "8000"])
+    elif task == "worker":
+        run([str(PYTHON), "-m", "daily_agent.worker"])
     elif task == "lint":
         run([str(PYTHON), "-m", "ruff", "check", "src", "tests", "scripts"])
         run([str(PYTHON), "scripts/secret_scan.py"])
