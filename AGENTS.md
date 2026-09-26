@@ -1,6 +1,6 @@
 # Project agent instructions
 
-Read PRD.md, Architecture.md, Rules.md, Phases.md, Design.md, Tier_Entitlements.md and Agent_Team.md. Merge these instructions with any existing repository instructions; preserve user work and protected configuration.
+Read PRD.md, Architecture.md, Rules.md, Phases.md, Design.md, Tier_Entitlements.md and Agent_Team.md in `docs/blueprint/`. Merge these instructions with any existing repository instructions; preserve user work and protected configuration.
 
 The user explicitly requests parallel agents: one Boss/main thread (Sol High), one Supervisor (Terra Medium), and up to three scoped workers (Luna Medium). Verify effective runtime capabilities and model IDs. Use custom roles when supported; never pretend an unavailable model or agent was used. See Agent_Team.md and codex-examples/. No recursive worker spawning.
 

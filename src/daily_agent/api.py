@@ -15,6 +15,7 @@ from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_session
 from daily_agent.models import (
     Account,
+    BillingEvent,
     BudgetReservation,
     CostLedger,
     Note,
@@ -58,6 +59,7 @@ from daily_agent.services import (
     fake_generate,
     measured_cost_micro,
     persist_completed_run,
+    plan_policy,
     policy_for,
     release_budget,
     reserve_budget,
@@ -111,6 +113,7 @@ def create_app() -> FastAPI:
     def admin_overview(
         _admin: Principal = Depends(require_admin),
         session: Session = Depends(get_session),
+        settings: Settings = Depends(get_settings),
     ) -> dict[str, object]:
         statuses = session.execute(select(Run.status, func.count()).group_by(Run.status)).all()
         return {
@@ -122,7 +125,7 @@ def create_app() -> FastAPI:
                 .where(BudgetReservation.status == "reserved")
             )
             or 0,
-            "live_models": False,
+            "live_models": settings.live_models_enabled,
             "whatsapp": "policy_disabled",
             "raw_message_access": "not_available",
         }
@@ -154,12 +157,7 @@ def create_app() -> FastAPI:
         subscription = session.scalar(
             select(Subscription).where(Subscription.account_id == principal.account_id)
         )
-        policy = SYNTHETIC_POLICIES.get(
-            subscription.plan_id
-            if subscription is not None and subscription.status == "active"
-            else "ananta",
-            SYNTHETIC_POLICIES["ananta"],
-        )
+        policy = plan_policy(subscription)
         day_key, day_reset = current_window_key()
         now = datetime.now(UTC)
         window = session.scalar(
@@ -199,21 +197,23 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> NoteView:
-        if body.idempotency_key is not None:
+        def replay() -> NoteView | None:
+            """The earlier note for this idempotency key, or 409 if the payload differs."""
             existing = session.scalar(
                 select(Note).where(
                     Note.account_id == principal.account_id,
                     Note.idempotency_key == body.idempotency_key,
                 )
             )
-            if existing is not None:
-                if existing.content != body.content or existing.owner_user_id != principal.user_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="idempotency key was reused with a different payload",
-                    )
-                response.status_code = status.HTTP_200_OK
-                return NoteView(id=existing.id, content=existing.content, version=existing.version)
+            if existing is None:
+                return None
+            if existing.content != body.content or existing.owner_user_id != principal.user_id:
+                raise _idempotency_conflict() from None
+            response.status_code = status.HTTP_200_OK
+            return NoteView(id=existing.id, content=existing.content, version=existing.version)
+
+        if body.idempotency_key is not None and (earlier := replay()) is not None:
+            return earlier
         note = Note(
             account_id=principal.account_id,
             owner_user_id=principal.user_id,
@@ -225,21 +225,10 @@ def create_app() -> FastAPI:
             session.commit()
         except IntegrityError:
             session.rollback()
-            existing = session.scalar(
-                select(Note).where(
-                    Note.account_id == principal.account_id,
-                    Note.idempotency_key == body.idempotency_key,
-                )
-            )
-            if existing is None or body.idempotency_key is None:
+            # Lost a concurrent insert race on the same key: replay the winner.
+            if body.idempotency_key is None or (earlier := replay()) is None:
                 raise
-            if existing.content != body.content or existing.owner_user_id != principal.user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="idempotency key was reused with a different payload",
-                ) from None
-            response.status_code = status.HTTP_200_OK
-            return NoteView(id=existing.id, content=existing.content, version=existing.version)
+            return earlier
         response.status_code = status.HTTP_201_CREATED
         return NoteView(id=note.id, content=note.content, version=note.version)
 
@@ -284,10 +273,7 @@ def create_app() -> FastAPI:
             session.commit()
         except IdempotencyConflict as exc:
             session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="idempotency key was reused with a different payload",
-            ) from exc
+            raise _idempotency_conflict() from exc
         except IntegrityError:
             session.rollback()
             recovered_task = session.scalar(
@@ -300,10 +286,7 @@ def create_app() -> FastAPI:
                 raise
             task = recovered_task
             if task.title != body.title:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="idempotency key was reused with a different payload",
-                ) from None
+                raise _idempotency_conflict() from None
         return TaskView(id=task.id, title=task.title, completed=task.completed)
 
     @app.patch("/v1/tasks/{task_id}/complete", response_model=TaskView)
@@ -347,10 +330,7 @@ def create_app() -> FastAPI:
             or existing.due_at_utc != body.due_at.astimezone(UTC)
             or existing.timezone != body.timezone
         ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="idempotency key was reused with a different payload",
-            )
+            raise _idempotency_conflict()
         reminder = existing or Reminder(
             account_id=principal.account_id,
             owner_user_id=principal.user_id,
@@ -387,10 +367,7 @@ def create_app() -> FastAPI:
         )
         if existing is not None:
             if existing.request_hash is not None and existing.request_hash != request_hash:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="idempotency key was reused with a different payload",
-                )
+                raise _idempotency_conflict()
             return MessageView(
                 run_id=existing.id,
                 status=existing.status,
@@ -472,10 +449,7 @@ def create_app() -> FastAPI:
             if recovered is None:
                 raise
             if recovered.request_hash is not None and recovered.request_hash != request_hash:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="idempotency key was reused with a different payload",
-                ) from None
+                raise _idempotency_conflict() from None
             return MessageView(
                 run_id=recovered.id,
                 status=recovered.status,
@@ -530,8 +504,6 @@ def create_app() -> FastAPI:
         session: Session = Depends(get_session),
         settings: Settings = Depends(get_settings),
     ) -> dict[str, object]:
-        from daily_agent.models import BillingEvent
-
         if not settings.is_development:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         raw = await request.body()
@@ -601,6 +573,13 @@ def create_app() -> FastAPI:
         return FileResponse(path, media_type="application/manifest+json")
 
     return app
+
+
+def _idempotency_conflict() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="idempotency key was reused with a different payload",
+    )
 
 
 def _apply_intent(
