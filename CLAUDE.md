@@ -43,6 +43,7 @@ All gates go through `python scripts/tasks.py <task>` (Make targets delegate to 
 | Postgres/Redis (needs Docker running) | `python scripts/tasks.py test-integration` |
 | Everything | `python scripts/tasks.py test-release` |
 | Dev server | `python scripts/tasks.py dev` → http://127.0.0.1:8000 |
+| Regenerate lock (after editing deps) | `uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 -o requirements.lock` |
 
 Focused test: `python -m pytest tests/e2e/test_api.py -k <name>`. Use the `/verify` skill for the
 full gate run with a summarized result.

@@ -13,8 +13,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Lock matches pyproject
+        run: |
+          pip install uv==0.12.17
+          cp requirements.lock /tmp/requirements.lock
+          uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 -q -o /tmp/requirements.lock
+          diff <(grep -v '^#' requirements.lock) <(grep -v '^#' /tmp/requirements.lock) || { echo 'requirements.lock is stale: regenerate it (see CLAUDE.md)'; exit 1; }
       - name: Install dependencies
-        run: pip install -e '.[dev]'
+        run: pip install -c requirements.lock -e '.[dev]'
       - name: Lint
         run: python scripts/tasks.py lint
       - name: Typecheck
