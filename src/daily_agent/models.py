@@ -196,6 +196,9 @@ class Reminder(Base):
     timezone: Mapped[str] = mapped_column(String(64))
     state: Mapped[str] = mapped_column(String(20), default="scheduled")
     idempotency_key: Mapped[str] = mapped_column(String(120))
+    # Delivery lease and retry count (see daily_agent.worker).
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class InboxEvent(Base):
@@ -234,6 +237,7 @@ class OutboxEvent(Base):
     payload: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="queued")
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class BillingEvent(Base):

@@ -17,6 +17,7 @@ src/daily_agent/
   config.py     Settings (DAILY_AGENT_* env); fails closed outside development/test
   security.py   dev tokens, principal/admin deps, HMAC webhook verification
   db.py         lazy engine (get_engine) + get_session dependency
+  worker.py     delivery worker: leases queued outbox rows + due reminders -> local test adapter
   web/shell.py  inline HTML/JS shell served at /
 src/model_lab/  offline benchmark CLI (typer) over SQLite; independent of daily_agent
 migrations/     Alembic; env.py reads the DB URL from Settings
@@ -43,6 +44,7 @@ All gates go through `python scripts/tasks.py <task>` (Make targets delegate to 
 | Postgres/Redis (needs Docker running) | `python scripts/tasks.py test-integration` |
 | Everything | `python scripts/tasks.py test-release` |
 | Dev server | `python scripts/tasks.py dev` → http://127.0.0.1:8000 |
+| Delivery worker (dev/test only) | `python scripts/tasks.py worker` |
 | Regenerate lock (after editing deps) | `uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 -o requirements.lock` |
 
 Focused test: `python -m pytest tests/e2e/test_api.py -k <name>`. Use the `/verify` skill for the

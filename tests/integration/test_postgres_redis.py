@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 
 import pytest
 from alembic import command
@@ -12,7 +13,14 @@ from sqlalchemy.orm import sessionmaker
 
 from daily_agent.config import Settings
 from daily_agent.models import PlatformBudget, UsageWindow
-from daily_agent.services import BudgetDenied, ensure_usage_window, reserve_budget
+from daily_agent.schemas import Outcome
+from daily_agent.services import (
+    BudgetDenied,
+    ensure_usage_window,
+    persist_completed_run,
+    reserve_budget,
+)
+from daily_agent.worker import run_once
 from tests.conftest import create_identity
 
 pytestmark = pytest.mark.integration
@@ -81,3 +89,40 @@ def test_migration_redis_and_atomic_platform_budget() -> None:
     redis.delete("daily-agent:integration:health")
     engine.dispose()
 
+
+
+def test_concurrent_workers_deliver_each_row_exactly_once() -> None:
+    database_url, _redis_url = integration_urls()
+    os.environ["DAILY_AGENT_DATABASE_URL"] = database_url
+    command.upgrade(Config("alembic.ini"), "head")
+    engine = create_engine(database_url, pool_pre_ping=True, pool_size=10)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    settings = Settings(
+        environment="test",
+        database_url=database_url,
+        auth_secret="integration-fixture-secret",  # noqa: S106
+        webhook_secret="integration-webhook-secret",  # noqa: S106
+    )
+    with factory() as session:
+        account, user, _token = create_identity(session, settings, name="Workers")
+        for index in range(20):
+            persist_completed_run(
+                session,
+                account_id=account.id,
+                user_id=user.id,
+                logical_request_id=f"worker-race-{index:02d}",
+                response="synthetic",
+                outcome=Outcome.ACCEPT,
+            )
+        session.commit()
+
+    delivered: list[str] = []
+    now = datetime.now(UTC)
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        counts = list(
+            pool.map(lambda _i: run_once(factory, now=now, deliver=lambda k, _p: delivered.append(k)), range(5))
+        )
+    ours = [key for key in delivered if key.startswith(f"response:{account.id}:")]
+    assert len(ours) == 20 and len(set(ours)) == 20
+    assert sum(counts) >= 20
+    engine.dispose()
