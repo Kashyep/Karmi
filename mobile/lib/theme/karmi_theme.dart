@@ -208,7 +208,16 @@ abstract final class KarmiTheme {
           minimumSize: const WidgetStatePropertyAll(minSize),
           shape: WidgetStatePropertyAll(controlShape),
           textStyle: WidgetStatePropertyAll(text.labelLarge),
-          side: focusSide(null),
+          // --ring equals the --primary fill, so a filled button's focus ring
+          // is an inset ring in --primary-foreground (5.97:1 light, 10.32:1 dark).
+          side: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.focused)
+                ? BorderSide(
+                    color: colors.primaryForeground,
+                    width: shape.focusRingWidth,
+                  )
+                : null,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(

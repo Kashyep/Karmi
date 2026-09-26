@@ -11,7 +11,9 @@ import '../features/tasks/tasks_screen.dart';
 import '../features/usage/usage_screen.dart';
 import '../settings/karmi_settings.dart';
 import '../theme/karmi_colors.dart';
+import '../theme/karmi_glass.dart';
 import '../theme/karmi_motion.dart';
+import '../widgets/focus_ring.dart';
 
 class _Destination {
   const _Destination(this.label, this.icon, this.selectedIcon);
@@ -65,6 +67,10 @@ class _KarmiShellState extends State<KarmiShell> {
     SettingsScreen(settings: widget.settings, session: widget.session),
   ];
 
+  /// Keeps tab state (e.g. the chat transcript) when the shell switches between
+  /// the glass and the opaque scaffold (reduce transparency / high contrast).
+  final _bodyKey = GlobalKey();
+
   void _select(int index) => setState(() => _index = index);
 
   @override
@@ -73,7 +79,7 @@ class _KarmiShellState extends State<KarmiShell> {
       _destinations[_index].label,
       style: Theme.of(context).textTheme.titleMedium,
     );
-    final body = IndexedStack(index: _index, children: _pages);
+    final body = IndexedStack(key: _bodyKey, index: _index, children: _pages);
 
     if (KarmiAccessibility.reduceTransparencyOf(context)) {
       return Scaffold(
@@ -81,7 +87,7 @@ class _KarmiShellState extends State<KarmiShell> {
         appBar: AppBar(
           title: Semantics(header: true, child: title),
           actions: [
-            _OpaqueMenu(onPlans: _openPlans, onLicences: _openLicences),
+            _OverflowMenu(onPlans: _openPlans, onLicences: _openLicences),
           ],
         ),
         body: body,
@@ -101,10 +107,11 @@ class _KarmiShellState extends State<KarmiShell> {
     }
 
     final appBar = GlassAppBar(
+      backgroundColor: KarmiGlass.tint(Theme.of(context).brightness),
       title: Semantics(header: true, child: title),
-      actions: [
-        _GlassOverflowMenu(onPlans: _openPlans, onLicences: _openLicences),
-      ],
+      // Material menu, not GlassMenu: on device GlassMenu's items were
+      // missing from the accessibility tree (TalkBack could not reach them).
+      actions: [_OverflowMenu(onPlans: _openPlans, onLicences: _openLicences)],
     );
     final tabBar = GlassTabBar.bottom(
       selectedIndex: _index,
@@ -138,56 +145,23 @@ class _KarmiShellState extends State<KarmiShell> {
       bottomBar: Semantics(
         container: true,
         label: 'Main navigation',
-        child: tabBar,
+        // GlassTabBar's own keyboard focus ring is not painted on device.
+        child: KarmiFocusRing(radius: 16, child: tabBar),
       ),
       bottomBarHeight: tabBar.preferredSize.height,
       body: MediaQuery(
         data: mq.copyWith(padding: bodyPadding),
-        child: body,
+        // GlassScaffold installs a Cupertino IconTheme (primary colour) that
+        // IconButton adopts as its foreground; restore the Material one so
+        // controls look the same as in the opaque shell.
+        child: IconTheme(data: Theme.of(context).iconTheme, child: body),
       ),
     );
   }
 }
 
-class _GlassOverflowMenu extends StatelessWidget {
-  const _GlassOverflowMenu({required this.onPlans, required this.onLicences});
-
-  final VoidCallback onPlans;
-  final VoidCallback onLicences;
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = KarmiColors.of(context).foreground;
-    return GlassMenu(
-      menuWidth: 220,
-      trigger: Semantics(
-        button: true,
-        label: 'More options',
-        child: SizedBox.square(
-          dimension: 48,
-          child: Icon(Icons.more_vert, color: fg),
-        ),
-      ),
-      items: [
-        GlassMenuItem(
-          height: 48,
-          icon: const Icon(Icons.workspace_premium_outlined),
-          title: 'Plans',
-          onTap: onPlans,
-        ),
-        GlassMenuItem(
-          height: 48,
-          icon: const Icon(Icons.description_outlined),
-          title: 'Licences',
-          onTap: onLicences,
-        ),
-      ],
-    );
-  }
-}
-
-class _OpaqueMenu extends StatelessWidget {
-  const _OpaqueMenu({required this.onPlans, required this.onLicences});
+class _OverflowMenu extends StatelessWidget {
+  const _OverflowMenu({required this.onPlans, required this.onLicences});
 
   final VoidCallback onPlans;
   final VoidCallback onLicences;
