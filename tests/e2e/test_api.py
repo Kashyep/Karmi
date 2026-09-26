@@ -134,6 +134,10 @@ def test_admin_endpoints_are_role_scoped_and_redacted(test_context: dict[str, ob
     overview = client.get("/admin/overview", headers=auth(admin_token))  # type: ignore[union-attr]
     assert overview.status_code == 200
     assert overview.json()["raw_message_access"] == "not_available"
+    assert overview.json()["live_models"] is False
+    settings.live_models_enabled = True  # type: ignore[union-attr]
+    overview = client.get("/admin/overview", headers=auth(admin_token))  # type: ignore[union-attr]
+    assert overview.json()["live_models"] is True
     runs = client.get("/admin/runs", headers=auth(admin_token))  # type: ignore[union-attr]
     assert runs.status_code == 200
     assert all(row["response"] == "redacted" for row in runs.json())

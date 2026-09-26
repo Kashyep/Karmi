@@ -97,17 +97,21 @@ def subscription_period(anchor: date, now: datetime | None = None) -> tuple[str,
     return start.isoformat(), reset
 
 
-def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPolicy]:
-    subscription = session.scalar(select(Subscription).where(Subscription.account_id == account_id))
+def plan_policy(subscription: Subscription | None) -> PlanPolicy:
+    """Effective plan: an active subscription's plan, else the free tier."""
     if subscription is None or subscription.status != "active":
-        plan_id = "ananta"
-        if subscription is None:
-            subscription = Subscription(account_id=account_id, plan_id=plan_id)
-            session.add(subscription)
-            session.flush()
-    else:
-        plan_id = subscription.plan_id
-    return subscription, SYNTHETIC_POLICIES.get(plan_id, SYNTHETIC_POLICIES["ananta"])
+        return SYNTHETIC_POLICIES["ananta"]
+    return SYNTHETIC_POLICIES.get(subscription.plan_id, SYNTHETIC_POLICIES["ananta"])
+
+
+def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPolicy]:
+    """Like :func:`plan_policy`, but creates a free-tier subscription when missing."""
+    subscription = session.scalar(select(Subscription).where(Subscription.account_id == account_id))
+    if subscription is None:
+        subscription = Subscription(account_id=account_id, plan_id="ananta")
+        session.add(subscription)
+        session.flush()
+    return subscription, plan_policy(subscription)
 
 
 def ensure_usage_window(session: Session, account_id: str, settings: Settings) -> UsageWindow:
@@ -598,7 +602,7 @@ def accept_internal_event(
     event = InboxEvent(
         channel=channel,
         source_event_id=source_event_id,
-        payload_hash=hashlib.sha256(raw_body).hexdigest(),
+        payload_hash=payload_hash,
     )
     session.add(event)
     session.flush()
