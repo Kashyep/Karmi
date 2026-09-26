@@ -43,6 +43,7 @@ packages = ["src/daily_agent", "src/model_lab"]
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers"
 testpaths = ["tests"]
+pythonpath = ["src", "."]
 markers = [
   "integration: requires disposable PostgreSQL and Redis",
   "e2e: exercises the local HTTP/UI boundary",
