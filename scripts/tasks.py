@@ -14,6 +14,9 @@ PYTHON = Path(sys.executable)
 
 def run(command: list[str], *, env: dict[str, str] | None = None) -> None:
     print("+", " ".join(command), flush=True)
+    # Import this checkout's src/ even when the editable install points at another (worktrees).
+    env = dict(os.environ if env is None else env)
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(ROOT / "src"), env.get("PYTHONPATH")]))
     completed = subprocess.run(command, cwd=ROOT, env=env, check=False)  # noqa: S603
     if completed.returncode:
         raise SystemExit(completed.returncode)
