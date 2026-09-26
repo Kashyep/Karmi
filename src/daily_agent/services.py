@@ -59,6 +59,15 @@ class IdempotencyConflict(Exception):
     """A request reused an idempotency key with a different payload."""
 
 
+class ReservationInFlight(Exception):
+    """Another live request already holds the reservation for this key."""
+
+
+# How long a committed reservation may stay RESERVED before another request
+# may reclaim it (provider timeout is 15s; this covers retries + jitter).
+RESERVATION_LEASE_SECONDS = 120
+
+
 def current_window_key(now: datetime | None = None) -> tuple[str, datetime]:
     current = (now or datetime.now(UTC)).astimezone(UTC)
     reset = datetime(current.year, current.month, current.day, tzinfo=UTC) + timedelta(days=1)
@@ -220,10 +229,105 @@ def reserve_budget(
             BudgetReservation.stage == stage,
         )
     )
+    now = datetime.now(UTC)
     if existing is not None:
+        if existing.status in {ReservationStatus.SETTLED, ReservationStatus.UNKNOWN}:
+            return existing
+        if existing.status == ReservationStatus.RESERVED:
+            if _reservation_is_live(existing, now):
+                raise ReservationInFlight(logical_request_id)
+            # Lease expired: the worker that owned it is presumed dead. Charge
+            # the held estimate as unknown rather than freeing it — remote
+            # provider work may already have run.
+            settle_budget(
+                session,
+                existing,
+                attempt_id=f"{existing.id}:lease-expired",
+                actual_micro=None,
+            )
+        # RELEASED (or just-reclaimed): re-reserve current capacity on the row.
+        window, period = _reserve_hold(session, account_id, settings, amount_micro, now)
+        reactivated = session.execute(
+            update(BudgetReservation)
+            .where(
+                BudgetReservation.id == existing.id,
+                BudgetReservation.status != ReservationStatus.RESERVED,
+            )
+            .values(
+                status=ReservationStatus.RESERVED,
+                reserved_micro=amount_micro,
+                usage_window_id=window.id,
+                usage_period_id=period.id,
+                actual_micro=None,
+            )
+        )
+        if not isinstance(reactivated, CursorResult) or reactivated.rowcount != 1:
+            raise ReservationInFlight(logical_request_id)
+        session.refresh(existing)
         return existing
+    window, period = _reserve_hold(session, account_id, settings, amount_micro, now)
+    reservation = BudgetReservation(
+        logical_request_id=logical_request_id,
+        account_id=account_id,
+        usage_window_id=window.id,
+        usage_period_id=period.id,
+        stage=stage,
+        reserved_micro=amount_micro,
+    )
+    session.add(reservation)
+    session.flush()
+    return reservation
+
+
+def _reservation_is_live(reservation: BudgetReservation, now: datetime) -> bool:
+    created = reservation.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    return (now - created).total_seconds() < RESERVATION_LEASE_SECONDS
+
+
+def _reclaim_stale_reservations(
+    session: Session, window_key: str, now: datetime, limit: int = 100
+) -> int:
+    """Settle-as-unknown abandoned RESERVED rows attached to this window.
+
+    Provider work behind them may already have run, so the held estimate is
+    charged rather than refunded. Bounds the damage of a worker that died
+    between committing its reservation and settling.
+    """
+    candidates = session.scalars(
+        select(BudgetReservation)
+        .join(UsageWindow, BudgetReservation.usage_window_id == UsageWindow.id)
+        .where(
+            UsageWindow.window_key == window_key,
+            BudgetReservation.status == ReservationStatus.RESERVED,
+        )
+    ).all()
+    reclaimed = 0
+    for row in candidates[:limit]:
+        if _reservation_is_live(row, now):
+            continue
+        settle_budget(
+            session, row, attempt_id=f"{row.id}:lease-expired", actual_micro=None
+        )
+        reclaimed += 1
+    if reclaimed:
+        logger.warning(
+            "reclaimed %d abandoned reservations in window %s", reclaimed, window_key
+        )
+    return reclaimed
+
+
+def _reserve_hold(
+    session: Session,
+    account_id: str,
+    settings: Settings,
+    amount_micro: int,
+    now: datetime,
+) -> tuple[UsageWindow, UsagePeriod]:
+    """Apply the guarded counter updates on the current window/period/platform."""
     window = ensure_usage_window(session, account_id, settings)
-    key = window.window_key
+    _reclaim_stale_reservations(session, window.window_key, now)
     account_result = session.execute(
         update(UsageWindow)
         .where(
@@ -263,7 +367,7 @@ def reserve_budget(
     platform_result = session.execute(
         update(PlatformBudget)
         .where(
-            PlatformBudget.window_key == key,
+            PlatformBudget.window_key == window.window_key,
             PlatformBudget.reserved_micro + PlatformBudget.settled_micro + amount_micro
             <= PlatformBudget.spend_limit_micro,
         )
@@ -276,17 +380,7 @@ def reserve_budget(
         raise BudgetDenied(
             "platform spending is temporarily paused", reset_at=window.reset_at
         )
-    reservation = BudgetReservation(
-        logical_request_id=logical_request_id,
-        account_id=account_id,
-        usage_window_id=window.id,
-        usage_period_id=period.id,
-        stage=stage,
-        reserved_micro=amount_micro,
-    )
-    session.add(reservation)
-    session.flush()
-    return reservation
+    return window, period
 
 
 def settle_budget(

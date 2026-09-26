@@ -26,23 +26,25 @@ class Principal:
 
 def issue_development_token(user: User, settings: Settings, ttl_seconds: int = 3600) -> str:
     expires = int(time.time()) + ttl_seconds
-    body = f"{user.id}|{user.role}|{expires}"
+    body = f"{user.id}|{user.role}|{expires}|{user.token_version}"
     signature = hmac.new(settings.auth_secret.encode(), body.encode(), hashlib.sha256).hexdigest()
     return f"{body}|{signature}"
 
 
 def verify_token(token: str, settings: Settings, session: Session) -> Principal:
     try:
-        user_id, role, expires_text, supplied = token.split("|", 3)
+        user_id, role, expires_text, version_text, supplied = token.split("|", 4)
         expires = int(expires_text)
+        token_version = int(version_text)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid session") from exc
-    body = f"{user_id}|{role}|{expires}"
+    body = f"{user_id}|{role}|{expires}|{token_version}"
     expected = hmac.new(settings.auth_secret.encode(), body.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, supplied) or expires < int(time.time()):
+    # `expires <= now`: a token is invalid from the start of its expiry second.
+    if not hmac.compare_digest(expected, supplied) or expires <= int(time.time()):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid session")
     user = session.get(User, user_id)
-    if user is None or user.role != role:
+    if user is None or user.role != role or user.token_version != token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid session")
     return Principal(user_id=user.id, account_id=user.account_id, role=user.role)
 
@@ -58,7 +60,7 @@ def require_principal(
 
 
 def require_admin(principal: Principal = Depends(require_principal)) -> Principal:
-    if principal.role not in {"admin", "support"}:
+    if principal.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin role required")
     return principal
 
