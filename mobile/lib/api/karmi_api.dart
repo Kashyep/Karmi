@@ -1,145 +1,178 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'dart:io';
 import 'dart:math';
 
-enum Outcome { ACCEPT, REPAIR, ESCALATE, ASK_USER, SAFE_STOP, DEFERRED }
+import 'package:http/http.dart' as http;
 
-class MessageView {
-  final String runId;
-  final String status;
-  final Outcome outcome;
-  final String response;
-  final String route;
+import 'errors.dart';
+import 'models.dart';
 
-  MessageView({
-    required this.runId,
-    required this.status,
-    required this.outcome,
-    required this.response,
-    required this.route,
-  });
+export 'errors.dart';
+export 'models.dart';
 
-  factory MessageView.fromJson(Map<String, dynamic> json) {
-    return MessageView(
-      runId: json['run_id'],
-      status: json['status'],
-      outcome: Outcome.values.firstWhere((e) => e.name == json['outcome']),
-      response: json['response'],
-      route: json['route'],
-    );
-  }
-}
-
-class UsageView {
-  final String planId;
-  final String planLabel;
-  final int everydayUsed;
-  final int everydayLimit;
-  final int reservedMicro;
-  final int settledMicro;
-  final int spendLimitMicro;
-  final String resetAt;
-  final String periodResetAt;
-  final String policyVersion;
-
-  UsageView({
-    required this.planId,
-    required this.planLabel,
-    required this.everydayUsed,
-    required this.everydayLimit,
-    required this.reservedMicro,
-    required this.settledMicro,
-    required this.spendLimitMicro,
-    required this.resetAt,
-    required this.periodResetAt,
-    required this.policyVersion,
-  });
-
-  factory UsageView.fromJson(Map<String, dynamic> json) {
-    return UsageView(
-      planId: json['plan_id'],
-      planLabel: json['plan_label'],
-      everydayUsed: json['everyday_used'],
-      everydayLimit: json['everyday_limit'],
-      reservedMicro: json['reserved_micro'],
-      settledMicro: json['settled_micro'],
-      spendLimitMicro: json['spend_limit_micro'],
-      resetAt: json['reset_at'],
-      periodResetAt: json['period_reset_at'],
-      policyVersion: json['policy_version'],
-    );
-  }
-}
-
-class NoteView {
-  final String id;
-  final String content;
-
-  NoteView({required this.id, required this.content});
-
-  factory NoteView.fromJson(Map<String, dynamic> json) {
-    return NoteView(
-      id: json['id'],
-      content: json['content'],
-    );
-  }
-}
-
+/// HTTP client for the Daily Agent backend (`src/daily_agent/api.py`).
 class KarmiApi {
-  final String baseUrl;
-  final String token;
-  final http.Client _client;
-
   KarmiApi({
-    required this.baseUrl,
-    required this.token,
+    this.baseUrl = defaultBaseUrl,
     http.Client? client,
+    this.timeout = const Duration(seconds: 30),
+    this.token,
   }) : _client = client ?? http.Client();
 
-  Map<String, String> get _headers => {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      };
+  /// `--dart-define=API_BASE_URL=...`; defaults to the Android emulator's host loopback.
+  static const defaultBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:8000',
+  );
 
-  static String generateIdempotencyKey() {
+  final String baseUrl;
+  final Duration timeout;
+  final http.Client _client;
+
+  /// Bearer token for `/v1/*`. Managed by `KarmiSession`.
+  String? token;
+
+  /// Called before an [UnauthorizedException] is thrown, so the session can end.
+  void Function()? onUnauthorized;
+
+  /// 32 hex chars from a CSPRNG (backend accepts 8–120 chars).
+  static String newIdempotencyKey() {
     final rand = Random.secure();
-    final bytes = List<int>.generate(16, (i) => rand.nextInt(256));
-    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join('');
+    return List.generate(
+      16,
+      (_) => rand.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
   }
 
-  Future<MessageView> sendMessage(String text, {String? idempotencyKey}) async {
-    final key = idempotencyKey ?? generateIdempotencyKey();
+  /// `POST /dev/token` (development builds only; 404 elsewhere).
+  Future<String> issueDevToken() async {
+    final body = await _send('POST', '/dev/token', auth: false);
+    return (body as Map<String, dynamic>)['token'] as String;
+  }
 
-    final response = await _client.post(
-      Uri.parse('$baseUrl/v1/messages'),
-      headers: _headers,
-      body: jsonEncode({
-        'text': text,
-        'idempotency_key': key,
-      }),
+  /// `POST /v1/messages`. Callers retrying the same message must pass the same
+  /// [idempotencyKey] so the server replays instead of charging twice.
+  Future<MessageView> sendMessage(
+    String text, {
+    required String idempotencyKey,
+  }) async {
+    final body = await _send(
+      'POST',
+      '/v1/messages',
+      json: {'text': text, 'idempotency_key': idempotencyKey},
     );
+    return MessageView.fromJson(body as Map<String, dynamic>);
+  }
 
-    if (response.statusCode == 200) {
-      return MessageView.fromJson(jsonDecode(response.body));
-    } else if (response.statusCode == 409) {
-      throw Exception('ReservationInFlight: 409 Conflict');
-    } else {
-      throw Exception('Failed to send message: ${response.statusCode}');
+  Future<UsageView> getUsage() async => UsageView.fromJson(
+    await _send('GET', '/v1/usage') as Map<String, dynamic>,
+  );
+
+  Future<List<NoteView>> listNotes() async {
+    final body = await _send('GET', '/v1/notes') as List<dynamic>;
+    return [for (final n in body) NoteView.fromJson(n as Map<String, dynamic>)];
+  }
+
+  Future<NoteView> createNote(
+    String content, {
+    required String idempotencyKey,
+  }) async {
+    final body = await _send(
+      'POST',
+      '/v1/notes',
+      json: {'content': content, 'idempotency_key': idempotencyKey},
+    );
+    return NoteView.fromJson(body as Map<String, dynamic>);
+  }
+
+  Future<void> deleteNote(String id) =>
+      _send('DELETE', '/v1/notes/${Uri.encodeComponent(id)}');
+
+  Future<List<TaskView>> listTasks() async {
+    final body = await _send('GET', '/v1/tasks') as List<dynamic>;
+    return [for (final t in body) TaskView.fromJson(t as Map<String, dynamic>)];
+  }
+
+  Future<TaskView> completeTask(String id) async {
+    final body = await _send(
+      'PATCH',
+      '/v1/tasks/${Uri.encodeComponent(id)}/complete',
+    );
+    return TaskView.fromJson(body as Map<String, dynamic>);
+  }
+
+  void close() => _client.close();
+
+  Future<Object?> _send(
+    String method,
+    String path, {
+    Map<String, Object?>? json,
+    bool auth = true,
+  }) async {
+    final request = http.Request(method, Uri.parse('$baseUrl$path'));
+    request.headers['Accept'] = 'application/json';
+    if (auth && token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+    if (json != null) {
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode(json);
+    }
+
+    final http.Response response;
+    try {
+      response = await http.Response.fromStream(
+        await _client.send(request).timeout(timeout),
+      ).timeout(timeout);
+    } on SocketException {
+      throw const NetworkException();
+    } on http.ClientException {
+      throw const NetworkException();
+    } on TimeoutException {
+      throw const NetworkException();
+    }
+
+    final status = response.statusCode;
+    if (status >= 200 && status < 300) {
+      if (response.body.isEmpty) return null;
+      try {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } on FormatException {
+        throw ServerException(status);
+      }
+    }
+    throw _errorFor(status, response.body);
+  }
+
+  KarmiApiException _errorFor(int status, String body) {
+    final detail = _detail(body);
+    switch (status) {
+      case 401:
+        onUnauthorized?.call();
+        return const UnauthorizedException();
+      case 409:
+        return detail is String && detail.contains('in flight')
+            ? const InFlightException()
+            : const IdempotencyConflictException();
+      case 429:
+        if (detail is Map && detail['code'] == 'ALLOWANCE_EXHAUSTED') {
+          return LimitReachedException(
+            resetAt: DateTime.tryParse('${detail['reset_at']}'),
+          );
+        }
+        return const ServerException(429);
+      default:
+        return ServerException(status);
     }
   }
 
-  Future<UsageView> getUsage() async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl/v1/usage'),
-      headers: _headers,
-    );
-
-    if (response.statusCode == 200) {
-      return UsageView.fromJson(jsonDecode(response.body));
-    } else {
-      throw Exception('Failed to load usage');
+  static Object? _detail(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      return decoded is Map ? decoded['detail'] : null;
+    } on FormatException {
+      return null;
     }
   }
-
-  // Tasks and notes endpoints placeholder
 }

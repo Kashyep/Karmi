@@ -29,7 +29,7 @@ Calm productivity interface with generous reading space and precise, restrained 
 | `--muted` | `#e6f2e8` | `130 32% 93%` | `#1a2e1d` | `129 28% 14%` |
 | `--muted-foreground` | `#4b5e4e` | `129 11% 33%` | `#a6b8a8` | `127 11% 69%` |
 | `--border` / `--input` | `#6f8a72` | `127 11% 49%` | `#5f7f63` | `128 14% 44%` |
-| `--border-subtle` | `#d5e8d8` | `129 29% 87%` | n/a | n/a |
+| `--border-subtle` (decorative) | `#d5e8d8` | `129 29% 87%` | `#223a26` | `129 26% 18%` (derived, MOB-002) |
 | `--ring` | `#2c6d34` | `127 42% 30%` | `#86d0af` | `153 44% 67%` |
 | `--destructive` | `#b42332` | `354 67% 42%` | `#ff9ca7` | `353 100% 81%` |
 | `--destructive-foreground` | `#ffffff` | `0 0% 100%` | `#08160a` | `129 47% 6%` |

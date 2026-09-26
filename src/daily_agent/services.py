@@ -523,6 +523,14 @@ def scoped_note_query(account_id: str, user_id: str) -> Select[tuple[Note]]:
     )
 
 
+def scoped_task_query(account_id: str) -> Select[tuple[Task]]:
+    return (
+        select(Task)
+        .where(Task.account_id == account_id)
+        .order_by(Task.completed, Task.title, Task.id)
+    )
+
+
 def create_task_idempotent(
     session: Session, *, account_id: str, user_id: str, title: str, key: str
 ) -> Task:

@@ -1,26 +1,45 @@
 name: karmi_app
-description: "Karmi UI"
+description: "Karmi mobile client (Android and iOS)."
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.5.0 <4.0.0'
+  sdk: '>=3.10.0 <4.0.0'
+  flutter: '>=3.47.5'
 
+# Exact pins (UI_IMPLEMENTATION_PLAN.md T1.2): every release is at least 7 days old.
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.8
+  cupertino_icons: 1.0.9
   liquid_glass_widgets: 1.6.2
   google_fonts: 8.2.1
   shared_preferences: 2.5.5
-  http: ^1.2.0
+  http: 1.6.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: 5.0.0
 
 flutter:
   uses-material-design: true
   assets:
+    # Exo / Proza Libre / Trykker files use google_fonts' asset naming
+    # (`Family-Variant.ttf`) so GoogleFonts.* resolves them without network.
+    # The `*-OFL.txt` files are registered with LicenseRegistry in lib/fonts.dart.
     - assets/google_fonts/
+  fonts:
+    # Declared as real families so `fontFamilyFallback` can resolve them by name.
+    - family: Noto Sans Devanagari
+      fonts:
+        - asset: assets/google_fonts/NotoSansDevanagari-Regular.ttf
+        - asset: assets/google_fonts/NotoSansDevanagari-Medium.ttf
+          weight: 500
+        - asset: assets/google_fonts/NotoSansDevanagari-SemiBold.ttf
+          weight: 600
+        - asset: assets/google_fonts/NotoSansDevanagari-Bold.ttf
+          weight: 700
+    - family: Noto Serif Devanagari
+      fonts:
+        - asset: assets/google_fonts/NotoSerifDevanagari-Regular.ttf
