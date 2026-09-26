@@ -64,6 +64,7 @@ from daily_agent.services import (
     release_budget,
     reserve_budget,
     scoped_note_query,
+    scoped_task_query,
     seed_development_identity,
     settle_budget,
     subscription_period,
@@ -255,6 +256,16 @@ def create_app() -> FastAPI:
         note.version += 1
         session.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get("/v1/tasks", response_model=list[TaskView])
+    def list_tasks(
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> list[TaskView]:
+        return [
+            TaskView(id=t.id, title=t.title, completed=t.completed)
+            for t in session.scalars(scoped_task_query(principal.account_id)).all()
+        ]
 
     @app.post("/v1/tasks", response_model=TaskView, status_code=status.HTTP_201_CREATED)
     def create_task(

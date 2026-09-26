@@ -77,44 +77,57 @@
 2. Implement the incomplete Phase 4–7 production-auth, worker, reconciliation and admin surfaces.
 3. Configure approved providers/billing/channel/deployment, then execute the remaining release gates.
 
-## Mobile Client Initialization (2026-09-26)
+## Mobile client (Flutter, `mobile/`)
 
-- **Phase 0 Complete**: 
-  - ADR-0002 created in `docs/decisions/` recording Flutter as the mobile choice and resolving Q1-Q9.
-  - `Design.md` token table updated to the Karmi green palette and Exo/Proza Libre/Trykker typography, superseding the original blue tokens.
-  - Task cards `MOB-001`, `MOB-002`, `MOB-003` created in `docs/task-cards/` for Phase 1-3.
-## Mobile Client Initialization (2026-09-26)
+- Updated: 2026-09-26. Branch `Kashyep/flutter-mobile-client` (fast-forwarded to `67e478b`).
+- Plan: `docs/UI_IMPLEMENTATION_PLAN.md` §2–8; decision: ADR-0002. Cards: MOB-001…MOB-013, API-001.
 
-- **Phase 0 Complete**: 
-  - ADR-0002 created in `docs/decisions/` recording Flutter as the mobile choice and resolving Q1-Q9.
-  - `Design.md` token table updated to the Karmi green palette and Exo/Proza Libre/Trykker typography, superseding the original blue tokens.
-  - Task cards `MOB-001`, `MOB-002`, `MOB-003` created in `docs/task-cards/` for Phase 1-3.
-- **Phase 1-4 Complete**:
-  - Flutter SDK 3.47.5 was successfully installed and added to the path.
-  - Initial scaffolding via `flutter create` executed. 
-  - Required Dart files for Phase 2, 3, and 4 (`karmi_colors.dart`, `karmi_theme.dart`, `karmi_glass.dart`, `karmi_api.dart`, `chat_screen.dart`, etc.) written and properly formatted.
-  - Dependency errors and API mismatches (e.g. `liquid_glass_widgets` v1.6.2 parameters) were identified by `flutter analyze` and fixed.
-  - `dart fix` applied for lint compliance.
-- **Android Toolchain Setup (2026-09-26)**:
-  - Discovered Android SDK, Java JDK, and `adb` were entirely missing on the host.
-  - Downloaded and configured OpenJDK 17 LTS (`C:\Users\kashy\AppData\Local\Android\jdk-17`).
-  - Configured `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT` environment variables permanently.
-  - Downloaded and installed `cmdline-tools` (v12.0) into `C:\Users\kashy\AppData\Local\Android\Sdk\cmdline-tools\latest`.
-  - Installed `platform-tools` (with `adb.exe`) and added to user PATH.
-  - Installed `platforms;android-36` and `build-tools;36.0.0`.
-  - Accepted all Android SDK package licenses programmatically.
-  - Verified with `flutter doctor -v`: Android toolchain is 100% verified and green (`[√] Android toolchain`).
-- **Android Deployment Verification (2026-09-26)**:
-  - Initial Gradle build failed due to missing `JAVA_HOME` in user subshell and unaccepted NDK/CMake/platform-35 licenses.
-  - Automatically resolved all license agreements in `Android\Sdk\licenses`.
-  - Downloaded NDK 28.2.13676358, CMake 3.22.1, and Android Platform 35.
-  - Added `android.permission.INTERNET` to `AndroidManifest.xml`.
-  - Added explicit scaffold background color to `GlassScaffold` in `karmi_shell.dart`.
-  - Debug APK built successfully (`app-debug.apk` in 16.8s).
-  - Detected connected physical device: **Pixel 9a** (`5B271XEBF3XDF0`).
-  - Streamed install succeeded and launched `ai.karmi.karmi_app/.MainActivity`.
-  - Verified live execution via logcat: Impeller Vulkan backend initialized and LiquidGlass library active.
-- **Next Action**:
-  - Download and bundle offline font files into `mobile/assets/google_fonts/`.
-  - Proceed with Phase 5 verification and golden tests.
+### History (earlier on 2026-09-26, commit `67e478b`)
+
+- Phase 0: ADR-0002 and the Design.md token/font supersession.
+- Flutter 3.47.5 installed; `flutter create` scaffold with first-pass lib/ code (no tests, no fonts;
+  `flutter analyze` then reported 8 issues). The earlier note "Phase 1-4 Complete" overstated this.
+- Android toolchain installed: JDK 17 at `C:\Users\kashy\AppData\Local\Android\jdk-17`, SDK at
+  `C:\Users\kashy\AppData\Local\Android\Sdk` (user env vars; fresh agent shells may need
+  `JAVA_HOME` exported). A debug APK of the first-pass client (`ai.karmi.karmi_app`) ran on the
+  Pixel 9a (`5B271XEBF3XDF0`) with Impeller/Vulkan.
+
+### Verified state (this session)
+
+- Housekeeping: IDs `ai.karmi.app` (Android + iOS), `web/` and `windows/` removed, IDE files ignored.
+- Fonts bundled (hash-verified against google_fonts 8.2.1), OFL registered, runtime fetching off.
+- Theme/glass/motion/high contrast, typed API client, session (`/dev/token`), shell + Chat, Tasks,
+  Usage, Memory, Settings, Welcome, Plans, confirmation-sheet stub. Backend `GET /v1/tasks` (API-001).
+- Gates PASS locally: format, analyze (0 issues), `flutter test` 257 (183 + 74 goldens),
+  `flutter build appbundle --release`; same format/analyze/tests/goldens PASS in an `ubuntu:24.04`
+  container with Flutter 3.47.5. Python lint/typecheck/test-unit (32)/test-e2e (15) PASS.
+- Evidence: `docs/release-evidence/mobile-2026-09-26.md`.
+- Independent verifier (Gemini 3.8 Flash High, read-only) re-ran format/analyze/`flutter test`
+  (257) and `test-e2e` (15) and checked IDs, fonts, placeholder removal, chat split, Outcome enum,
+  CI parity, task scoping, glass-surface usage and evidence honesty: ACCEPT, no discrepancies.
+- Work is uncommitted in the working tree (no commit requested).
+
+### Decisions
+
+- Goldens stored per host OS (`mobile/test/goldens/{windows,linux}`); CI compares Linux.
+  Linux baselines are generated in Docker (image `karmi-flutter:3.47.5`, built locally from the
+  official Linux archive; Docker Desktop must be started first).
+- liquid_glass_widgets shaders do not load under `flutter test`; goldens show the fallback render.
+- Reduce transparency swaps the whole shell to opaque Material bars, not just `KarmiGlassSurface`.
+- `GlassTabBar` bar-level gesture node is unlabelled; wrapped in a "Main navigation" container.
+- Send control is a Material 48dp button inside the glass tray (no glass-in-glass).
+
+### Blockers / NOT RUN
+
+- Pixel 9a disconnected mid-session; owner chose to skip device checks: TalkBack, hardware
+  keyboard, OS font scale, OS reduce-motion/contrast, TTFF, input latency, glass frame budget.
+- iOS build, VoiceOver, simulator: no macOS host. GitHub Actions run not observed.
+- Backend gaps: no structured `ASK_USER` payload (confirmation sheet is a stub), no plan catalogue,
+  no chat history, no production auth (Q3). T3.3 owner screenshot sign-off pending.
+
+### Next three actions
+
+1. Reconnect the Pixel 9a and run the §8 manual/perf checks; record them in the evidence file.
+2. Push the branch and confirm `mobile-checks` (ubuntu) and `mobile-ios-build` (macOS) are green.
+3. Owner reviews goldens (T3.3); backend card for a structured `ASK_USER` action payload.
 

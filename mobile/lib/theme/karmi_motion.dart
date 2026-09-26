@@ -1,67 +1,56 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-class KarmiMotion extends InheritedWidget {
-  final bool isReduceTransparencyEnabled;
-  final bool isReduceMotionEnabled;
-
-  const KarmiMotion({
+/// App-wide accessibility flags that Flutter does not expose directly (§5.2–5.3).
+///
+/// `reduceTransparency` is the in-app Settings switch OR the platform high-contrast
+/// flag. `reduceMotion` mirrors `MediaQuery.disableAnimationsOf`.
+class KarmiAccessibility extends InheritedWidget {
+  const KarmiAccessibility({
     super.key,
-    required this.isReduceTransparencyEnabled,
-    required this.isReduceMotionEnabled,
+    required this.reduceTransparency,
+    required this.reduceMotion,
     required super.child,
   });
 
-  static bool reduceTransparencyOf(BuildContext context) {
-    final motion = context.dependOnInheritedWidgetOfExactType<KarmiMotion>();
-    final highContrast = MediaQuery.highContrastOf(context);
-    return highContrast || (motion?.isReduceTransparencyEnabled ?? false);
-  }
+  final bool reduceTransparency;
+  final bool reduceMotion;
 
-  static bool reduceMotionOf(BuildContext context) {
-    return MediaQuery.disableAnimationsOf(context);
-  }
+  static KarmiAccessibility? _maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<KarmiAccessibility>();
+
+  static bool reduceTransparencyOf(BuildContext context) =>
+      (_maybeOf(context)?.reduceTransparency ?? false) ||
+      MediaQuery.highContrastOf(context);
+
+  static bool reduceMotionOf(BuildContext context) =>
+      _maybeOf(context)?.reduceMotion ??
+      MediaQuery.disableAnimationsOf(context);
 
   @override
-  bool updateShouldNotify(KarmiMotion oldWidget) {
-    return oldWidget.isReduceTransparencyEnabled !=
-            isReduceTransparencyEnabled ||
-        oldWidget.isReduceMotionEnabled != isReduceMotionEnabled;
-  }
+  bool updateShouldNotify(KarmiAccessibility oldWidget) =>
+      oldWidget.reduceTransparency != reduceTransparency ||
+      oldWidget.reduceMotion != reduceMotion;
 }
 
-class KarmiSettingsProvider extends ChangeNotifier {
-  static const _keyReduceTransparency = 'reduce_transparency';
-  static const _keyThemeMode = 'theme_mode';
+/// Transition timings: 120–180ms normally (Design.md), [Duration.zero] under reduced motion.
+abstract final class KarmiMotion {
+  static const fast = Duration(milliseconds: 120);
+  static const standard = Duration(milliseconds: 180);
 
-  late SharedPreferences _prefs;
-  bool _reduceTransparency = false;
-  ThemeMode _themeMode = ThemeMode.system;
+  static Duration duration(
+    BuildContext context, [
+    Duration normal = standard,
+  ]) => KarmiAccessibility.reduceMotionOf(context) ? Duration.zero : normal;
 
-  bool get reduceTransparency => _reduceTransparency;
-  ThemeMode get themeMode => _themeMode;
-
-  Future<void> initialize() async {
-    _prefs = await SharedPreferences.getInstance();
-    _reduceTransparency = _prefs.getBool(_keyReduceTransparency) ?? false;
-
-    final themeStr = _prefs.getString(_keyThemeMode);
-    _themeMode = ThemeMode.values.firstWhere(
-      (e) => e.name == themeStr,
-      orElse: () => ThemeMode.system,
+  /// A page route whose enter/exit transition honours reduced motion.
+  static Route<T> route<T>(BuildContext context, WidgetBuilder builder) {
+    final d = duration(context);
+    return PageRouteBuilder<T>(
+      transitionDuration: d,
+      reverseTransitionDuration: d,
+      pageBuilder: (context, _, _) => builder(context),
+      transitionsBuilder: (context, animation, _, child) =>
+          FadeTransition(opacity: animation, child: child),
     );
-    notifyListeners();
-  }
-
-  Future<void> setReduceTransparency(bool value) async {
-    _reduceTransparency = value;
-    await _prefs.setBool(_keyReduceTransparency, value);
-    notifyListeners();
-  }
-
-  Future<void> setThemeMode(ThemeMode mode) async {
-    _themeMode = mode;
-    await _prefs.setString(_keyThemeMode, mode.name);
-    notifyListeners();
   }
 }

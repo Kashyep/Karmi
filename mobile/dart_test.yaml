@@ -1,0 +1,4 @@
+tags:
+  # Pixel-comparison tests (test/goldens/). Baselines are per host OS under
+  # test/goldens/<os>/; CI compares against the linux set.
+  golden:

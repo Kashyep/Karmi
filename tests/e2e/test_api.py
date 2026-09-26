@@ -7,7 +7,8 @@ import pytest
 from sqlalchemy import select
 
 from daily_agent.config import Settings, get_settings
-from daily_agent.models import Subscription, UsageWindow
+from daily_agent.models import Subscription, UsageWindow, User
+from daily_agent.security import issue_development_token
 from tests.conftest import create_identity
 
 pytestmark = pytest.mark.e2e
@@ -187,3 +188,95 @@ def test_billing_sandbox_is_not_routed_in_production(test_context: dict[str, obj
         )
         assert subscription is not None
         assert subscription.plan_id == "ananta"
+
+
+def test_task_list_is_account_scoped(test_context: dict[str, object]) -> None:
+    client = test_context["client"]
+    factory = test_context["factory"]
+    settings = test_context["settings"]
+
+    # 1. 401 without Authorization
+    unauthorized = client.get("/v1/tasks")  # type: ignore[union-attr]
+    assert unauthorized.status_code == 401
+
+    with factory() as session:  # type: ignore[operator]
+        # Note: create_identity creates a new Account for each identity.
+        # To test a second user within the same account, user_a2 is added directly
+        # with account_a.id and issued a development token.
+        account_a, _user_a, token_a = create_identity(session, settings, name="A")  # type: ignore[arg-type]
+        user_a2 = User(account_id=account_a.id, display_name="A2", role="customer")
+        session.add(user_a2)
+        session.commit()
+        token_a2 = issue_development_token(user_a2, settings)  # type: ignore[arg-type]
+
+        _account_b, _user_b, token_b = create_identity(session, settings, name="B")  # type: ignore[arg-type]
+
+    # 2. Empty list for a fresh account
+    resp_a = client.get("/v1/tasks", headers=auth(token_a))  # type: ignore[union-attr]
+    assert resp_a.status_code == 200
+    assert resp_a.json() == []
+
+    # 3. Create tasks on Account A via POST /v1/tasks (idempotency key length >= 8)
+    t1 = client.post(  # type: ignore[union-attr]
+        "/v1/tasks",
+        headers=auth(token_a),
+        json={"title": "Zebra task", "idempotency_key": "task-key-0001"},
+    )
+    assert t1.status_code == 201
+    t1_id = t1.json()["id"]
+
+    t2 = client.post(  # type: ignore[union-attr]
+        "/v1/tasks",
+        headers=auth(token_a),
+        json={"title": "Apple task", "idempotency_key": "task-key-0002"},
+    )
+    assert t2.status_code == 201
+    t2_id = t2.json()["id"]
+
+    t3 = client.post(  # type: ignore[union-attr]
+        "/v1/tasks",
+        headers=auth(token_a),
+        json={"title": "Mango task", "idempotency_key": "task-key-0003"},
+    )
+    assert t3.status_code == 201
+    t3_id = t3.json()["id"]
+
+    # 4. Other account (Account B) cannot see Account A's tasks
+    resp_b = client.get("/v1/tasks", headers=auth(token_b))  # type: ignore[union-attr]
+    assert resp_b.status_code == 200
+    assert resp_b.json() == []
+
+    # 5. Same-account second user (token_a2) sees the tasks
+    resp_a2 = client.get("/v1/tasks", headers=auth(token_a2))  # type: ignore[union-attr]
+    assert resp_a2.status_code == 200
+    tasks_a2 = resp_a2.json()
+    assert len(tasks_a2) == 3
+    # Initially all open, ordered alphabetically by title: Apple -> Mango -> Zebra
+    assert [t["title"] for t in tasks_a2] == ["Apple task", "Mango task", "Zebra task"]
+    assert all(t["completed"] is False for t in tasks_a2)
+
+    # 6. After PATCH /v1/tasks/{id}/complete, completed task appears last with completed=true
+    # Complete "Apple task" (t2_id)
+    complete_resp = client.patch(f"/v1/tasks/{t2_id}/complete", headers=auth(token_a))  # type: ignore[union-attr]
+    assert complete_resp.status_code == 200
+    assert complete_resp.json()["completed"] is True
+
+    # Check ordering: open tasks first (Mango, Zebra), completed tasks last (Apple)
+    resp_after = client.get("/v1/tasks", headers=auth(token_a))  # type: ignore[union-attr]
+    assert resp_after.status_code == 200
+    tasks_after = resp_after.json()
+    assert len(tasks_after) == 3
+    assert tasks_after[0] == {"id": t3_id, "title": "Mango task", "completed": False}
+    assert tasks_after[1] == {"id": t1_id, "title": "Zebra task", "completed": False}
+    assert tasks_after[2] == {"id": t2_id, "title": "Apple task", "completed": True}
+
+    # Complete another task ("Zebra task") by same-account second user
+    complete_z = client.patch(f"/v1/tasks/{t1_id}/complete", headers=auth(token_a2))  # type: ignore[union-attr]
+    assert complete_z.status_code == 200
+
+    resp_after_2 = client.get("/v1/tasks", headers=auth(token_a))  # type: ignore[union-attr]
+    assert resp_after_2.status_code == 200
+    tasks_after_2 = resp_after_2.json()
+    assert len(tasks_after_2) == 3
+    assert [t["title"] for t in tasks_after_2] == ["Mango task", "Apple task", "Zebra task"]
+    assert [t["completed"] for t in tasks_after_2] == [False, True, True]
