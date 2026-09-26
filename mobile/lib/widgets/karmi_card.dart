@@ -6,14 +6,21 @@ class KarmiCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(16),
+    this.semanticContainer = true,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
 
+  /// Merge the card's content into one screen-reader node. Pass false when the
+  /// card holds several controls (e.g. list tiles), so each keeps its own node,
+  /// rectangle and reading order.
+  final bool semanticContainer;
+
   @override
   Widget build(BuildContext context) => Card(
     clipBehavior: Clip.antiAlias,
+    semanticContainer: semanticContainer,
     child: Padding(padding: padding, child: child),
   );
 }

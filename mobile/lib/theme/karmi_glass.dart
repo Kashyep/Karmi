@@ -17,16 +17,21 @@ abstract final class KarmiGlass {
   /// Both variants are populated; `GlassTheme.brightnessOf` picks one per
   /// context from the Material theme (`brightnessResolver`).
   static GlassThemeData themeData() => GlassThemeData(
-    light: _variant(GlassThemeVariant.light, KarmiColors.light, lightTintAlpha),
-    dark: _variant(GlassThemeVariant.dark, KarmiColors.dark, darkTintAlpha),
+    light: _variant(GlassThemeVariant.light, Brightness.light),
+    dark: _variant(GlassThemeVariant.dark, Brightness.dark),
   );
+
+  /// `--card` at the legibility floor for [brightness]. Also the platter behind
+  /// the glass app bar, which liquid_glass_widgets draws with no fill of its own.
+  static Color tint(Brightness brightness) => brightness == Brightness.light
+      ? KarmiColors.light.card.withValues(alpha: lightTintAlpha)
+      : KarmiColors.dark.card.withValues(alpha: darkTintAlpha);
 
   static GlassThemeVariant _variant(
     GlassThemeVariant base,
-    KarmiColors colors,
-    double alpha,
+    Brightness brightness,
   ) {
-    final tint = colors.card.withValues(alpha: alpha);
+    final tint = KarmiGlass.tint(brightness);
     return base.copyWith(
       settings: (base.settings ?? const GlassThemeSettings()).copyWith(
         glassColor: tint,

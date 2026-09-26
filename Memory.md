@@ -117,17 +117,34 @@
 - `GlassTabBar` bar-level gesture node is unlabelled; wrapped in a "Main navigation" container.
 - Send control is a Material 48dp button inside the glass tray (no glass-in-glass).
 
+### Device release gates (2026-09-26, later session)
+
+- Committed `4492857`, pushed, PR #17: CI `checks`, `mobile-checks`, `mobile-ios-build` all passed
+  (run 36241854319).
+- Pixel 9a gates run on profile builds against the local backend: startup, input latency, Chat
+  scroll frames, reduced motion, OS contrast, font scale 2.0, keyboard and TalkBack (tree + touch
+  exploration) all PASS after fixes. Numbers are in `docs/release-evidence/mobile-2026-09-26.md`.
+- Seven device failures fixed under MOB-014, each reproduced first by a failing test (send icon,
+  app-bar platter, transcript lost on toggle, card semantics, glass menu a11y, focus visibility,
+  theme selected state). These fixes are **uncommitted** and not yet through CI.
+- Gates: `flutter test` 273 passing (Windows), Linux container 199 + 74 goldens, analyze 0 issues,
+  format clean, appbundle 51.3 MB. Goldens were regenerated for both OSes (28 changed each).
+- Findings: Android "High contrast text" does not reach Flutter (only Contrast level: High does);
+  adb-injected TalkBack swipes are not recognised; goldens must run as a whole file (a single glass
+  settings golden differs when run alone).
+- Device settings changed for testing were restored and read back. During one step, a stray tap
+  after the app had closed opened Google Calendar on the device; nothing was changed there.
+
 ### Blockers / NOT RUN
 
-- Pixel 9a disconnected mid-session; owner chose to skip device checks: TalkBack, hardware
-  keyboard, OS font scale, OS reduce-motion/contrast, TTFF, input latency, glass frame budget.
-- iOS build, VoiceOver, simulator: no macOS host. GitHub Actions run not observed.
+- iOS: VoiceOver, local iOS build, iPad keyboard: no Mac/iOS device. CI iOS job passed only at `4492857`.
+- TalkBack swipe traversal and spoken output (including live-region announcements) were not observable over adb.
+- No low-end reference Android device named (Q8); performance was measured on the Pixel 9a only.
 - Backend gaps: no structured `ASK_USER` payload (confirmation sheet is a stub), no plan catalogue,
   no chat history, no production auth (Q3). T3.3 owner screenshot sign-off pending.
 
 ### Next three actions
 
-1. Reconnect the Pixel 9a and run the §8 manual/perf checks; record them in the evidence file.
-2. Push the branch and confirm `mobile-checks` (ubuntu) and `mobile-ios-build` (macOS) are green.
+1. Commit the MOB-014 fixes and push so CI (including `mobile-ios-build`) runs on them.
+2. A person runs TalkBack swipe/speech and VoiceOver on real devices; record in the evidence file.
 3. Owner reviews goldens (T3.3); backend card for a structured `ASK_USER` action payload.
-
