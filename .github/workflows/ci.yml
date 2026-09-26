@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -e '.[dev]'
+        run: pip install -c requirements.lock -e '.[dev]'
       - name: Lint
         run: python scripts/tasks.py lint
       - name: Typecheck
