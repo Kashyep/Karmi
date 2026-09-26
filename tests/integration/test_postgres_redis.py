@@ -41,6 +41,7 @@ def test_migration_redis_and_atomic_platform_budget() -> None:
     os.environ["DAILY_AGENT_DATABASE_URL"] = database_url
     alembic = Config("alembic.ini")
     command.upgrade(alembic, "head")
+    command.check(alembic)
     engine = create_engine(database_url, pool_pre_ping=True)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     settings = Settings(
