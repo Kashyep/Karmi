@@ -12,21 +12,33 @@ Core v1 needs the internal/admin web console and WhatsApp-compatible response fo
 
 Calm productivity interface with generous reading space and precise, restrained controls. Mostly solid surfaces, subtle borders, one accent, no decorative dashboards full of meaningless metrics. Avoid blanket glass effects, excessive gradients and unrelated stock art. The app's appearance does not change the underlying model's correctness.
 
-| Token | Light | Dark | Use |
-| --- | --- | --- | --- |
-| canvas | #F7F8FA | #101318 | Page background |
-| surface | #FFFFFF | #191E26 | Cards, composer, panels |
-| text | #18212F | #F1F4F8 | Primary reading |
-| secondary text | #4B5563 | #B4BDCA | Metadata |
-| border | #D7DDE5 | #3B4658 | Separators, form borders |
-| accent | #254EDB | #9AB3FF | Links, focus, selected controls |
-| success | #146B43 | #78DDAA | Confirmed outcomes |
-| warning | #805000 | #FFD48A | Limits, unresolved status |
-| error | #B42332 | #FF9CA7 | Failed operations |
+*Note: The following token table was updated on 2026-09-26 for the Karmi brand palette (green). The previous blue-based values (`#254EDB` etc.) and Inter/system fonts are retained in history but superseded.*
 
-Measure text/control contrast in the actual implementation. Light primary buttons may use #254EDB with white text; dark primary buttons use #9AB3FF with #101318 text. Do not assume every token pairing meets contrast requirements. State is conveyed with words/icons as well as color.
+| Token | Light Hex | Light HSL | Dark Hex | Dark HSL |
+| --- | --- | --- | --- | --- |
+| `--background` | `#f4fbf5` | `129 47% 97%` | `#08160a` | `129 47% 6%` |
+| `--foreground` | `#08160a` | `129 47% 6%` | `#e8f5ea` | `129 39% 94%` |
+| `--card` / `--popover` | `#ffffff` | `0 0% 100%` | `#0d1f10` | `130 41% 9%` |
+| `--card-foreground` | `#08160a` | `129 47% 6%` | `#e8f5ea` | `129 39% 94%` |
+| `--primary` | `#2c6d34` | `127 42% 30%` | `#86d0af` | `153 44% 67%` |
+| `--primary-foreground` | `#f4fbf5` | `129 47% 97%` | `#08160a` | `129 47% 6%` |
+| `--secondary` | `#86d0af` | `153 44% 67%` | `#2c6d34` | `127 42% 30%` |
+| `--secondary-foreground` | `#08160a` | `129 47% 6%` | `#e8f5ea` | `129 39% 94%` |
+| `--accent` | `#42a980` | `156 44% 46%` | `#42a980` | `156 44% 46%` |
+| `--accent-foreground` | `#08160a` | `129 47% 6%` | `#08160a` | `129 47% 6%` |
+| `--muted` | `#e6f2e8` | `130 32% 93%` | `#1a2e1d` | `129 28% 14%` |
+| `--muted-foreground` | `#4b5e4e` | `129 11% 33%` | `#a6b8a8` | `127 11% 69%` |
+| `--border` / `--input` | `#6f8a72` | `127 11% 49%` | `#5f7f63` | `128 14% 44%` |
+| `--border-subtle` | `#d5e8d8` | `129 29% 87%` | n/a | n/a |
+| `--ring` | `#2c6d34` | `127 42% 30%` | `#86d0af` | `153 44% 67%` |
+| `--destructive` | `#b42332` | `354 67% 42%` | `#ff9ca7` | `353 100% 81%` |
+| `--destructive-foreground` | `#ffffff` | `0 0% 100%` | `#08160a` | `129 47% 6%` |
+| success | `#146B43` | (from original) | `#78DDAA` | (from original) |
+| warning | `#805000` | (from original) | `#FFD48A` | (from original) |
 
-Use a system sans-serif stack initially; optionally self-host a licensed Inter family. Use a Devanagari-capable fallback for Hindi. Body text 16px with 1.5–1.6 line height; compact labels 13–14px; headings 20/24/32px. Keep chat prose to roughly 65–75 characters per line. Code/data use a monospace fallback. Font customization must preserve minimum readability.
+Measure text/control contrast in the actual implementation. Light primary buttons use `#2c6d34` with `#f4fbf5` text; dark primary buttons use `#86d0af` with `#08160a` text. Never put white text on the accent `#42a980` color. Do not assume every token pairing meets contrast requirements. State is conveyed with words/icons as well as color.
+
+Use the Karmi designated fonts: **Exo** (primary/display), **Proza Libre** (secondary/body), and **Trykker** (tertiary/accent). Use `Noto Sans/Serif Devanagari` as fallback for Hindi. Body text 16px with 1.5–1.6 line height; compact labels 13–14px; headings 20/24/32px. Keep chat prose to roughly 65–75 characters per line. Code/data use a monospace fallback. Font customization must preserve minimum readability.
 
 Spacing: 4, 8, 12, 16, 24, 32, 48px. Control radius 10px; cards 14px. Mobile touch targets at least 44px, preferably 48px. Visible focus outline and reduced-motion support; subtle 120–180ms state transitions only. Text scaling to 200%, keyboard-only use and screen-reader labels are acceptance gates.
 

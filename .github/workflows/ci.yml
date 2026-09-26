@@ -33,3 +33,30 @@ jobs:
         run: python scripts/tasks.py benchmark-demo
       - name: Integration tests (disposable Postgres/Redis)
         run: python scripts/tasks.py test-integration
+
+  mobile-checks:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.5"
+          channel: "stable"
+      - name: Install dependencies
+        working-directory: ./mobile
+        run: flutter pub get
+      - name: Format
+        working-directory: ./mobile
+        run: dart format --output=none --set-exit-if-changed .
+      - name: Analyze
+        working-directory: ./mobile
+        run: flutter analyze
+      - name: Test
+        working-directory: ./mobile
+        run: flutter test
+      - name: Build Android
+        working-directory: ./mobile
+        run: flutter build appbundle --release
+      - name: Build iOS
+        working-directory: ./mobile
+        run: flutter build ipa --release --no-codesign
