@@ -127,14 +127,14 @@ PLAN_TO_TIER: dict[str, int] = {
     "ananta": 1,
     "yanta": 2,
     "trika": 3,
-    "part": 4,
+    "parth": 4,
 }
 
 TIER_TO_PLAN: dict[int, str] = {
     1: "ananta",
     2: "yanta",
     3: "trika",
-    4: "part",
+    4: "parth",
 }
 
 

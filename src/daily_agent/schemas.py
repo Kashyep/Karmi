@@ -90,6 +90,6 @@ ARMORY_TIERS: tuple[ArmoryTier, ...] = (
     ArmoryTier(id=1, key="ananta", label="Ananta", plan_id="ananta"),
     ArmoryTier(id=2, key="yanta", label="Yanta", plan_id="yanta"),
     ArmoryTier(id=3, key="trika", label="Trika", plan_id="trika"),
-    ArmoryTier(id=4, key="parth", label="Parth", plan_id="part"),
+    ArmoryTier(id=4, key="parth", label="Parth", plan_id="parth"),
 )
 
