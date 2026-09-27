@@ -43,7 +43,7 @@ class StatusChip extends StatelessWidget {
 
   static Color toneColor(KarmiColors colors, StatusTone tone) => switch (tone) {
     StatusTone.success => colors.success,
-    StatusTone.info => colors.primary,
+    StatusTone.info => colors.primaryText,
     StatusTone.warning => colors.warning,
     StatusTone.danger => colors.destructive,
     StatusTone.neutral => colors.mutedForeground,

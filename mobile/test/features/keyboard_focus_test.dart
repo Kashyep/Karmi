@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/theme/karmi_colors.dart';
 
 import '../support/harness.dart';
@@ -15,7 +16,7 @@ import '../support/harness.dart';
 
 /// Counts pixels within [rect] (logical px, DPR 1) close to the ring colour.
 Future<int> ringPixels(WidgetTester tester, Rect rect) async {
-  final ring = KarmiColors.light.ring;
+  final ring = KarmiColors.forTier(KarmiTier.ananta, Brightness.light).ring;
   final image = await captureImage(tester.element(find.byType(MaterialApp)));
   final bytes = (await tester.runAsync(
     () => image.toByteData(format: ui.ImageByteFormat.rawRgba),

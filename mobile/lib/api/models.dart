@@ -1,6 +1,8 @@
 /// Wire models mirroring `src/daily_agent/schemas.py`.
 library;
 
+import '../theme/karmi_tier.dart';
+
 /// `schemas.Outcome`. Unknown wire values parse to [Outcome.unknown] instead of throwing.
 enum Outcome {
   accept('ACCEPT'),
@@ -123,4 +125,26 @@ class TaskView {
   final String id;
   final String title;
   final bool completed;
+}
+
+/// `GET /v1/armory` (API-002): progression is server-authoritative.
+class ArmoryView {
+  const ArmoryView({required this.unlockedTier, required this.activeTheme});
+
+  /// Throws [FormatException] when either tier is not an integer 1–4.
+  factory ArmoryView.fromJson(Map<String, dynamic> json) {
+    final unlocked = KarmiTier.fromId(json['unlocked_tier']);
+    final active = KarmiTier.fromId(json['active_theme']);
+    if (unlocked == null || active == null) {
+      throw const FormatException('armory tiers must be integers 1-4');
+    }
+    // The server enforces active <= unlocked; clamp defensively anyway.
+    return ArmoryView(
+      unlockedTier: unlocked,
+      activeTheme: active > unlocked ? unlocked : active,
+    );
+  }
+
+  final KarmiTier unlockedTier;
+  final KarmiTier activeTheme;
 }

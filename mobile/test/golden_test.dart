@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/api/models.dart';
 import 'package:karmi_app/features/plans/plan_selection_screen.dart';
 import 'package:karmi_app/features/tasks/task_confirmation_sheet.dart';
@@ -129,6 +130,60 @@ void main() {
     });
   }
 
+  // The 8 tier × mode combinations: chat (glass chrome over content, accent
+  // CTA, user bubble) and the Armory (locked cards, preview banner).
+  for (final tier in KarmiTier.values) {
+    for (final brightness in Brightness.values) {
+      final env = Env(tier: tier, brightness: brightness);
+      group('tier ${env.name}', () {
+        testWidgets('chat', (tester) async {
+          await pumpApp(
+            tester,
+            env: env,
+            backend: FakeBackend.healthy(unlocked: tier, active: tier)
+              ..on(
+                'POST',
+                '/v1/messages',
+                (_) => jsonResponse(
+                  messageJson('ACCEPT', response: 'Draft ready: plan the week'),
+                ),
+              ),
+          );
+          await tester.enterText(find.byType(TextField), 'Plan my week');
+          await tester.pump();
+          await tester.tap(find.byTooltip('Send message'));
+          await fontsReady(tester);
+          await tester.enterText(find.byType(TextField), 'Next');
+          await fontsReady(tester);
+          await expectLater(
+            find.byType(MaterialApp),
+            matchesGoldenFile(goldenPath('tier_chat_${env.name}')),
+          );
+        });
+
+        testWidgets('armory', (tester) async {
+          await pumpApp(
+            tester,
+            env: env,
+            size: const Size(412, 1700),
+            backend: FakeBackend.healthy(
+              unlocked: tier == KarmiTier.parth ? tier : KarmiTier.trika,
+              active: tier,
+            ),
+          );
+          await tester.tap(find.byTooltip('More options'));
+          await fontsReady(tester);
+          await tester.tap(find.text('Armory').last);
+          await fontsReady(tester);
+          await expectLater(
+            find.byType(MaterialApp),
+            matchesGoldenFile(goldenPath('tier_armory_${env.name}')),
+          );
+        });
+      });
+    }
+  }
+
   // §5.1 legibility floor: label text on glass over the worst-case backdrop
   // (pure white behind light glass, #08160a behind dark glass).
   for (final brightness in Brightness.values) {
@@ -137,7 +192,7 @@ void main() {
       (tester) async {
         final backdrop = brightness == Brightness.light
             ? const Color(0xFFFFFFFF)
-            : KarmiColors.dark.background;
+            : KarmiColors.forTier(KarmiTier.ananta, Brightness.dark).background;
         await pumpHost(
           tester,
           ColoredBox(

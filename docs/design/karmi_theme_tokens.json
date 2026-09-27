@@ -1,0 +1,2277 @@
+{
+  "source": "docs/design/karmi_tier_color_palettes.md",
+  "palettes": {
+    "ananta": {
+      "accent": "#66C796",
+      "base": "#1E422C",
+      "light": "#F2F7F4",
+      "dark": "#0B1A11",
+      "text": "#050806"
+    },
+    "yanta": {
+      "accent": "#00D4FF",
+      "base": "#1A365D",
+      "light": "#F4F6F9",
+      "dark": "#0A111C",
+      "text": "#8BA2C4"
+    },
+    "trika": {
+      "accent": "#FF5722",
+      "base": "#8C3B20",
+      "light": "#FCF8F5",
+      "dark": "#171210",
+      "text": "#E0D4CD"
+    },
+    "parth": {
+      "accent": "#D4AF37",
+      "secondary_accent": "#9B4F96",
+      "light": "#FFFFFF",
+      "dark": "#000000",
+      "text": "#1A1A1A"
+    }
+  },
+  "tokens": {
+    "ananta": {
+      "light": {
+        "background": "#F2F7F4",
+        "foreground": "#050806",
+        "card": "#FFFFFF",
+        "cardForeground": "#050806",
+        "primary": "#66C796",
+        "primaryForeground": "#050806",
+        "primaryText": "#1E422C",
+        "secondary": "#C1E6D3",
+        "secondaryForeground": "#050806",
+        "accent": "#1E422C",
+        "accentForeground": "#F2F7F4",
+        "muted": "#E5ECE8",
+        "mutedForeground": "#676B68",
+        "border": "#838785",
+        "borderSubtle": "#DADFDC",
+        "ring": "#1E422C",
+        "destructive": "#B42332",
+        "destructiveForeground": "#FFFFFF",
+        "success": "#146B43",
+        "warning": "#805000",
+        "header": "#1E422C",
+        "glassBase": "#F6F7F7",
+        "glassBorder": "#050806",
+        "glassHighlight": "#FFFFFF",
+        "_glassAlpha": "0.72",
+        "_glassBorderAlpha": "0.1",
+        "_glassHighlightAlpha": "0.55"
+      },
+      "dark": {
+        "background": "#0B1A11",
+        "foreground": "#F2F7F4",
+        "card": "#12291B",
+        "cardForeground": "#F2F7F4",
+        "primary": "#66C796",
+        "primaryForeground": "#0B1A11",
+        "primaryText": "#66C796",
+        "secondary": "#1E422C",
+        "secondaryForeground": "#F2F7F4",
+        "accent": "#1E422C",
+        "accentForeground": "#F2F7F4",
+        "muted": "#112619",
+        "mutedForeground": "#969F99",
+        "border": "#737D77",
+        "borderSubtle": "#2B3931",
+        "ring": "#66C796",
+        "destructive": "#FF9CA7",
+        "destructiveForeground": "#0B1A11",
+        "success": "#78DDAA",
+        "warning": "#FFD48A",
+        "header": "#1E422C",
+        "glassBase": "#132C1D",
+        "glassBorder": "#FFFFFF",
+        "glassHighlight": "#FFFFFF",
+        "_glassAlpha": "0.78",
+        "_glassBorderAlpha": "0.1",
+        "_glassHighlightAlpha": "0.14"
+      }
+    },
+    "yanta": {
+      "light": {
+        "background": "#F4F6F9",
+        "foreground": "#0A111C",
+        "card": "#FFFFFF",
+        "cardForeground": "#0A111C",
+        "primary": "#00D4FF",
+        "primaryForeground": "#0A111C",
+        "primaryText": "#1A365D",
+        "secondary": "#9FEAFB",
+        "secondaryForeground": "#0A111C",
+        "accent": "#1A365D",
+        "accentForeground": "#F4F6F9",
+        "muted": "#E7EAF0",
+        "mutedForeground": "#646A71",
+        "border": "#82868D",
+        "borderSubtle": "#DDDFE3",
+        "ring": "#1A365D",
+        "destructive": "#B42332",
+        "destructiveForeground": "#FFFFFF",
+        "success": "#146B43",
+        "warning": "#805000",
+        "header": "#1A365D",
+        "glassBase": "#F6F7F9",
+        "glassBorder": "#0A111C",
+        "glassHighlight": "#FFFFFF",
+        "_glassAlpha": "0.72",
+        "_glassBorderAlpha": "0.1",
+        "_glassHighlightAlpha": "0.55"
+      },
+      "dark": {
+        "background": "#0A111C",
+        "foreground": "#F4F6F9",
+        "card": "#102036",
+        "cardForeground": "#F4F6F9",
+        "primary": "#00D4FF",
+        "primaryForeground": "#0A111C",
+        "primaryText": "#00D4FF",
+        "secondary": "#1A365D",
+        "secondaryForeground": "#F4F6F9",
+        "accent": "#1A365D",
+        "accentForeground": "#F4F6F9",
+        "muted": "#0F1C30",
+        "mutedForeground": "#8BA2C4",
+        "border": "#8BA2C4",
+        "borderSubtle": "#2B313B",
+        "ring": "#00D4FF",
+        "destructive": "#FF9CA7",
+        "destructiveForeground": "#0A111C",
+        "success": "#78DDAA",
+        "warning": "#FFD48A",
+        "header": "#1A365D",
+        "glassBase": "#11223A",
+        "glassBorder": "#FFFFFF",
+        "glassHighlight": "#FFFFFF",
+        "_glassAlpha": "0.78",
+        "_glassBorderAlpha": "0.1",
+        "_glassHighlightAlpha": "0.14"
+      }
+    },
+    "trika": {
+      "light": {
+        "background": "#FCF8F5",
+        "foreground": "#171210",
+        "card": "#FFFFFF",
+        "cardForeground": "#171210",
+        "primary": "#FF5722",
+        "primaryForeground": "#171210",
+        "primaryText": "#8C3B20",
+        "secondary": "#FDC0AB",
+        "secondaryForeground": "#171210",
+        "accent": "#8C3B20",
+        "accentForeground": "#FCF8F5",
+        "muted": "#F5EDE8",
+        "mutedForeground": "#706B69",
+        "border": "#8C8885",
+        "borderSubtle": "#E5E1DE",
+        "ring": "#8C3B20",
+        "destructive": "#B42332",
+        "destructiveForeground": "#FFFFFF",
+        "success": "#146B43",
+        "warning": "#805000",
+        "header": "#8C3B20",
+        "glassBase": "#FAF7F6",
+        "glassBorder": "#171210",
+        "glassHighlight": "#FFFFFF",
+        "_glassAlpha": "0.72",
+        "_glassBorderAlpha": "0.1",
+        "_glassHighlightAlpha": "0.55"
+      },
+      "dark": {
+        "background": "#171210",
+        "foreground": "#FCF8F5",
+        "card": "#331C14",
+        "cardForeground": "#FCF8F5",
+        "primary": "#FF5722",
+        "primaryForeground": "#171210",
+        "primaryText": "#FF5722",
+        "secondary": "#8C3B20",
+        "secondaryForeground": "#FCF8F5",
+        "accent": "#8C3B20",
+        "accentForeground": "#FCF8F5",
+        "muted": "#3A1E15",
+        "mutedForeground": "#E0D4CD",
+        "border": "#E0D4CD",
+        "borderSubtle": "#373230",
+        "ring": "#FF5722",
+        "destructive": "#FF9CA7",
+        "destructiveForeground": "#171210",
+        "success": "#78DDAA",
+        "warning": "#FFD48A",
+        "header": "#8C3B20",
+        "glassBase": "#3C1F15",
+        "glassBorder": "#FFFFFF",
+        "glassHighlight": "#FFFFFF",
+        "_glassAlpha": "0.78",
+        "_glassBorderAlpha": "0.1",
+        "_glassHighlightAlpha": "0.14"
+      }
+    },
+    "parth": {
+      "light": {
+        "background": "#FFFFFF",
+        "foreground": "#1A1A1A",
+        "card": "#FFFFFF",
+        "cardForeground": "#1A1A1A",
+        "primary": "#D4AF37",
+        "primaryForeground": "#1A1A1A",
+        "primaryText": "#86702B",
+        "secondary": "#F0E3B9",
+        "secondaryForeground": "#1A1A1A",
+        "accent": "#9B4F96",
+        "accentForeground": "#FFFFFF",
+        "muted": "#FCFAF3",
+        "mutedForeground": "#737373",
+        "border": "#909090",
+        "borderSubtle": "#E8E8E8",
+        "ring": "#86702B",
+        "destructive": "#B42332",
+        "destructiveForeground": "#FFFFFF",
+        "success": "#146B43",
+        "warning": "#805000",
+        "header": "#1A1A1A",
+        "glassBase": "#F6F6F6",
+        "glassBorder": "#1A1A1A",
+        "glassHighlight": "#FFFFFF",
+        "_glassAlpha": "0.72",
+        "_glassBorderAlpha": "0.1",
+        "_glassHighlightAlpha": "0.55"
+      },
+      "dark": {
+        "background": "#000000",
+        "foreground": "#FFFFFF",
+        "card": "#161616",
+        "cardForeground": "#FFFFFF",
+        "primary": "#D4AF37",
+        "primaryForeground": "#000000",
+        "primaryText": "#D4AF37",
+        "secondary": "#9B4F96",
+        "secondaryForeground": "#FFFFFF",
+        "accent": "#9B4F96",
+        "accentForeground": "#FFFFFF",
+        "muted": "#1C0E1B",
+        "mutedForeground": "#999999",
+        "border": "#737373",
+        "borderSubtle": "#242424",
+        "ring": "#D4AF37",
+        "destructive": "#FF9CA7",
+        "destructiveForeground": "#000000",
+        "success": "#78DDAA",
+        "warning": "#FFD48A",
+        "header": "#161616",
+        "glassBase": "#161616",
+        "glassBorder": "#FFFFFF",
+        "glassHighlight": "#FFFFFF",
+        "_glassAlpha": "0.78",
+        "_glassBorderAlpha": "0.1",
+        "_glassHighlightAlpha": "0.14"
+      }
+    }
+  },
+  "audit": {
+    "ananta-light": [
+      {
+        "pair": "foreground on background",
+        "fg": "#050806",
+        "bg": "#F2F7F4",
+        "ratio": 18.57,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on background",
+        "fg": "#676B68",
+        "bg": "#F2F7F4",
+        "ratio": 5.0,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on background",
+        "fg": "#1E422C",
+        "bg": "#F2F7F4",
+        "ratio": 10.36,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on background",
+        "fg": "#B42332",
+        "bg": "#F2F7F4",
+        "ratio": 6.01,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on background",
+        "fg": "#146B43",
+        "bg": "#F2F7F4",
+        "ratio": 6.03,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on background",
+        "fg": "#805000",
+        "bg": "#F2F7F4",
+        "ratio": 6.32,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on card",
+        "fg": "#050806",
+        "bg": "#FFFFFF",
+        "ratio": 20.12,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on card",
+        "fg": "#676B68",
+        "bg": "#FFFFFF",
+        "ratio": 5.41,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on card",
+        "fg": "#1E422C",
+        "bg": "#FFFFFF",
+        "ratio": 11.22,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on card",
+        "fg": "#B42332",
+        "bg": "#FFFFFF",
+        "ratio": 6.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on card",
+        "fg": "#146B43",
+        "bg": "#FFFFFF",
+        "ratio": 6.53,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on card",
+        "fg": "#805000",
+        "bg": "#FFFFFF",
+        "ratio": 6.85,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on muted",
+        "fg": "#050806",
+        "bg": "#E5ECE8",
+        "ratio": 16.76,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on muted",
+        "fg": "#676B68",
+        "bg": "#E5ECE8",
+        "ratio": 4.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on muted",
+        "fg": "#1E422C",
+        "bg": "#E5ECE8",
+        "ratio": 9.35,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on muted",
+        "fg": "#B42332",
+        "bg": "#E5ECE8",
+        "ratio": 5.42,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on muted",
+        "fg": "#146B43",
+        "bg": "#E5ECE8",
+        "ratio": 5.44,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on muted",
+        "fg": "#805000",
+        "bg": "#E5ECE8",
+        "ratio": 5.71,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryForeground on primary",
+        "fg": "#050806",
+        "bg": "#66C796",
+        "ratio": 9.75,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "secondaryForeground on secondary",
+        "fg": "#050806",
+        "bg": "#C1E6D3",
+        "ratio": 14.88,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "accentForeground on accent",
+        "fg": "#F2F7F4",
+        "bg": "#1E422C",
+        "ratio": 10.36,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructiveForeground on destructive",
+        "fg": "#FFFFFF",
+        "bg": "#B42332",
+        "ratio": 6.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "border on background",
+        "fg": "#838785",
+        "bg": "#F2F7F4",
+        "ratio": 3.36,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "border on card",
+        "fg": "#838785",
+        "bg": "#FFFFFF",
+        "ratio": 3.64,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on background",
+        "fg": "#1E422C",
+        "bg": "#F2F7F4",
+        "ratio": 10.36,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on card",
+        "fg": "#1E422C",
+        "bg": "#FFFFFF",
+        "ratio": 11.22,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over background",
+        "fg": "#050806",
+        "bg": "#F5F7F6",
+        "ratio": 18.7,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over card",
+        "fg": "#050806",
+        "bg": "#F9F9F9",
+        "ratio": 19.11,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over primary",
+        "fg": "#050806",
+        "bg": "#CEEADC",
+        "ratio": 15.74,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over secondary",
+        "fg": "#050806",
+        "bg": "#E7F2ED",
+        "ratio": 17.55,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over foreground",
+        "fg": "#050806",
+        "bg": "#B3B4B4",
+        "ratio": 9.68,
+        "min": 4.5,
+        "pass": true
+      }
+    ],
+    "ananta-dark": [
+      {
+        "pair": "foreground on background",
+        "fg": "#F2F7F4",
+        "bg": "#0B1A11",
+        "ratio": 16.57,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on background",
+        "fg": "#969F99",
+        "bg": "#0B1A11",
+        "ratio": 6.59,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on background",
+        "fg": "#66C796",
+        "bg": "#0B1A11",
+        "ratio": 8.7,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on background",
+        "fg": "#FF9CA7",
+        "bg": "#0B1A11",
+        "ratio": 9.03,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on background",
+        "fg": "#78DDAA",
+        "bg": "#0B1A11",
+        "ratio": 10.87,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on background",
+        "fg": "#FFD48A",
+        "bg": "#0B1A11",
+        "ratio": 12.85,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on card",
+        "fg": "#F2F7F4",
+        "bg": "#12291B",
+        "ratio": 14.27,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on card",
+        "fg": "#969F99",
+        "bg": "#12291B",
+        "ratio": 5.68,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on card",
+        "fg": "#66C796",
+        "bg": "#12291B",
+        "ratio": 7.49,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on card",
+        "fg": "#FF9CA7",
+        "bg": "#12291B",
+        "ratio": 7.78,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on card",
+        "fg": "#78DDAA",
+        "bg": "#12291B",
+        "ratio": 9.36,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on card",
+        "fg": "#FFD48A",
+        "bg": "#12291B",
+        "ratio": 11.07,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on muted",
+        "fg": "#F2F7F4",
+        "bg": "#112619",
+        "ratio": 14.74,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on muted",
+        "fg": "#969F99",
+        "bg": "#112619",
+        "ratio": 5.87,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on muted",
+        "fg": "#66C796",
+        "bg": "#112619",
+        "ratio": 7.74,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on muted",
+        "fg": "#FF9CA7",
+        "bg": "#112619",
+        "ratio": 8.03,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on muted",
+        "fg": "#78DDAA",
+        "bg": "#112619",
+        "ratio": 9.67,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on muted",
+        "fg": "#FFD48A",
+        "bg": "#112619",
+        "ratio": 11.43,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryForeground on primary",
+        "fg": "#0B1A11",
+        "bg": "#66C796",
+        "ratio": 8.7,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "secondaryForeground on secondary",
+        "fg": "#F2F7F4",
+        "bg": "#1E422C",
+        "ratio": 10.36,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "accentForeground on accent",
+        "fg": "#F2F7F4",
+        "bg": "#1E422C",
+        "ratio": 10.36,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructiveForeground on destructive",
+        "fg": "#0B1A11",
+        "bg": "#FF9CA7",
+        "ratio": 9.03,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "border on background",
+        "fg": "#737D77",
+        "bg": "#0B1A11",
+        "ratio": 4.21,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "border on card",
+        "fg": "#737D77",
+        "bg": "#12291B",
+        "ratio": 3.63,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on background",
+        "fg": "#66C796",
+        "bg": "#0B1A11",
+        "ratio": 8.7,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on card",
+        "fg": "#66C796",
+        "bg": "#12291B",
+        "ratio": 7.49,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over background",
+        "fg": "#F2F7F4",
+        "bg": "#11281A",
+        "ratio": 14.44,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over card",
+        "fg": "#F2F7F4",
+        "bg": "#132B1D",
+        "ratio": 13.94,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over primary",
+        "fg": "#F2F7F4",
+        "bg": "#254E38",
+        "ratio": 8.71,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over secondary",
+        "fg": "#F2F7F4",
+        "bg": "#153120",
+        "ratio": 12.99,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over foreground",
+        "fg": "#F2F7F4",
+        "bg": "#44594C",
+        "ratio": 6.98,
+        "min": 4.5,
+        "pass": true
+      }
+    ],
+    "yanta-light": [
+      {
+        "pair": "foreground on background",
+        "fg": "#0A111C",
+        "bg": "#F4F6F9",
+        "ratio": 17.48,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on background",
+        "fg": "#646A71",
+        "bg": "#F4F6F9",
+        "ratio": 5.05,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on background",
+        "fg": "#1A365D",
+        "bg": "#F4F6F9",
+        "ratio": 11.21,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on background",
+        "fg": "#B42332",
+        "bg": "#F4F6F9",
+        "ratio": 6.01,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on background",
+        "fg": "#146B43",
+        "bg": "#F4F6F9",
+        "ratio": 6.04,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on background",
+        "fg": "#805000",
+        "bg": "#F4F6F9",
+        "ratio": 6.33,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on card",
+        "fg": "#0A111C",
+        "bg": "#FFFFFF",
+        "ratio": 18.92,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on card",
+        "fg": "#646A71",
+        "bg": "#FFFFFF",
+        "ratio": 5.47,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on card",
+        "fg": "#1A365D",
+        "bg": "#FFFFFF",
+        "ratio": 12.14,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on card",
+        "fg": "#B42332",
+        "bg": "#FFFFFF",
+        "ratio": 6.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on card",
+        "fg": "#146B43",
+        "bg": "#FFFFFF",
+        "ratio": 6.53,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on card",
+        "fg": "#805000",
+        "bg": "#FFFFFF",
+        "ratio": 6.85,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on muted",
+        "fg": "#0A111C",
+        "bg": "#E7EAF0",
+        "ratio": 15.7,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on muted",
+        "fg": "#646A71",
+        "bg": "#E7EAF0",
+        "ratio": 4.54,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on muted",
+        "fg": "#1A365D",
+        "bg": "#E7EAF0",
+        "ratio": 10.07,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on muted",
+        "fg": "#B42332",
+        "bg": "#E7EAF0",
+        "ratio": 5.4,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on muted",
+        "fg": "#146B43",
+        "bg": "#E7EAF0",
+        "ratio": 5.42,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on muted",
+        "fg": "#805000",
+        "bg": "#E7EAF0",
+        "ratio": 5.68,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryForeground on primary",
+        "fg": "#0A111C",
+        "bg": "#00D4FF",
+        "ratio": 10.69,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "secondaryForeground on secondary",
+        "fg": "#0A111C",
+        "bg": "#9FEAFB",
+        "ratio": 14.09,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "accentForeground on accent",
+        "fg": "#F4F6F9",
+        "bg": "#1A365D",
+        "ratio": 11.21,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructiveForeground on destructive",
+        "fg": "#FFFFFF",
+        "bg": "#B42332",
+        "ratio": 6.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "border on background",
+        "fg": "#82868D",
+        "bg": "#F4F6F9",
+        "ratio": 3.38,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "border on card",
+        "fg": "#82868D",
+        "bg": "#FFFFFF",
+        "ratio": 3.66,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on background",
+        "fg": "#1A365D",
+        "bg": "#F4F6F9",
+        "ratio": 11.21,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on card",
+        "fg": "#1A365D",
+        "bg": "#FFFFFF",
+        "ratio": 12.14,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over background",
+        "fg": "#0A111C",
+        "bg": "#F5F7F9",
+        "ratio": 17.62,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over card",
+        "fg": "#0A111C",
+        "bg": "#F9F9FB",
+        "ratio": 17.99,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over primary",
+        "fg": "#0A111C",
+        "bg": "#B1EDFB",
+        "ratio": 14.76,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over secondary",
+        "fg": "#0A111C",
+        "bg": "#DEF3FA",
+        "ratio": 16.49,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over foreground",
+        "fg": "#0A111C",
+        "bg": "#B4B7BB",
+        "ratio": 9.4,
+        "min": 4.5,
+        "pass": true
+      }
+    ],
+    "yanta-dark": [
+      {
+        "pair": "foreground on background",
+        "fg": "#F4F6F9",
+        "bg": "#0A111C",
+        "ratio": 17.48,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on background",
+        "fg": "#8BA2C4",
+        "bg": "#0A111C",
+        "ratio": 7.26,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on background",
+        "fg": "#00D4FF",
+        "bg": "#0A111C",
+        "ratio": 10.69,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on background",
+        "fg": "#FF9CA7",
+        "bg": "#0A111C",
+        "ratio": 9.52,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on background",
+        "fg": "#78DDAA",
+        "bg": "#0A111C",
+        "ratio": 11.46,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on background",
+        "fg": "#FFD48A",
+        "bg": "#0A111C",
+        "ratio": 13.55,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on card",
+        "fg": "#F4F6F9",
+        "bg": "#102036",
+        "ratio": 15.13,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on card",
+        "fg": "#8BA2C4",
+        "bg": "#102036",
+        "ratio": 6.29,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on card",
+        "fg": "#00D4FF",
+        "bg": "#102036",
+        "ratio": 9.25,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on card",
+        "fg": "#FF9CA7",
+        "bg": "#102036",
+        "ratio": 8.24,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on card",
+        "fg": "#78DDAA",
+        "bg": "#102036",
+        "ratio": 9.92,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on card",
+        "fg": "#FFD48A",
+        "bg": "#102036",
+        "ratio": 11.73,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on muted",
+        "fg": "#F4F6F9",
+        "bg": "#0F1C30",
+        "ratio": 15.78,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on muted",
+        "fg": "#8BA2C4",
+        "bg": "#0F1C30",
+        "ratio": 6.56,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on muted",
+        "fg": "#00D4FF",
+        "bg": "#0F1C30",
+        "ratio": 9.65,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on muted",
+        "fg": "#FF9CA7",
+        "bg": "#0F1C30",
+        "ratio": 8.6,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on muted",
+        "fg": "#78DDAA",
+        "bg": "#0F1C30",
+        "ratio": 10.35,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on muted",
+        "fg": "#FFD48A",
+        "bg": "#0F1C30",
+        "ratio": 12.23,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryForeground on primary",
+        "fg": "#0A111C",
+        "bg": "#00D4FF",
+        "ratio": 10.69,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "secondaryForeground on secondary",
+        "fg": "#F4F6F9",
+        "bg": "#1A365D",
+        "ratio": 11.21,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "accentForeground on accent",
+        "fg": "#F4F6F9",
+        "bg": "#1A365D",
+        "ratio": 11.21,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructiveForeground on destructive",
+        "fg": "#0A111C",
+        "bg": "#FF9CA7",
+        "ratio": 9.52,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "border on background",
+        "fg": "#8BA2C4",
+        "bg": "#0A111C",
+        "ratio": 7.26,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "border on card",
+        "fg": "#8BA2C4",
+        "bg": "#102036",
+        "ratio": 6.29,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on background",
+        "fg": "#00D4FF",
+        "bg": "#0A111C",
+        "ratio": 10.69,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on card",
+        "fg": "#00D4FF",
+        "bg": "#102036",
+        "ratio": 9.25,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over background",
+        "fg": "#F4F6F9",
+        "bg": "#0F1E33",
+        "ratio": 15.47,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over card",
+        "fg": "#F4F6F9",
+        "bg": "#112239",
+        "ratio": 14.79,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over primary",
+        "fg": "#F4F6F9",
+        "bg": "#0D4965",
+        "ratio": 8.99,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over secondary",
+        "fg": "#F4F6F9",
+        "bg": "#132642",
+        "ratio": 14.02,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over foreground",
+        "fg": "#F4F6F9",
+        "bg": "#435164",
+        "ratio": 7.46,
+        "min": 4.5,
+        "pass": true
+      }
+    ],
+    "trika-light": [
+      {
+        "pair": "foreground on background",
+        "fg": "#171210",
+        "bg": "#FCF8F5",
+        "ratio": 17.59,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on background",
+        "fg": "#706B69",
+        "bg": "#FCF8F5",
+        "ratio": 4.98,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on background",
+        "fg": "#8C3B20",
+        "bg": "#FCF8F5",
+        "ratio": 7.2,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on background",
+        "fg": "#B42332",
+        "bg": "#FCF8F5",
+        "ratio": 6.16,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on background",
+        "fg": "#146B43",
+        "bg": "#FCF8F5",
+        "ratio": 6.19,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on background",
+        "fg": "#805000",
+        "bg": "#FCF8F5",
+        "ratio": 6.49,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on card",
+        "fg": "#171210",
+        "bg": "#FFFFFF",
+        "ratio": 18.58,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on card",
+        "fg": "#706B69",
+        "bg": "#FFFFFF",
+        "ratio": 5.26,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on card",
+        "fg": "#8C3B20",
+        "bg": "#FFFFFF",
+        "ratio": 7.6,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on card",
+        "fg": "#B42332",
+        "bg": "#FFFFFF",
+        "ratio": 6.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on card",
+        "fg": "#146B43",
+        "bg": "#FFFFFF",
+        "ratio": 6.53,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on card",
+        "fg": "#805000",
+        "bg": "#FFFFFF",
+        "ratio": 6.85,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on muted",
+        "fg": "#171210",
+        "bg": "#F5EDE8",
+        "ratio": 16.07,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on muted",
+        "fg": "#706B69",
+        "bg": "#F5EDE8",
+        "ratio": 4.54,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on muted",
+        "fg": "#8C3B20",
+        "bg": "#F5EDE8",
+        "ratio": 6.58,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on muted",
+        "fg": "#B42332",
+        "bg": "#F5EDE8",
+        "ratio": 5.63,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on muted",
+        "fg": "#146B43",
+        "bg": "#F5EDE8",
+        "ratio": 5.65,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on muted",
+        "fg": "#805000",
+        "bg": "#F5EDE8",
+        "ratio": 5.92,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryForeground on primary",
+        "fg": "#171210",
+        "bg": "#FF5722",
+        "ratio": 5.87,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "secondaryForeground on secondary",
+        "fg": "#171210",
+        "bg": "#FDC0AB",
+        "ratio": 11.77,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "accentForeground on accent",
+        "fg": "#FCF8F5",
+        "bg": "#8C3B20",
+        "ratio": 7.2,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructiveForeground on destructive",
+        "fg": "#FFFFFF",
+        "bg": "#B42332",
+        "ratio": 6.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "border on background",
+        "fg": "#8C8885",
+        "bg": "#FCF8F5",
+        "ratio": 3.33,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "border on card",
+        "fg": "#8C8885",
+        "bg": "#FFFFFF",
+        "ratio": 3.51,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on background",
+        "fg": "#8C3B20",
+        "bg": "#FCF8F5",
+        "ratio": 7.2,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on card",
+        "fg": "#8C3B20",
+        "bg": "#FFFFFF",
+        "ratio": 7.6,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over background",
+        "fg": "#171210",
+        "bg": "#FBF7F6",
+        "ratio": 17.46,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over card",
+        "fg": "#171210",
+        "bg": "#FBF9F9",
+        "ratio": 17.71,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over primary",
+        "fg": "#171210",
+        "bg": "#FBCABB",
+        "ratio": 12.62,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over secondary",
+        "fg": "#171210",
+        "bg": "#FBE8E1",
+        "ratio": 15.69,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over foreground",
+        "fg": "#171210",
+        "bg": "#BAB7B6",
+        "ratio": 9.32,
+        "min": 4.5,
+        "pass": true
+      }
+    ],
+    "trika-dark": [
+      {
+        "pair": "foreground on background",
+        "fg": "#FCF8F5",
+        "bg": "#171210",
+        "ratio": 17.59,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on background",
+        "fg": "#E0D4CD",
+        "bg": "#171210",
+        "ratio": 12.8,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on background",
+        "fg": "#FF5722",
+        "bg": "#171210",
+        "ratio": 5.87,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on background",
+        "fg": "#FF9CA7",
+        "bg": "#171210",
+        "ratio": 9.35,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on background",
+        "fg": "#78DDAA",
+        "bg": "#171210",
+        "ratio": 11.25,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on background",
+        "fg": "#FFD48A",
+        "bg": "#171210",
+        "ratio": 13.3,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on card",
+        "fg": "#FCF8F5",
+        "bg": "#331C14",
+        "ratio": 15.1,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on card",
+        "fg": "#E0D4CD",
+        "bg": "#331C14",
+        "ratio": 10.99,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on card",
+        "fg": "#FF5722",
+        "bg": "#331C14",
+        "ratio": 5.04,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on card",
+        "fg": "#FF9CA7",
+        "bg": "#331C14",
+        "ratio": 8.02,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on card",
+        "fg": "#78DDAA",
+        "bg": "#331C14",
+        "ratio": 9.66,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on card",
+        "fg": "#FFD48A",
+        "bg": "#331C14",
+        "ratio": 11.42,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on muted",
+        "fg": "#FCF8F5",
+        "bg": "#3A1E15",
+        "ratio": 14.45,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on muted",
+        "fg": "#E0D4CD",
+        "bg": "#3A1E15",
+        "ratio": 10.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on muted",
+        "fg": "#FF5722",
+        "bg": "#3A1E15",
+        "ratio": 4.82,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on muted",
+        "fg": "#FF9CA7",
+        "bg": "#3A1E15",
+        "ratio": 7.68,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on muted",
+        "fg": "#78DDAA",
+        "bg": "#3A1E15",
+        "ratio": 9.24,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on muted",
+        "fg": "#FFD48A",
+        "bg": "#3A1E15",
+        "ratio": 10.92,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryForeground on primary",
+        "fg": "#171210",
+        "bg": "#FF5722",
+        "ratio": 5.87,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "secondaryForeground on secondary",
+        "fg": "#FCF8F5",
+        "bg": "#8C3B20",
+        "ratio": 7.2,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "accentForeground on accent",
+        "fg": "#FCF8F5",
+        "bg": "#8C3B20",
+        "ratio": 7.2,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructiveForeground on destructive",
+        "fg": "#171210",
+        "bg": "#FF9CA7",
+        "ratio": 9.35,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "border on background",
+        "fg": "#E0D4CD",
+        "bg": "#171210",
+        "ratio": 12.8,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "border on card",
+        "fg": "#E0D4CD",
+        "bg": "#331C14",
+        "ratio": 10.99,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on background",
+        "fg": "#FF5722",
+        "bg": "#171210",
+        "ratio": 5.87,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on card",
+        "fg": "#FF5722",
+        "bg": "#331C14",
+        "ratio": 5.04,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over background",
+        "fg": "#FCF8F5",
+        "bg": "#341C14",
+        "ratio": 15.04,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over card",
+        "fg": "#FCF8F5",
+        "bg": "#3A1E15",
+        "ratio": 14.45,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over primary",
+        "fg": "#FCF8F5",
+        "bg": "#672B18",
+        "ratio": 10.27,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over secondary",
+        "fg": "#FCF8F5",
+        "bg": "#4E2517",
+        "ratio": 12.42,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over foreground",
+        "fg": "#FCF8F5",
+        "bg": "#664F46",
+        "ratio": 7.17,
+        "min": 4.5,
+        "pass": true
+      }
+    ],
+    "parth-light": [
+      {
+        "pair": "foreground on background",
+        "fg": "#1A1A1A",
+        "bg": "#FFFFFF",
+        "ratio": 17.4,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on background",
+        "fg": "#737373",
+        "bg": "#FFFFFF",
+        "ratio": 4.74,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on background",
+        "fg": "#86702B",
+        "bg": "#FFFFFF",
+        "ratio": 4.81,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on background",
+        "fg": "#B42332",
+        "bg": "#FFFFFF",
+        "ratio": 6.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on background",
+        "fg": "#146B43",
+        "bg": "#FFFFFF",
+        "ratio": 6.53,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on background",
+        "fg": "#805000",
+        "bg": "#FFFFFF",
+        "ratio": 6.85,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on card",
+        "fg": "#1A1A1A",
+        "bg": "#FFFFFF",
+        "ratio": 17.4,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on card",
+        "fg": "#737373",
+        "bg": "#FFFFFF",
+        "ratio": 4.74,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on card",
+        "fg": "#86702B",
+        "bg": "#FFFFFF",
+        "ratio": 4.81,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on card",
+        "fg": "#B42332",
+        "bg": "#FFFFFF",
+        "ratio": 6.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on card",
+        "fg": "#146B43",
+        "bg": "#FFFFFF",
+        "ratio": 6.53,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on card",
+        "fg": "#805000",
+        "bg": "#FFFFFF",
+        "ratio": 6.85,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on muted",
+        "fg": "#1A1A1A",
+        "bg": "#FCFAF3",
+        "ratio": 16.66,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on muted",
+        "fg": "#737373",
+        "bg": "#FCFAF3",
+        "ratio": 4.54,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on muted",
+        "fg": "#86702B",
+        "bg": "#FCFAF3",
+        "ratio": 4.61,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on muted",
+        "fg": "#B42332",
+        "bg": "#FCFAF3",
+        "ratio": 6.23,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on muted",
+        "fg": "#146B43",
+        "bg": "#FCFAF3",
+        "ratio": 6.26,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on muted",
+        "fg": "#805000",
+        "bg": "#FCFAF3",
+        "ratio": 6.56,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryForeground on primary",
+        "fg": "#1A1A1A",
+        "bg": "#D4AF37",
+        "ratio": 8.28,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "secondaryForeground on secondary",
+        "fg": "#1A1A1A",
+        "bg": "#F0E3B9",
+        "ratio": 13.59,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "accentForeground on accent",
+        "fg": "#FFFFFF",
+        "bg": "#9B4F96",
+        "ratio": 5.31,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructiveForeground on destructive",
+        "fg": "#FFFFFF",
+        "bg": "#B42332",
+        "ratio": 6.51,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "border on background",
+        "fg": "#909090",
+        "bg": "#FFFFFF",
+        "ratio": 3.19,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "border on card",
+        "fg": "#909090",
+        "bg": "#FFFFFF",
+        "ratio": 3.19,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on background",
+        "fg": "#86702B",
+        "bg": "#FFFFFF",
+        "ratio": 4.81,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on card",
+        "fg": "#86702B",
+        "bg": "#FFFFFF",
+        "ratio": 4.81,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over background",
+        "fg": "#1A1A1A",
+        "bg": "#F9F9F9",
+        "ratio": 16.53,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over card",
+        "fg": "#1A1A1A",
+        "bg": "#F9F9F9",
+        "ratio": 16.53,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over primary",
+        "fg": "#1A1A1A",
+        "bg": "#ECE2C1",
+        "ratio": 13.44,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over secondary",
+        "fg": "#1A1A1A",
+        "bg": "#F4F1E5",
+        "ratio": 15.38,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over foreground",
+        "fg": "#1A1A1A",
+        "bg": "#B8B8B8",
+        "ratio": 8.77,
+        "min": 4.5,
+        "pass": true
+      }
+    ],
+    "parth-dark": [
+      {
+        "pair": "foreground on background",
+        "fg": "#FFFFFF",
+        "bg": "#000000",
+        "ratio": 21.0,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on background",
+        "fg": "#999999",
+        "bg": "#000000",
+        "ratio": 7.37,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on background",
+        "fg": "#D4AF37",
+        "bg": "#000000",
+        "ratio": 9.99,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on background",
+        "fg": "#FF9CA7",
+        "bg": "#000000",
+        "ratio": 10.57,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on background",
+        "fg": "#78DDAA",
+        "bg": "#000000",
+        "ratio": 12.72,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on background",
+        "fg": "#FFD48A",
+        "bg": "#000000",
+        "ratio": 15.04,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on card",
+        "fg": "#FFFFFF",
+        "bg": "#161616",
+        "ratio": 18.1,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on card",
+        "fg": "#999999",
+        "bg": "#161616",
+        "ratio": 6.35,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on card",
+        "fg": "#D4AF37",
+        "bg": "#161616",
+        "ratio": 8.61,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on card",
+        "fg": "#FF9CA7",
+        "bg": "#161616",
+        "ratio": 9.1,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on card",
+        "fg": "#78DDAA",
+        "bg": "#161616",
+        "ratio": 10.96,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on card",
+        "fg": "#FFD48A",
+        "bg": "#161616",
+        "ratio": 12.96,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on muted",
+        "fg": "#FFFFFF",
+        "bg": "#1C0E1B",
+        "ratio": 18.62,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "mutedForeground on muted",
+        "fg": "#999999",
+        "bg": "#1C0E1B",
+        "ratio": 6.53,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryText on muted",
+        "fg": "#D4AF37",
+        "bg": "#1C0E1B",
+        "ratio": 8.85,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructive on muted",
+        "fg": "#FF9CA7",
+        "bg": "#1C0E1B",
+        "ratio": 9.37,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "success on muted",
+        "fg": "#78DDAA",
+        "bg": "#1C0E1B",
+        "ratio": 11.28,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "warning on muted",
+        "fg": "#FFD48A",
+        "bg": "#1C0E1B",
+        "ratio": 13.33,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "primaryForeground on primary",
+        "fg": "#000000",
+        "bg": "#D4AF37",
+        "ratio": 9.99,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "secondaryForeground on secondary",
+        "fg": "#FFFFFF",
+        "bg": "#9B4F96",
+        "ratio": 5.31,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "accentForeground on accent",
+        "fg": "#FFFFFF",
+        "bg": "#9B4F96",
+        "ratio": 5.31,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "destructiveForeground on destructive",
+        "fg": "#000000",
+        "bg": "#FF9CA7",
+        "ratio": 10.57,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "border on background",
+        "fg": "#737373",
+        "bg": "#000000",
+        "ratio": 4.43,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "border on card",
+        "fg": "#737373",
+        "bg": "#161616",
+        "ratio": 3.82,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on background",
+        "fg": "#D4AF37",
+        "bg": "#000000",
+        "ratio": 9.99,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "ring on card",
+        "fg": "#D4AF37",
+        "bg": "#161616",
+        "ratio": 8.61,
+        "min": 3.0,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over background",
+        "fg": "#FFFFFF",
+        "bg": "#111111",
+        "ratio": 18.88,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over card",
+        "fg": "#FFFFFF",
+        "bg": "#161616",
+        "ratio": 18.1,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over primary",
+        "fg": "#FFFFFF",
+        "bg": "#40381D",
+        "ratio": 11.66,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over secondary",
+        "fg": "#FFFFFF",
+        "bg": "#332332",
+        "ratio": 14.71,
+        "min": 4.5,
+        "pass": true
+      },
+      {
+        "pair": "foreground on glass over foreground",
+        "fg": "#FFFFFF",
+        "bg": "#494949",
+        "ratio": 9.0,
+        "min": 4.5,
+        "pass": true
+      }
+    ]
+  }
+}

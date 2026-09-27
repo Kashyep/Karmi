@@ -337,7 +337,7 @@ void main() {
       tester,
     ) async {
       await pumpHost(tester, const PlanSelectionScreen(currentPlanId: 'yanta'));
-      expect(kPlans.map((p) => p.label), ['Ananta', 'Yanta', 'Trika', 'Part']);
+      expect(kPlans.map((p) => p.label), ['Ananta', 'Yanta', 'Trika', 'Parth']);
       expect(kPlans.map((p) => p.everydayLimit), [20, 100, 250, 500]);
       expect(find.text('Current plan'), findsOneWidget);
       expect(find.byType(FilledButton), findsNothing);

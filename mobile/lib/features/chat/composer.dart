@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_glass.dart';
+import '../../theme/karmi_theme.dart';
 
 /// Chat composer: a glass tray (§5.1) holding an opaque text field and a
 /// 48dp send button. Send is disabled while a request is pending.
@@ -39,6 +41,7 @@ class _ComposerState extends State<Composer> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = KarmiColors.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: KarmiGlassSurface(
@@ -64,6 +67,24 @@ class _ComposerState extends State<Composer> {
             const SizedBox(width: 8),
             IconButton.filled(
               tooltip: 'Send message',
+              // Primary CTA: the tier accent with its dark ink; the focus
+              // ring is inset in that ink because --ring can equal the fill.
+              style:
+                  IconButton.styleFrom(
+                    backgroundColor: colors.primary,
+                    foregroundColor: colors.primaryForeground,
+                    disabledBackgroundColor: colors.muted,
+                    disabledForegroundColor: colors.mutedForeground,
+                  ).copyWith(
+                    side: WidgetStateProperty.resolveWith(
+                      (states) => states.contains(WidgetState.focused)
+                          ? BorderSide(
+                              color: colors.primaryForeground,
+                              width: KarmiShape.of(context).focusRingWidth,
+                            )
+                          : null,
+                    ),
+                  ),
               onPressed: _canSend ? _send : null,
               icon: const Icon(Icons.send),
             ),

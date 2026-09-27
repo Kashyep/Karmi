@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'karmi_colors.dart';
+import 'karmi_tier.dart';
 
 /// The only place that calls `GoogleFonts.*` (UI_IMPLEMENTATION_PLAN.md §3.2 step 5).
 ///
@@ -110,20 +111,49 @@ class KarmiShape extends ThemeExtension<KarmiShape> {
       other is KarmiShape && t >= 0.5 ? other : this;
 }
 
+/// The active tier, available to widgets through the theme (the Flutter
+/// counterpart of the plan's `<html data-tier>` root attribute).
+@immutable
+class KarmiTierTheme extends ThemeExtension<KarmiTierTheme> {
+  const KarmiTierTheme(this.tier);
+
+  final KarmiTier tier;
+
+  static KarmiTier of(BuildContext context) =>
+      Theme.of(context).extension<KarmiTierTheme>()?.tier ?? KarmiTier.ananta;
+
+  @override
+  KarmiTierTheme copyWith({KarmiTier? tier}) =>
+      KarmiTierTheme(tier ?? this.tier);
+
+  @override
+  KarmiTierTheme lerp(ThemeExtension<KarmiTierTheme>? other, double t) =>
+      other is KarmiTierTheme && t >= 0.5 ? other : this;
+}
+
 abstract final class KarmiTheme {
-  static ThemeData get light => build(Brightness.light);
-  static ThemeData get dark => build(Brightness.dark);
-  static ThemeData get highContrastLight =>
-      build(Brightness.light, highContrast: true);
-  static ThemeData get highContrastDark =>
-      build(Brightness.dark, highContrast: true);
+  static final Map<(KarmiTier, Brightness, bool), ThemeData> _cache = {};
+
+  /// Theme for one tier × mode (× high contrast). Built once and cached, so a
+  /// tier or mode switch is a constant-time lookup (plan §1.2 "O(1)").
+  static ThemeData of(
+    KarmiTier tier,
+    Brightness brightness, {
+    bool highContrast = false,
+  }) => _cache.putIfAbsent((
+    tier,
+    brightness,
+    highContrast,
+  ), () => build(tier, brightness, highContrast: highContrast));
 
   /// With [highContrast], every border uses the foreground colour and focus
   /// rings grow to 3px (UI_IMPLEMENTATION_PLAN.md §5.2).
-  static ThemeData build(Brightness brightness, {bool highContrast = false}) {
-    final base = brightness == Brightness.light
-        ? KarmiColors.light
-        : KarmiColors.dark;
+  static ThemeData build(
+    KarmiTier tier,
+    Brightness brightness, {
+    bool highContrast = false,
+  }) {
+    final base = KarmiColors.forTier(tier, brightness);
     final colors = highContrast
         ? base.copyWith(border: base.foreground, borderSubtle: base.foreground)
         : base;
@@ -137,8 +167,13 @@ abstract final class KarmiTheme {
 
     final scheme = ColorScheme(
       brightness: brightness,
-      primary: colors.primary,
-      onPrimary: colors.primaryForeground,
+      // Material paints `primary` as text/icons on surfaces (text buttons,
+      // switches, focus), so it is the accessible accent ink; accent *fills*
+      // (filled buttons, user bubble) use KarmiColors.primary explicitly.
+      primary: colors.primaryText,
+      onPrimary: brightness == Brightness.light
+          ? colors.card
+          : colors.primaryForeground,
       primaryContainer: colors.muted,
       onPrimaryContainer: colors.foreground,
       secondary: colors.secondary,
@@ -164,9 +199,10 @@ abstract final class KarmiTheme {
       scrim: Colors.black,
       inverseSurface: colors.foreground,
       onInverseSurface: colors.background,
-      inversePrimary: brightness == Brightness.light
-          ? KarmiColors.dark.primary
-          : KarmiColors.light.primary,
+      inversePrimary: KarmiColors.forTier(
+        tier,
+        brightness == Brightness.light ? Brightness.dark : Brightness.light,
+      ).primaryText,
     );
 
     final text = KarmiTypography.textTheme().apply(
@@ -196,6 +232,7 @@ abstract final class KarmiTheme {
       extensions: [
         colors,
         shape,
+        KarmiTierTheme(tier),
         KarmiText(
           quote: KarmiTypography.quote().copyWith(color: colors.foreground),
           emphasis: KarmiTypography.emphasis().copyWith(
@@ -208,8 +245,19 @@ abstract final class KarmiTheme {
           minimumSize: const WidgetStatePropertyAll(minSize),
           shape: WidgetStatePropertyAll(controlShape),
           textStyle: WidgetStatePropertyAll(text.labelLarge),
-          // --ring equals the --primary fill, so a filled button's focus ring
-          // is an inset ring in --primary-foreground (5.97:1 light, 10.32:1 dark).
+          // Accent fill with its dark ink (never white on accent, §2.4).
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? colors.muted
+                : colors.primary,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? colors.mutedForeground
+                : colors.primaryForeground,
+          ),
+          // The focus ring is inset in --primary-foreground so it contrasts
+          // with the accent fill in every tier.
           side: WidgetStateProperty.resolveWith(
             (states) => states.contains(WidgetState.focused)
                 ? BorderSide(
@@ -320,8 +368,12 @@ abstract final class KarmiTheme {
         backgroundColor: colors.foreground,
         contentTextStyle: text.bodyMedium?.copyWith(color: colors.background),
       ),
+      // Accent on dark canvases; in light mode the accent is too pale against
+      // the track (non-text 3:1), so progress uses the accent ink.
       progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: colors.primary,
+        color: brightness == Brightness.dark
+            ? colors.primary
+            : colors.primaryText,
         linearTrackColor: colors.muted,
       ),
     );

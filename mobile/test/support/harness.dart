@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/api/karmi_api.dart';
 import 'package:karmi_app/app.dart';
+import 'package:karmi_app/armory/app_icon.dart';
+import 'package:karmi_app/armory/armory_controller.dart';
 import 'package:karmi_app/auth/session.dart';
 import 'package:karmi_app/settings/karmi_settings.dart';
 import 'package:karmi_app/theme/karmi_glass.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
+import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -23,6 +26,7 @@ class Env {
     this.reduceTransparency = false,
     this.reduceMotion = false,
     this.highContrast = false,
+    this.tier = KarmiTier.ananta,
   });
 
   final Brightness brightness;
@@ -31,7 +35,11 @@ class Env {
   final bool reduceMotion;
   final bool highContrast;
 
+  /// Rendered tier; the fake backend reports it as unlocked and active.
+  final KarmiTier tier;
+
   String get name =>
+      '${tier == KarmiTier.ananta ? '' : '${tier.name}_'}'
       '${brightness.name}_x${textScale.toStringAsFixed(1)}'
       '_${reduceTransparency ? 'opaque' : 'glass'}';
 }
@@ -84,16 +92,24 @@ Future<KarmiSettings> pumpHost(
   final settings = await _settings(env);
   await tester.pumpWidget(
     LiquidGlassWidgets.wrap(
-      theme: KarmiGlass.themeData(),
+      theme: KarmiGlass.themeData(env.tier),
       brightnessResolver: Theme.maybeBrightnessOf,
       child: ListenableBuilder(
         listenable: settings,
         builder: (context, _) => MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: KarmiTheme.light,
-          darkTheme: KarmiTheme.dark,
-          highContrastTheme: KarmiTheme.highContrastLight,
-          highContrastDarkTheme: KarmiTheme.highContrastDark,
+          theme: KarmiTheme.of(env.tier, Brightness.light),
+          darkTheme: KarmiTheme.of(env.tier, Brightness.dark),
+          highContrastTheme: KarmiTheme.of(
+            env.tier,
+            Brightness.light,
+            highContrast: true,
+          ),
+          highContrastDarkTheme: KarmiTheme.of(
+            env.tier,
+            Brightness.dark,
+            highContrast: true,
+          ),
           themeMode: settings.themeMode,
           builder: karmiAccessibilityBuilder(settings),
           home: Scaffold(body: child),
@@ -106,11 +122,25 @@ Future<KarmiSettings> pumpHost(
 }
 
 class AppHandle {
-  AppHandle(this.settings, this.session, this.backend);
+  AppHandle(this.settings, this.session, this.backend, this.armory, this.icons);
 
   final KarmiSettings settings;
   final KarmiSession session;
   final FakeBackend backend;
+  final ArmoryController armory;
+  final FakeAppIcons icons;
+}
+
+/// Records native icon switches instead of calling the platform channel.
+class FakeAppIcons implements AppIconSwitcher {
+  final List<KarmiTier> applied = [];
+  bool supported = true;
+
+  @override
+  Future<bool> apply(KarmiTier tier) async {
+    applied.add(tier);
+    return supported;
+  }
 }
 
 /// Pumps the whole app (KarmiApp) against [backend].
@@ -122,7 +152,7 @@ Future<AppHandle> pumpApp(
   Size size = kPhoneSize,
 }) async {
   _applyView(tester, env, size);
-  backend ??= FakeBackend.healthy();
+  backend ??= FakeBackend.healthy(unlocked: env.tier, active: env.tier);
   SharedPreferences.setMockInitialValues({
     'reduce_transparency': env.reduceTransparency,
     'theme_mode': env.brightness == Brightness.dark ? 'dark' : 'light',
@@ -134,11 +164,23 @@ Future<AppHandle> pumpApp(
     api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
     prefs: prefs,
   );
+  final icons = FakeAppIcons();
+  final armory = ArmoryController(
+    api: session.api,
+    prefs: prefs,
+    appIcon: icons,
+  );
+  addTearDown(armory.dispose);
   await tester.pumpWidget(
-    KarmiApp(settings: settings, session: session, adaptiveGlassQuality: false),
+    KarmiApp(
+      settings: settings,
+      session: session,
+      armory: armory,
+      adaptiveGlassQuality: false,
+    ),
   );
   await settle(tester);
-  return AppHandle(settings, session, backend);
+  return AppHandle(settings, session, backend, armory, icons);
 }
 
 /// Pumps until fonts, futures and glass springs settle. Glass widgets can keep

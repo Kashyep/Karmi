@@ -12,6 +12,8 @@ Core v1 needs the internal/admin web console and WhatsApp-compatible response fo
 
 Calm productivity interface with generous reading space and precise, restrained controls. Mostly solid surfaces, subtle borders, one accent, no decorative dashboards full of meaningless metrics. Avoid blanket glass effects, excessive gradients and unrelated stock art. The app's appearance does not change the underlying model's correctness.
 
+*Superseded 2026-09-27: colours now come from the four tier palettes in `docs/design/karmi_tier_color_palettes.md` (Ananta, Yanta, Trika, Parth × light/dark). The derived semantic tokens and their WCAG audit for all 8 combinations are generated into `docs/design/karmi_theme_tokens.json` by `mobile/tool/derive_theme_tokens.py`; the table below is kept for history only.*
+
 *Note: The following token table was updated on 2026-09-26 for the Karmi brand palette (green). The previous blue-based values (`#254EDB` etc.) and Inter/system fonts are retained in history but superseded.*
 
 | Token | Light Hex | Light HSL | Dark Hex | Dark HSL |

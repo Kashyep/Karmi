@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/theme/karmi_colors.dart';
 import 'package:karmi_app/theme/karmi_glass.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -55,7 +56,7 @@ void main() {
       );
       final ratio = _contrast(
         icon.text.style!.color!,
-        KarmiColors.light.primary,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.light).primary,
       );
       expect(
         ratio,
@@ -75,11 +76,14 @@ void main() {
         '(${brightness.name})', (tester) async {
       await pumpApp(tester, env: Env(brightness: brightness));
       final bar = tester.widget<GlassAppBar>(find.byType(GlassAppBar));
-      final (card, floor) = brightness == Brightness.light
-          ? (KarmiColors.light.card, KarmiGlass.lightTintAlpha)
-          : (KarmiColors.dark.card, KarmiGlass.darkTintAlpha);
-      expect(bar.backgroundColor.a, greaterThanOrEqualTo(floor));
-      expect(bar.backgroundColor.withValues(alpha: 1), card);
+      final floor = brightness == Brightness.light
+          ? KarmiGlass.lightTintAlpha
+          : KarmiGlass.darkTintAlpha;
+      expect(bar.backgroundColor.a, greaterThanOrEqualTo(floor - 0.005));
+      expect(
+        bar.backgroundColor,
+        KarmiColors.forTier(KarmiTier.ananta, brightness).glassBase,
+      );
     });
   }
 

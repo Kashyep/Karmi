@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../armory/armory_controller.dart';
 import '../../auth/session.dart';
 import '../../settings/karmi_settings.dart';
 import '../../theme/karmi_colors.dart';
@@ -7,26 +8,30 @@ import '../../theme/karmi_glass.dart';
 import '../../widgets/focus_ring.dart';
 import '../../widgets/karmi_card.dart';
 
-/// Settings (T4.3): theme, reduce transparency, licences, sign out.
+/// Settings (T4.3): theme mode, tier theme (Armory), reduce transparency,
+/// licences, sign out.
 ///
-/// The header with the theme control is the one glass surface (§5.1); the rest
-/// is opaque content.
+/// The header with the theme controls is the one glass surface (§5.1); the
+/// rest is opaque content.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     super.key,
     required this.settings,
     required this.session,
+    required this.armory,
+    required this.onOpenArmory,
   });
 
   final KarmiSettings settings;
   final KarmiSession session;
-
+  final ArmoryController armory;
+  final VoidCallback onOpenArmory;
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = KarmiColors.of(context);
     return ListenableBuilder(
-      listenable: settings,
+      listenable: Listenable.merge([settings, armory]),
       builder: (context, _) => ListView(
         padding: karmiPageInsets(context),
         children: [
@@ -45,6 +50,21 @@ class SettingsScreen extends StatelessWidget {
                 _ThemeModeChoice(
                   selected: settings.themeMode,
                   onSelected: settings.setThemeMode,
+                ),
+                const SizedBox(height: 16),
+                KarmiFocusRing(
+                  // Own Material so ink shows on the glass/opaque platter.
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.palette_outlined),
+                      title: const Text('Armory'),
+                      subtitle: Text('Tier theme: ${armory.activeTheme.label}'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: onOpenArmory,
+                    ),
+                  ),
                 ),
               ],
             ),

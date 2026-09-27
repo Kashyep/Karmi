@@ -148,3 +148,53 @@
 1. Commit the MOB-014 fixes and push so CI (including `mobile-ios-build`) runs on them.
 2. A person runs TalkBack swipe/speech and VoiceOver on real devices; record in the evidence file.
 3. Owner reviews goldens (T3.3); backend card for a structured `ASK_USER` action payload.
+
+## Tier themes, Liquid Glass and Armory (2026-09-27)
+
+- Source: `docs/design/implementation_plan.md`, `docs/design/karmi_tier_color_palettes.md`
+  (merged via PR #19; this branch was fast-forwarded to `9f6e726`, no commit made).
+- Cards: API-002 (server `unlocked_tier`/`active_theme` + migration `8a4f2c9e1b3d`), WEB-002 (web
+  shell tokens/glass/Armory/dynamic manifest), MOB-015 (Flutter tiers, Armory, native icons).
+- Tokens for all 8 tier × mode combinations are generated from the palette doc by
+  `mobile/tool/derive_theme_tokens.py` (Dart + CSS + audit JSON); icons by
+  `mobile/tool/generate_app_icons.py` from watermark-cleaned masters in `docs/design/assets/icons/`.
+- Tier 4 display label is now "Parth" (plan id stays `part`); the misspelling guard is
+  `tests/unit/test_tier_spelling.py`.
+- Local dev DB `data/development.db` was stamped at `73075806233f` and upgraded to head (backup
+  of the pre-migration file at `%TEMP%/development.db.bak`); synthetic account restored to Ananta.
+- Android icon switch verified on the Pixel 9a: applied on `onStop` because disabling the running
+  alias destroys the task (first attempt crashed); iOS alternate icons NOT VERIFIED (no macOS).
+- Plan's "Niriksh" framework does not exist in this repo; its tests map onto pytest + flutter_test.
+
+
+### Tier-theme verification (2026-09-27)
+
+- `python scripts/tasks.py lint`, `typecheck`, `test-unit` (47), `test-e2e` (22),
+  `test-integration` (2; PostgreSQL/Redis via Docker) PASS.
+- Flutter 3.47.5: `dart format --output=none --set-exit-if-changed .` (0 changed),
+  `flutter analyze` (0 issues), `flutter test` (319 incl. 90 Windows goldens),
+  Linux Docker `flutter test --tags golden` (90), and
+  `flutter build appbundle --release` (52.0 MB) PASS.
+- Regenerated icons with `python mobile/tool/generate_app_icons.py`; all four tiers
+  completed. An initial attempt raced a concurrent Gradle build and could not
+  write an iOS icon file; rerunning after the build succeeded.
+- `python mobile/tool/derive_theme_tokens.py` produced WCAG text minimums of
+  4.51–6.29 across the eight combinations. The generated CSS and Dart tokens
+  share that source; tests audit surface, glass, disabled, and focus contrast.
+- The Android alias/icon switch was exercised on the Pixel 9a with a local
+  synthetic account. No iOS device validation; alternate icon bridge remains
+  NOT VERIFIED at runtime. No paid checkout, provider call, or customer message.
+
+### PR #20 Armory contrast follow-up
+
+- CI run `36311395158`, job `108597892680`: three Linux
+  `textContrastGuideline` failures reported for the gallery and Ananta/Yanta
+  light. Independent token checks passed; Linux pixel inspection found
+  Yanta's dark tagline ink `#050806` on white, but Flutter's inflated text
+  sampling rectangle included 37 pale pixels from the status chip just above
+  it (more than the 34 fully dark glyph pixels). Added 8px separation between
+  chip row and tagline; no palette, text token or a11y assertion changes.
+- Post-fix: Windows and Linux Docker `flutter test --exclude-tags golden`
+  229/229 each, `flutter analyze` 0 issues, `dart format` 0 changed.
+  Regenerated only 8 tier Armory goldens per OS; both golden suites 90/90.
+  CI had not run on this fix at the time of local verification.

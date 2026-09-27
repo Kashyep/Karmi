@@ -123,6 +123,56 @@ def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPol
     return subscription, plan_policy(subscription)
 
 
+PLAN_TO_TIER: dict[str, int] = {
+    "ananta": 1,
+    "yanta": 2,
+    "trika": 3,
+    "part": 4,
+}
+
+TIER_TO_PLAN: dict[int, str] = {
+    1: "ananta",
+    2: "yanta",
+    3: "trika",
+    4: "part",
+}
+
+
+def tier_for_plan(plan_id: str) -> int:
+    return PLAN_TO_TIER.get(plan_id, 1)
+
+
+def plan_for_tier(tier: int) -> str:
+    return TIER_TO_PLAN.get(tier, "ananta")
+
+
+def sync_theme_progression(session: Session, user: User) -> None:
+    """Sets user.unlocked_tier from the account's effective plan, clamping active_theme if needed."""
+    subscription = session.scalar(
+        select(Subscription).where(Subscription.account_id == user.account_id)
+    )
+    policy = plan_policy(subscription)
+    user.unlocked_tier = tier_for_plan(policy.plan_id)
+    if user.active_theme > user.unlocked_tier:
+        user.active_theme = user.unlocked_tier
+    session.flush()
+
+
+def sync_account_progression(session: Session, account_id: str) -> None:
+    """Syncs theme progression for all users belonging to the given account."""
+    subscription = session.scalar(
+        select(Subscription).where(Subscription.account_id == account_id)
+    )
+    policy = plan_policy(subscription)
+    unlocked = tier_for_plan(policy.plan_id)
+    users = session.scalars(select(User).where(User.account_id == account_id)).all()
+    for user in users:
+        user.unlocked_tier = unlocked
+        if user.active_theme > user.unlocked_tier:
+            user.active_theme = user.unlocked_tier
+    session.flush()
+
+
 def ensure_usage_window(session: Session, account_id: str, settings: Settings) -> UsageWindow:
     _subscription, policy = policy_for(session, account_id)
     key, reset = current_window_key()
