@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "LinUCBArmV1": {
+      "additionalProperties": false,
+      "properties": {
+        "a_inv": {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "A Inv",
+          "type": "array"
+        },
+        "theta": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Theta",
+          "type": "array"
+        }
+      },
+      "required": [
+        "theta",
+        "a_inv"
+      ],
+      "title": "LinUCBArmV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "alpha": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Alpha",
+      "type": "number"
+    },
+    "arms": {
+      "maxProperties": 64,
+      "minProperties": 1,
+      "patternProperties": {
+        "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$": {
+          "$ref": "#/$defs/LinUCBArmV1"
+        }
+      },
+      "title": "Arms",
+      "type": "object"
+    },
+    "feature_schema_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+      "title": "Feature Schema Version",
+      "type": "string"
+    },
+    "schema": {
+      "const": "LinUCBPolicyV1",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "feature_schema_version",
+    "alpha",
+    "arms"
+  ],
+  "title": "LinUCBPolicyV1",
+  "type": "object"
+}

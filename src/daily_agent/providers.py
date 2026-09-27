@@ -13,8 +13,11 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from daily_agent.harness.versioning import BUILTIN_PROMPTS, relevance_instructions
+
 if TYPE_CHECKING:
     from daily_agent.models import Note
+    from daily_agent.policy_artifacts.schema import HarnessPromptsV1
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,10 @@ TYPESAFE_CALL_ESTIMATE_MICRO = 10_000
 TYPESAFE_TIMEOUT_SECONDS = 5.0
 TYPESAFE_MAX_RETRIES = 1
 TYPESAFE_RETRY_BUDGET_SECONDS = 15.0
+
+# No verified provider rate, request size or billable retry/output bound is available.
+# Turning on live_models_enabled alone must never authorize paid calls.
+LIVE_PROVIDER_SPEND_VERIFIED = False
 
 
 @dataclass(frozen=True)
@@ -74,19 +81,27 @@ def _record(response: Any, operation: str) -> ProviderCall:
     )
 
 
-def _client() -> Any:
+def _client(max_retries: int = TYPESAFE_MAX_RETRIES) -> Any:
+    if not LIVE_PROVIDER_SPEND_VERIFIED:
+        raise RuntimeError("live provider spending is disabled until cost bounds are verified")
     from typesafe_sdk import RetryPolicy, TypeSafeClient
 
     return TypeSafeClient(
         timeout=TYPESAFE_TIMEOUT_SECONDS,
         retry=RetryPolicy(
-            max_retries=TYPESAFE_MAX_RETRIES, timeout=TYPESAFE_RETRY_BUDGET_SECONDS
+            # A harness bundle may lower, never raise, the compiled retry ceiling.
+            max_retries=max(0, min(max_retries, TYPESAFE_MAX_RETRIES)),
+            timeout=TYPESAFE_RETRY_BUDGET_SECONDS,
         ),
     )
 
 
 def score_notes_relevance(
-    query_text: str, notes: list[Note]
+    query_text: str,
+    notes: list[Note],
+    *,
+    prompts: HarnessPromptsV1 = BUILTIN_PROMPTS,
+    max_retries: int = TYPESAFE_MAX_RETRIES,
 ) -> tuple[list[float] | None, list[ProviderCall]]:
     """Score each note's relevance to the query (0..n-1 aligned with ``notes``).
 
@@ -101,13 +116,13 @@ def score_notes_relevance(
     }
     questions = {
         f"relevance_{i}": Score(
-            instructions=f"How relevant is `notes.note_{i}` to answering the user's query?",
-            criteria=["Irrelevant", "Tangential", "Directly Relevant"],
+            instructions=relevance_instructions(prompts, f"notes.note_{i}"),
+            criteria=list(prompts.relevance_criteria),
         )
         for i in range(len(notes))
     }
     try:
-        with _client() as client:
+        with _client(max_retries) as client:
             response = client.system_one(state=state, questions=questions)
         call = _record(response, "score")
         try:
@@ -121,23 +136,24 @@ def score_notes_relevance(
         return None, []
 
 
-def classify_intent(text: str, context_text: str) -> tuple[str | None, list[ProviderCall]]:
+def classify_intent(
+    text: str,
+    context_text: str,
+    *,
+    prompts: HarnessPromptsV1 = BUILTIN_PROMPTS,
+    max_retries: int = TYPESAFE_MAX_RETRIES,
+) -> tuple[str | None, list[ProviderCall]]:
     """Classify the user's primary intent; ``(None, calls)`` on provider failure."""
     from typesafe_sdk import Choice
 
     questions = {
         "intent": Choice(
-            instructions="What is the primary action the user is asking the assistant to take?",
-            criteria={
-                "query_memory": "The user is asking to retrieve, search, or recall saved facts.",
-                "store_memory": "The user is providing a new fact or note to be remembered.",
-                "create_task": "The user is instructing the assistant to create a to-do, task, or reminder.",
-                "general_draft": "The user is asking for text generation, drafting, or general chat.",
-            },
+            instructions=prompts.intent_instructions,
+            criteria=dict(prompts.intent_criteria),
         )
     }
     try:
-        with _client() as client:
+        with _client(max_retries) as client:
             response = client.system_one(
                 state={"user_message": text, "retrieved_context": context_text},
                 questions=questions,

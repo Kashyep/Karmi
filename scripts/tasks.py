@@ -118,15 +118,24 @@ def main() -> None:
             "benchmark-demo",
             "test-smoke",
             "test-release",
+            "routing",
+            "telemetry",
         ],
     )
-    task = parser.parse_args().task
+    if len(sys.argv) > 1 and sys.argv[1] in {"routing", "telemetry"}:
+        task, forwarded = sys.argv[1], sys.argv[2:]
+    else:
+        task, forwarded = parser.parse_args().task, []
     if task == "doctor":
         doctor()
     elif task == "dev":
         run([str(PYTHON), "-m", "uvicorn", "daily_agent.api:app", "--host", "127.0.0.1", "--port", "8000"])
     elif task == "worker":
         run([str(PYTHON), "-m", "daily_agent.worker"])
+    elif task == "routing":
+        run([str(PYTHON), "-m", "daily_agent.policy_artifacts", *forwarded])
+    elif task == "telemetry":
+        run([str(PYTHON), "-m", "daily_agent.telemetry", *forwarded])
     elif task == "lint":
         run([str(PYTHON), "-m", "ruff", "check", "src", "tests", "scripts"])
         run([str(PYTHON), "scripts/secret_scan.py"])

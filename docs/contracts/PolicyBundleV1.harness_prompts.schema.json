@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "description": "Prompt text only. Labels/criteria keys are fixed by Karmi and cannot change here.",
+  "properties": {
+    "intent_criteria": {
+      "additionalProperties": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Intent Criteria",
+      "type": "object"
+    },
+    "intent_instructions": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Intent Instructions",
+      "type": "string"
+    },
+    "prompt_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "relevance_criteria": {
+      "items": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "title": "Relevance Criteria",
+      "type": "array"
+    },
+    "relevance_instructions_template": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Relevance Instructions Template",
+      "type": "string"
+    },
+    "schema": {
+      "const": "HarnessPromptsV1",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "prompt_version",
+    "intent_instructions",
+    "intent_criteria",
+    "relevance_instructions_template",
+    "relevance_criteria"
+  ],
+  "title": "HarnessPromptsV1",
+  "type": "object"
+}

@@ -1,0 +1,32 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "feature_names": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Feature Names",
+      "type": "array"
+    },
+    "feature_schema_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+      "title": "Feature Schema Version",
+      "type": "string"
+    },
+    "schema": {
+      "const": "RoutingFeatureSchemaV1",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "feature_schema_version",
+    "feature_names"
+  ],
+  "title": "RoutingFeatureSchemaV1",
+  "type": "object"
+}

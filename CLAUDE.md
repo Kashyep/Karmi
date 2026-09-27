@@ -16,7 +16,11 @@ src/daily_agent/
   plans.py      synthetic tier policies (ananta free / yanta / trika / part)
   config.py     Settings (DAILY_AGENT_* env); fails closed outside development/test
   security.py   dev tokens, principal/admin deps, HMAC webhook verification
-  db.py         lazy engine (get_engine) + get_session dependency
+  routing/      eligible routes, features, static/shadow/LinUCB selectors, guardrails
+  policy_artifacts/ signed JSON verifier, atomic store, promotion/rollback CLI
+  telemetry/    pseudonymous event writer, finalization, export, retention CLI
+  harness/      versioned built-in prompts and recovery policy
+  wiring.py     lifespan factories for runtime and telemetry collector
   worker.py     delivery worker: leases queued outbox rows + due reminders -> local test adapter
   web/shell.py  inline HTML/JS shell served at /
 src/model_lab/  offline benchmark CLI (typer) over SQLite; independent of daily_agent
@@ -24,9 +28,12 @@ migrations/     Alembic; env.py reads the DB URL from Settings
 tests/          unit/, e2e/ (TestClient + temp SQLite), web/, model_lab/, integration/ (Docker)
 ```
 
-Request flow for `POST /v1/messages`: idempotency check → `reserve_budget` → **commit** →
-`build_note_context` + `fake_generate` (optional live provider calls) → `_apply_intent` →
-`persist_completed_run` → `settle_budget` → commit. Any failure after reserve → `release_budget`.
+Request flow for `POST /v1/messages`: idempotency check → feature extraction and hard
+eligibility → static/shadow/bandit/canary decision → `reserve_budget` → **commit** →
+route-aware context + generation → `_apply_intent` → run/outbox persistence →
+`settle_budget` → commit → asynchronous telemetry emission. Failure after reserve
+releases the budget; a route exception rechecks eligibility before static fallback.
+Telemetry finalization/export and signed policy lifecycle: `docs/runbooks/routing-telemetry.md`.
 A live duplicate request gets 409 (`ReservationInFlight`). Reservations left RESERVED past
 `RESERVATION_LEASE_SECONDS` are reclaimed and charged as unknown cost.
 

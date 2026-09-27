@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -260,3 +261,161 @@ class BillingEvent(Base):
     event_type: Mapped[str] = mapped_column(String(60))
     payload_hash: Mapped[str] = mapped_column(String(64))
 
+
+# ---- Routing/outcome telemetry (ADR-0003) ----------------------------------------------
+# Deliberately no foreign keys to product tables: telemetry is pseudonymous, has its own
+# retention (daily_agent.telemetry.retention) and must be writable while product rows churn.
+# Nested lists/maps are canonical JSON text so SQLite and PostgreSQL behave identically.
+
+
+class TelemetryRun(Base):
+    __tablename__ = "telemetry_runs"
+
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(36))
+    session_id_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    anonymous_actor_id: Mapped[str] = mapped_column(String(64), index=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    task_domain: Mapped[str] = mapped_column(String(40))
+    tier: Mapped[str] = mapped_column(String(20))
+    harness_version: Mapped[str] = mapped_column(String(80))
+    prompt_version: Mapped[str] = mapped_column(String(80))
+    policy_version: Mapped[str] = mapped_column(String(120))
+    feature_schema_version: Mapped[str] = mapped_column(String(80))
+    telemetry_schema_version: Mapped[str] = mapped_column(String(40))
+    app_version: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(30))
+    features_json: Mapped[str] = mapped_column(Text)
+    eligible_models_json: Mapped[str] = mapped_column(Text)
+    eligibility_rejections_json: Mapped[str] = mapped_column(Text)
+    live_fallback_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    shadow_error: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    export_batch_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TelemetryRouterDecision(Base):
+    __tablename__ = "telemetry_router_decisions"
+
+    decision_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36), index=True)
+    policy_version: Mapped[str] = mapped_column(String(120))
+    feature_schema_version: Mapped[str] = mapped_column(String(80))
+    algorithm: Mapped[str] = mapped_column(String(40))
+    selected_model: Mapped[str] = mapped_column(String(120))
+    selected_provider: Mapped[str] = mapped_column(String(80))
+    selection_probability: Mapped[float] = mapped_column(Float)
+    action_probabilities_json: Mapped[str] = mapped_column(Text)
+    eligible_models_json: Mapped[str] = mapped_column(Text)
+    exploration: Mapped[bool] = mapped_column(Boolean)
+    shadow: Mapped[bool] = mapped_column(Boolean)
+    agreed_with_live: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class TelemetryModelAttempt(Base):
+    __tablename__ = "telemetry_model_attempts"
+
+    attempt_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36), index=True)
+    decision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    provider: Mapped[str] = mapped_column(String(80))
+    model: Mapped[str] = mapped_column(String(120))
+    operation: Mapped[str] = mapped_column(String(40))
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_cost_micro: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cost_measurement: Mapped[str] = mapped_column(String(20))
+    success: Mapped[bool] = mapped_column(Boolean)
+    error_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    retry_number: Mapped[int] = mapped_column(Integer)
+
+
+class TelemetryToolEvent(Base):
+    __tablename__ = "telemetry_tool_events"
+
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36), index=True)
+    tool_name: Mapped[str] = mapped_column(String(120))
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    schema_valid: Mapped[bool] = mapped_column(Boolean)
+    execution_success: Mapped[bool] = mapped_column(Boolean)
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    error_class: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+
+class TelemetryRunOutcome(Base):
+    __tablename__ = "telemetry_run_outcomes"
+
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    completed: Mapped[bool] = mapped_column(Boolean)
+    first_shot_success: Mapped[bool] = mapped_column(Boolean)
+    structured_output_valid: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    tool_success: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer)
+    user_retry_signal: Mapped[bool] = mapped_column(Boolean, default=False)
+    user_abandon_signal: Mapped[bool] = mapped_column(Boolean, default=False)
+    user_accept_signal: Mapped[bool] = mapped_column(Boolean, default=False)
+    user_correction_signal: Mapped[bool] = mapped_column(Boolean, default=False)
+    correction_distance: Mapped[float | None] = mapped_column(Float, nullable=True)
+    final_latency_ms: Mapped[int] = mapped_column(Integer)
+    final_cost_micro: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cost_measurement: Mapped[str] = mapped_column(String(20))
+    outcome: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    finalized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+
+class TelemetryOutcomeSignal(Base):
+    __tablename__ = "telemetry_outcome_signals"
+
+    signal_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36), index=True)
+    signal_type: Mapped[str] = mapped_column(String(40))
+    strength: Mapped[str] = mapped_column(String(10))
+    confidence: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(30))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # True when the signal arrived after its run had already been exported.
+    late: Mapped[bool] = mapped_column(Boolean, default=False)
+    export_batch_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+
+class TelemetryFeedback(Base):
+    __tablename__ = "telemetry_feedback"
+
+    feedback_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36), index=True)
+    feedback_type: Mapped[str] = mapped_column(String(30))
+    original_value_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sanitized_corrected_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    correction_distance: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    late: Mapped[bool] = mapped_column(Boolean, default=False)
+    export_batch_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+
+class TelemetryOpsEvent(Base):
+    __tablename__ = "telemetry_ops_events"
+
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(120))
+    detail: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    policy_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class TelemetryExportBatch(Base):
+    __tablename__ = "telemetry_export_batches"
+
+    batch_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    run_count: Mapped[int] = mapped_column(Integer)
+    signal_count: Mapped[int] = mapped_column(Integer)
+    feedback_count: Mapped[int] = mapped_column(Integer)
+    payload_sha256: Mapped[str] = mapped_column(String(64))
+    path: Mapped[str] = mapped_column(String(500))

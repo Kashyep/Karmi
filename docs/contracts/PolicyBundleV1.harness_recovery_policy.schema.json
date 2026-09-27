@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "fallback_to_local": {
+      "default": true,
+      "title": "Fallback To Local",
+      "type": "boolean"
+    },
+    "max_provider_retries": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Max Provider Retries",
+      "type": "integer"
+    },
+    "schema": {
+      "const": "RecoveryPolicyV1",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "max_provider_retries"
+  ],
+  "title": "RecoveryPolicyV1",
+  "type": "object"
+}

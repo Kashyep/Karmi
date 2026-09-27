@@ -198,3 +198,56 @@
   229/229 each, `flutter analyze` 0 issues, `dart format` 0 changed.
   Regenerated only 8 tier Armory goldens per OS; both golden suites 90/90.
   CI had not run on this fix at the time of local verification.
+
+## Routing, telemetry and signed policy loop (2026-09-27, 14:20 UTC)
+
+- Baseline `00b7224`, clean before this work; branch `Kashyep/routing-telemetry-loop`.
+  Commits listed below. ADR-0003, `docs/task-cards/{RTR,TEL,ART}-001.md`,
+  `docs/runbooks/routing-telemetry.md` and generated `docs/contracts/` describe the scope.
+- Implemented hard eligibility, static/shadow/LinUCB/canary routing, provider health, signed
+  PolicyBundleV1 verification/store/rollback, guarded harness selection, pseudonymous
+  non-blocking telemetry, finalization/export/retention and authenticated feedback/admin
+  endpoints. Default static route preserves the local response in synthetic E2E;
+  provider failure keeps known/unknown costs, failed actions retain provider expense
+  while refunding customer usage, and router crashes recheck eligibility. Signed
+  JSON rejects ambiguous duplicate keys (failing-before/passing-after test).
+- Source candidate committed as `08e4c7b` (87 files) plus test-sink fix `0d96aa3`, then a
+  remediation commit `7c0fe49` (telemetry writer batching + security findings F1–F9). Pushed
+  to `origin/Kashyep/routing-telemetry-loop`; no PR opened, no deploy.
+- PR #22 CI (run 36344052976) failed 9 unit tests on the merge with `main`. Causes: `main` #21
+  renamed plan id `part`→`parth` (routing `TIERS` and tests still used `part`), and
+  `tests/unit/telemetry/test_cli.py` had used the default `./data/development.db`, whose tables
+  only existed locally. Fix: merged `origin/main`, renamed the tier to `parth` in routing and
+  tests. The CLI tests now run on a temp Alembic-migrated DB with a seeded run. That exposed and
+  fixed a `telemetry status` naive/aware datetime crash on SQLite. Telemetry models/migration
+  were already present; no schema change.
+- VERIFIED on the final tree (2026-09-27, local Windows/Python 3.14.3, Docker 29.6.1):
+  `python scripts/tasks.py lint` PASS, `typecheck` PASS (50 files), `test-unit` 220,
+  `test-e2e` 41, `test-integration` 2 (PostgreSQL/Redis). Regression tests for F2–F9 and the
+  writer batch dedupe failed on `0d96aa3` in a throwaway worktree and pass now. A CLI smoke on a
+  temp store showed quarantine, the no-op re-promote and deactivate→rollback staying static.
+- Latency (100 req, concurrency 4, before remediation; hot path unchanged by it): SQLite
+  baseline 17.2/289.87 ms p50/p95, 53.67 rps vs candidate 18.81/351.84, 45.89. Disposable
+  PostgreSQL runs: baseline 79.58/149.55, 45.7 and 75.17/126.55, 49.52; candidate
+  91.32/146.31, 41.59 and 90.93/139.81, 41.22. The extra SQL runs on the telemetry writer
+  thread. `docs/release-evidence/routing-telemetry-2026-09-27.md` has the details.
+- Reviews (task-tool subagents; Orca Antigravity workers can't launch because `agy` is missing):
+  - verifier: ACCEPT.
+  - security: REWORK F1–F9 → re-review: F2–F4, F6–F9 RESOLVED; F1 PARTIAL/contained; F5 PARTIAL.
+  - Follow-ups: in-flight feedback emit dedupe and N2 chunked actor purge (both done); N1 older
+    builds reject the new `state.json` field (fail-closed; documented).
+- Decisions:
+  - Live provider spend is hard-disabled (`providers.LIVE_PROVIDER_SPEND_VERIFIED=False` →
+    eligibility `provider_spend_unverified`; the client refuses to construct).
+  - Messages over 20k characters get a 413 before a budget hold.
+  - No-route is a 503 with Retry-After and no persisted Run.
+  - A DEFERRED provider fault refunds the customer and keeps the expense.
+  - Rollback quarantines the failing version, persisted in `state.json`.
+- NOT VERIFIED / blocked:
+  - F1 worst-case reservation: needs verified TypeSafe billable rates, a max-output/retry bound
+    and spend authorisation. The single-call estimate and `min(cap, estimate)` clamp remain.
+  - Feedback per-principal rate limit and spool size cap: not built.
+  - Parakh consumer (repo absent), concurrent-money/restore gates, device/manual gates, production
+    migration/deploy. Live calls, checkout and WhatsApp remain disabled.
+- Next: obtain verified TypeSafe pricing/bounds and approval before any live-spend change;
+  run Parakh ingestion against a real export; decide on a feedback rate limit.

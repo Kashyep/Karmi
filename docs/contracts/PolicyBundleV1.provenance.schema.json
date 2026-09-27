@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "benchmark_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+        "type": "string"
+      },
+      "maxItems": 1000,
+      "title": "Benchmark Ids",
+      "type": "array"
+    },
+    "producer_repo": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+      "title": "Producer Repo",
+      "type": "string"
+    },
+    "producer_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+      "title": "Producer Version",
+      "type": "string"
+    },
+    "schema": {
+      "const": "ProvenanceV1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "telemetry_batch_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Telemetry Batch Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "producer_repo",
+    "producer_version"
+  ],
+  "title": "ProvenanceV1",
+  "type": "object"
+}
