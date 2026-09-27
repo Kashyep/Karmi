@@ -212,7 +212,8 @@
   while refunding customer usage, and router crashes recheck eligibility. Signed
   JSON rejects ambiguous duplicate keys (failing-before/passing-after test).
 - Source candidate committed as `08e4c7b` (87 files) plus test-sink fix `0d96aa3`, then a
-  remediation commit (telemetry writer batching + security findings F1–F9). No push.
+  remediation commit `7c0fe49` (telemetry writer batching + security findings F1–F9). Pushed
+  to `origin/Kashyep/routing-telemetry-loop`; no PR opened, no deploy.
 - VERIFIED on the final tree (2026-09-27, local Windows/Python 3.14.3, Docker 29.6.1):
   `python scripts/tasks.py lint` PASS, `typecheck` PASS (50 files), `test-unit` 220,
   `test-e2e` 41, `test-integration` 2 (PostgreSQL/Redis). Regression tests for F2–F9 and the
