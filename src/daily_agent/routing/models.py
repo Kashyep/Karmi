@@ -89,6 +89,7 @@ class ModelCandidate:
     fixed_cost_micro: int = 0
     expected_output_tokens: int = 0
     requires_live_models: bool = False
+    spend_bounds_verified: bool = True
     entitled_tiers: frozenset[str] = frozenset(TIERS)
 
     def expected_cost_micro(self, input_tokens: int) -> int:

@@ -221,7 +221,11 @@ def build_feedback_record(
     key: bytes,
     store_text: bool,
 ) -> FeedbackRecord:
-    """Explicit user feedback reduced to hashes and a distance; text only when opted in."""
+    """Explicit user feedback reduced to hashes and a distance; text only when opted in.
+
+    The id is derived from (run, feedback type), so each run's owner contributes at most
+    one record, and one strong signal, per feedback type; repeats are writer no-ops.
+    """
     distance: float | None = None
     if feedback_type == FeedbackType.CORRECTION and corrected_text and original_response:
         ratio = difflib.SequenceMatcher(
@@ -232,10 +236,11 @@ def build_feedback_record(
         ).ratio()
         distance = round(1.0 - ratio, 4)
     stored = sanitize_free_text(corrected_text) if store_text and corrected_text else None
+    kind = FeedbackType(feedback_type)
     return FeedbackRecord(
-        feedback_id=str(uuid.uuid4()),
+        feedback_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"karmi-feedback-v1:{run_id}:{kind.value}")),
         run_id=run_id,
-        feedback_type=FeedbackType(feedback_type),
+        feedback_type=kind,
         original_value_hash=value_hash(key, original_response) if original_response else None,
         sanitized_corrected_value=stored,
         correction_distance=distance,

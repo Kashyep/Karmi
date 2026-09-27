@@ -25,6 +25,7 @@ REASON_CODES: tuple[str, ...] = (
     "tools_unsupported",
     "structured_output_unsupported",
     "provider_unhealthy",
+    "provider_spend_unverified",
     "request_budget",
     "period_budget",
 )
@@ -79,6 +80,8 @@ def filter_eligible(
 
         if not candidate.provider_healthy:
             reasons.append("provider_unhealthy")
+        if not candidate.spend_bounds_verified:
+            reasons.append("provider_spend_unverified")
 
         expected_cost = candidate.expected_cost_micro(total_tokens)
         if expected_cost > plan.request_cost_cap_micro:

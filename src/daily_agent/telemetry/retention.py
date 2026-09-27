@@ -6,6 +6,7 @@ and supports complete right-to-be-forgotten purges for specific pseudonymous act
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime, timedelta
 
 from sqlalchemy import CursorResult, delete, select
@@ -22,11 +23,37 @@ from daily_agent.models import (
     TelemetryToolEvent,
 )
 
+# Keep IN-lists well below SQLite/Postgres bound-parameter limits.
+_CHUNK = 500
+
 
 def _rowcount(res: object) -> int:
     if isinstance(res, CursorResult):
         return int(res.rowcount)
     return 0
+
+
+def _chunks(ids: list[str]) -> Iterator[list[str]]:
+    for start in range(0, len(ids), _CHUNK):
+        yield ids[start : start + _CHUNK]
+
+
+def _delete_runs(session: Session, run_ids: list[str], counts: dict[str, int]) -> None:
+    """Delete runs and every per-run child row in bounded chunks, adding to ``counts``."""
+    per_run = (
+        ("decisions", TelemetryRouterDecision),
+        ("attempts", TelemetryModelAttempt),
+        ("tool_events", TelemetryToolEvent),
+        ("outcomes", TelemetryRunOutcome),
+        ("signals", TelemetryOutcomeSignal),
+        ("feedback", TelemetryFeedback),
+        ("runs", TelemetryRun),
+    )
+    for chunk in _chunks(run_ids):
+        for key, table in per_run:
+            counts[key] += _rowcount(
+                session.execute(delete(table).where(table.run_id.in_(chunk)))
+            )
 
 
 def purge_expired(
@@ -37,8 +64,11 @@ def purge_expired(
 ) -> dict[str, int]:
     """Delete telemetry rows older than the retention cutoff ONLY IF exported.
 
-    Unexported expired runs are preserved and counted. Ops events older than the cutoff
-    are purged unconditionally.
+    Unexported expired runs are preserved and counted. An exported run is also kept while
+    any of its signals/feedback is still unexported, so late rows are exported before
+    their run disappears. Signals/feedback whose run never reached telemetry (orphans)
+    cannot be exported and are deleted once older than the cutoff. Ops events older than
+    the cutoff are purged unconditionally.
     Caller commits.
     """
     cutoff = now - timedelta(days=retention_days)
@@ -54,6 +84,17 @@ def purge_expired(
 
     exported_run_ids = [row.run_id for row in expired_runs if row.export_batch_id is not None]
     unexported_kept = sum(1 for row in expired_runs if row.export_batch_id is None)
+    pending: set[str] = set()
+    for chunk in _chunks(exported_run_ids):
+        for model in (TelemetryOutcomeSignal, TelemetryFeedback):
+            pending.update(
+                session.scalars(
+                    select(model.run_id).where(
+                        model.run_id.in_(chunk), model.export_batch_id.is_(None)
+                    )
+                )
+            )
+    purgeable_run_ids = [run_id for run_id in exported_run_ids if run_id not in pending]
 
     counts: dict[str, int] = {
         "runs": 0,
@@ -65,53 +106,14 @@ def purge_expired(
         "feedback": 0,
         "ops_events": 0,
         "unexported_kept": unexported_kept,
+        "pending_children_kept": len(pending),
+        "orphans": 0,
     }
 
-    if exported_run_ids:
-        counts["decisions"] = _rowcount(
-            session.execute(
-                delete(TelemetryRouterDecision).where(
-                    TelemetryRouterDecision.run_id.in_(exported_run_ids)
-                )
-            )
-        )
-        counts["attempts"] = _rowcount(
-            session.execute(
-                delete(TelemetryModelAttempt).where(
-                    TelemetryModelAttempt.run_id.in_(exported_run_ids)
-                )
-            )
-        )
-        counts["tool_events"] = _rowcount(
-            session.execute(
-                delete(TelemetryToolEvent).where(TelemetryToolEvent.run_id.in_(exported_run_ids))
-            )
-        )
-        counts["outcomes"] = _rowcount(
-            session.execute(
-                delete(TelemetryRunOutcome).where(TelemetryRunOutcome.run_id.in_(exported_run_ids))
-            )
-        )
-        counts["signals"] = _rowcount(
-            session.execute(
-                delete(TelemetryOutcomeSignal).where(
-                    TelemetryOutcomeSignal.run_id.in_(exported_run_ids)
-                )
-            )
-        )
-        counts["feedback"] = _rowcount(
-            session.execute(
-                delete(TelemetryFeedback).where(TelemetryFeedback.run_id.in_(exported_run_ids))
-            )
-        )
-        counts["runs"] = _rowcount(
-            session.execute(
-                delete(TelemetryRun).where(TelemetryRun.run_id.in_(exported_run_ids))
-            )
-        )
+    _delete_runs(session, purgeable_run_ids, counts)
 
     # 2. Delete exported late signals / feedback older than cutoff
-    del_late_sigs = _rowcount(
+    counts["signals"] += _rowcount(
         session.execute(
             delete(TelemetryOutcomeSignal).where(
                 TelemetryOutcomeSignal.observed_at < cutoff,
@@ -119,9 +121,7 @@ def purge_expired(
             )
         )
     )
-    counts["signals"] += del_late_sigs
-
-    del_late_fb = _rowcount(
+    counts["feedback"] += _rowcount(
         session.execute(
             delete(TelemetryFeedback).where(
                 TelemetryFeedback.created_at < cutoff,
@@ -129,15 +129,34 @@ def purge_expired(
             )
         )
     )
-    counts["feedback"] += del_late_fb
 
-    # 3. Delete ops events older than cutoff
-    del_ops = _rowcount(
+    # 3. Orphans: unexported rows older than the cutoff whose run has no telemetry row.
+    known_runs = select(TelemetryRun.run_id)
+    counts["orphans"] += _rowcount(
+        session.execute(
+            delete(TelemetryOutcomeSignal).where(
+                TelemetryOutcomeSignal.observed_at < cutoff,
+                TelemetryOutcomeSignal.export_batch_id.is_(None),
+                TelemetryOutcomeSignal.run_id.not_in(known_runs),
+            )
+        )
+    )
+    counts["orphans"] += _rowcount(
+        session.execute(
+            delete(TelemetryFeedback).where(
+                TelemetryFeedback.created_at < cutoff,
+                TelemetryFeedback.export_batch_id.is_(None),
+                TelemetryFeedback.run_id.not_in(known_runs),
+            )
+        )
+    )
+
+    # 4. Delete ops events older than cutoff
+    counts["ops_events"] = _rowcount(
         session.execute(
             delete(TelemetryOpsEvent).where(TelemetryOpsEvent.created_at < cutoff)
         )
     )
-    counts["ops_events"] = del_ops
 
     session.flush()
     return counts
@@ -166,46 +185,7 @@ def purge_actor(session: Session, anonymous_actor_id: str) -> dict[str, int]:
         "feedback": 0,
     }
 
-    if actor_run_ids:
-        counts["decisions"] = _rowcount(
-            session.execute(
-                delete(TelemetryRouterDecision).where(
-                    TelemetryRouterDecision.run_id.in_(actor_run_ids)
-                )
-            )
-        )
-        counts["attempts"] = _rowcount(
-            session.execute(
-                delete(TelemetryModelAttempt).where(TelemetryModelAttempt.run_id.in_(actor_run_ids))
-            )
-        )
-        counts["tool_events"] = _rowcount(
-            session.execute(
-                delete(TelemetryToolEvent).where(TelemetryToolEvent.run_id.in_(actor_run_ids))
-            )
-        )
-        counts["outcomes"] = _rowcount(
-            session.execute(
-                delete(TelemetryRunOutcome).where(TelemetryRunOutcome.run_id.in_(actor_run_ids))
-            )
-        )
-        counts["signals"] = _rowcount(
-            session.execute(
-                delete(TelemetryOutcomeSignal).where(
-                    TelemetryOutcomeSignal.run_id.in_(actor_run_ids)
-                )
-            )
-        )
-        counts["feedback"] = _rowcount(
-            session.execute(
-                delete(TelemetryFeedback).where(TelemetryFeedback.run_id.in_(actor_run_ids))
-            )
-        )
-        counts["runs"] = _rowcount(
-            session.execute(
-                delete(TelemetryRun).where(TelemetryRun.run_id.in_(actor_run_ids))
-            )
-        )
+    _delete_runs(session, actor_run_ids, counts)
 
     session.flush()
     return counts

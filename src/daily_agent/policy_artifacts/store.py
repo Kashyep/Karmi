@@ -57,6 +57,9 @@ class PolicyState(BaseModel):
     last_known_good: str | None = None
     shadow: str | None = None
     installed: list[str] = Field(default_factory=list)
+    # Versions demoted by rollback or a guardrail. Every process serves static routing for
+    # them until an operator explicitly promotes the version again.
+    quarantined: list[str] = Field(default_factory=list)
     history: list[StateEvent] = Field(default_factory=list)
     revision: int = 0
 
@@ -203,11 +206,22 @@ class PolicyStore:
             return copied_bundle
 
     def load(self, version: str) -> LoadedBundle:
-        """Re-verify and load an installed bundle directly from disk every time."""
+        """Re-verify and load an installed bundle directly from disk every time.
+
+        The signed manifest must name the directory it was loaded from, so a validly
+        signed bundle copied over another version's directory is rejected.
+        """
         target_dir = self.bundles_dir / version
         if not target_dir.exists() or not target_dir.is_dir():
             raise BundleRejected("not_a_directory", f"Bundle version '{version}' does not exist on disk")
-        return self._verify(target_dir)
+        bundle = self._verify(target_dir)
+        if bundle.manifest.artifact_version != version:
+            self.metrics.inc("policy_verification_failures_total", {"code": "version_conflict"})
+            raise BundleRejected(
+                "version_conflict",
+                f"Bundle at '{version}' is signed as '{bundle.manifest.artifact_version}'",
+            )
+        return bundle
 
     def set_shadow(self, version: str | None) -> None:
         """Set or clear the active shadow bundle."""
@@ -227,8 +241,10 @@ class PolicyStore:
     def promote(self, version: str) -> LoadedBundle:
         """Promote an installed and verified bundle to active.
 
-        Requires evaluation.passed_regression to be True.
-        Sets previous = active, active = version.
+        Requires evaluation.passed_regression to be True. Sets previous = active,
+        active = version. Re-promoting the active version is a no-op so a retried
+        command cannot make the active version its own rollback target. An explicit
+        promotion is the operator decision that lifts a quarantine on that version.
         """
         with self._lock:
             state = self.read_state()
@@ -241,10 +257,15 @@ class PolicyStore:
                     "not_promotable",
                     f"Version '{version}' failed regression evaluation (passed_regression=False)",
                 )
+            if state.active == version and version not in state.quarantined:
+                return bundle
 
-            state.previous = state.active
+            if state.active != version:
+                state.previous = state.active
             state.active = version
-            event = StateEvent(action="promote", version=version, at=self._clock(), reason=None)
+            reason = "lift_quarantine" if version in state.quarantined else None
+            state.quarantined = [item for item in state.quarantined if item != version]
+            event = StateEvent(action="promote", version=version, at=self._clock(), reason=reason)
             state.history = (state.history + [event])[-200:]
             self._write_state(state)
             return bundle
@@ -261,39 +282,36 @@ class PolicyStore:
             state.history = (state.history + [event])[-200:]
             self._write_state(state)
 
-    def rollback(self, reason: str) -> str | None:
-        """Roll back active policy.
+    def rollback(self, reason: str, *, expected_active: str | None = None) -> str | None:
+        """Roll back and quarantine the active policy.
 
-        New active is previous if it still verifies, else last_known_good if it verifies
-        (and differs from failing active), else None (static).
-        The rolled-back version is cleared from shadow as well.
+        New active is previous if it verifies, else last_known_good if it verifies, else
+        None (static). Neither the failing active nor any quarantined version is a
+        candidate. With no active policy the store stays static. ``expected_active``
+        makes the call a no-op when another actor already changed the active version.
         Executes in one call with one atomic state write.
         """
         with self._lock:
             state = self.read_state()
             failing_active = state.active
+            if expected_active is not None and failing_active != expected_active:
+                return failing_active
             new_active: str | None = None
-
-            if state.previous is not None:
-                try:
-                    self.load(state.previous)
-                    new_active = state.previous
-                except BundleRejected:
-                    new_active = None
-
-            if (
-                new_active is None
-                and state.last_known_good is not None
-                and state.last_known_good != failing_active
-            ):
-                try:
-                    self.load(state.last_known_good)
-                    new_active = state.last_known_good
-                except BundleRejected:
-                    new_active = None
-
-            if failing_active is not None and state.shadow == failing_active:
-                state.shadow = None
+            if failing_active is not None:
+                blocked = {failing_active, *state.quarantined}
+                for candidate in (state.previous, state.last_known_good):
+                    if candidate is None or candidate in blocked:
+                        continue
+                    try:
+                        self.load(candidate)
+                    except BundleRejected:
+                        continue
+                    new_active = candidate
+                    break
+                if failing_active not in state.quarantined:
+                    state.quarantined.append(failing_active)
+                if state.shadow == failing_active:
+                    state.shadow = None
 
             state.active = new_active
             state.previous = None
@@ -304,11 +322,14 @@ class PolicyStore:
             return new_active
 
     def deactivate(self, reason: str) -> None:
-        """Deactivate active policy back to None (static routing)."""
+        """Deactivate the active policy (static routing); a later rollback stays static."""
         with self._lock:
             state = self.read_state()
-            state.previous = state.active
+            deactivated = state.active
+            state.previous = None
             state.active = None
-            event = StateEvent(action="deactivate", version=None, at=self._clock(), reason=reason)
+            event = StateEvent(
+                action="deactivate", version=deactivated, at=self._clock(), reason=reason
+            )
             state.history = (state.history + [event])[-200:]
             self._write_state(state)

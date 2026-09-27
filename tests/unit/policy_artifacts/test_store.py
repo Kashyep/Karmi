@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -223,7 +224,7 @@ def test_rollback_clears_failing_active_from_shadow(
     assert state.shadow is None
 
 
-def test_deactivate(
+def test_deactivate_then_rollback_stays_static(
     store_setup: tuple[PolicyStore, Path, Ed25519PrivateKey, str],
 ) -> None:
     store, src_dir, priv, _pub = store_setup
@@ -236,7 +237,80 @@ def test_deactivate(
     store.deactivate(reason="manual maintenance")
     state = store.read_state()
     assert state.active is None
-    assert state.previous == "v1"
+    assert state.history[-1].version == "v1"
+
+    # The runbook incident step must not re-activate the deactivated version.
+    assert store.rollback(reason="incident") is None
+    assert store.read_state().active is None
+
+
+def test_repromoting_active_version_cannot_become_its_own_rollback_target(
+    store_setup: tuple[PolicyStore, Path, Ed25519PrivateKey, str],
+) -> None:
+    store, src_dir, priv, _pub = store_setup
+    store.install(write_bundle(src_dir / "b1", private_key=priv, version="v1"))
+    store.install(write_bundle(src_dir / "b2", private_key=priv, version="v2"))
+    store.promote("v1")
+    store.promote("v2")
+    revision = store.read_state().revision
+    store.promote("v2")  # retried CLI command
+
+    state = store.read_state()
+    assert (state.active, state.previous, state.revision) == ("v2", "v1", revision)
+    assert store.rollback(reason="v2 regression") == "v1"
+
+
+def test_rollback_quarantines_failing_version_and_skips_quarantined_candidates(
+    store_setup: tuple[PolicyStore, Path, Ed25519PrivateKey, str],
+) -> None:
+    store, src_dir, priv, _pub = store_setup
+    for version in ("v1", "v2"):
+        store.install(write_bundle(src_dir / version, private_key=priv, version=version))
+    store.mark_known_good("v1")
+    store.promote("v1")
+    assert store.rollback(reason="v1 guardrail") is None
+    assert store.read_state().quarantined == ["v1"]
+
+    # Quarantined last-known-good is never a rollback target.
+    store.promote("v2")
+    assert store.rollback(reason="v2 guardrail") is None
+    state = store.read_state()
+    assert state.active is None and state.quarantined == ["v1", "v2"]
+
+    # Explicit operator promotion is the only way to lift a quarantine.
+    store.promote("v1")
+    state = store.read_state()
+    assert state.active == "v1" and state.quarantined == ["v2"]
+    assert state.history[-1].reason == "lift_quarantine"
+
+
+def test_rollback_with_stale_expected_active_is_a_no_op(
+    store_setup: tuple[PolicyStore, Path, Ed25519PrivateKey, str],
+) -> None:
+    store, src_dir, priv, _pub = store_setup
+    for version in ("v1", "v2"):
+        store.install(write_bundle(src_dir / version, private_key=priv, version=version))
+    store.promote("v1")
+    store.promote("v2")
+    revision = store.read_state().revision
+
+    assert store.rollback(reason="late guardrail", expected_active="v1") == "v2"
+    state = store.read_state()
+    assert (state.active, state.revision, state.quarantined) == ("v2", revision, [])
+
+
+def test_load_rejects_signed_bundle_copied_under_another_version_directory(
+    store_setup: tuple[PolicyStore, Path, Ed25519PrivateKey, str],
+) -> None:
+    store, src_dir, priv, _pub = store_setup
+    store.install(write_bundle(src_dir / "v1", private_key=priv, version="v1"))
+    store.install(write_bundle(src_dir / "v2", private_key=priv, version="v2"))
+    shutil.rmtree(store.bundles_dir / "v1")
+    shutil.copytree(store.bundles_dir / "v2", store.bundles_dir / "v1")
+
+    with pytest.raises(BundleRejected) as exc:
+        store.load("v1")
+    assert exc.value.code == "version_conflict"
 
 
 def test_load_re_verifies_from_disk_every_time(

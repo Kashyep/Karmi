@@ -400,16 +400,24 @@ class RoutingRuntime:
         self._metrics.inc("router_guardrail_trips_total", {"reason": reason})
         self._emit_ops("policy_guardrail_rollback", detail=reason, version=version)
         logger.error("guardrail %s tripped for policy %s; rolling back", reason, version)
+        persisted = False
         try:
             store = self.store_for(settings)
-            state = store.read_state()
-            if state.active == version:
-                store.rollback(reason)
+            # Compare-and-rollback: another actor may already have moved on.
+            if store.read_state().active == version:
+                store.rollback(reason, expected_active=version)
                 self._metrics.inc("policy_rollbacks_total", {"trigger": "guardrail"})
+            persisted = True
         except Exception:
             # The in-process trip still forces static routing for this version.
             logger.exception("guardrail rollback could not update the policy store")
         self.refresh(settings, force=True)
+        if persisted:
+            # The persisted quarantine now governs every worker; an explicit operator
+            # promotion lifts it, so this process keeps no permanent private trip.
+            self._guardrail_monitor(settings).reset(version)
+            with self._lock:
+                self._tripped.discard(version)
 
     # ---- introspection -----------------------------------------------------------------
 
@@ -428,6 +436,7 @@ class RoutingRuntime:
             "shadow": state.shadow if state else None,
             "previous": state.previous if state else None,
             "last_known_good": state.last_known_good if state else None,
+            "quarantined": list(state.quarantined) if state else [],
             "state_revision": state.revision if state else None,
             "state_error": self._state_error,
             "loaded_bundles": loaded,

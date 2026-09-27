@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
-from daily_agent.models import TelemetryRun
+from daily_agent.models import TelemetryOutcomeSignal, TelemetryRun
 from daily_agent.telemetry import exporter, finalizer, writer
 from daily_agent.telemetry.events import SignalType, TelemetryBatchV1
 from daily_agent.telemetry.sanitizer import SanitizationError
@@ -179,6 +179,59 @@ def test_late_signals_exported_in_subsequent_batch(
     assert len(parsed["runs"]) == 0
     assert len(parsed["late_signals"]) == 1
     assert parsed["late_signals"][0]["signal_id"] == late_sig.signal_id
+
+
+def test_signal_written_during_an_export_is_exported_by_the_next_batch(
+    tmp_path: Path, temp_db: sessionmaker[Session]
+) -> None:
+    t0 = datetime(2026, 9, 27, 10, 0, 0, tzinfo=UTC)
+    export_dir = tmp_path / "race_exports"
+    in_run = build_synthetic_signal_record(run_id=make_uuid(711), observed_at=t0)
+    with temp_db() as session:
+        writer.persist_events(
+            session,
+            [build_synthetic_run_record(run_id=make_uuid(711), started_at=t0, completed_at=t0)],
+            now=t0,
+            attribution_window_seconds=3600,
+        )
+        writer.persist_events(session, [in_run], now=t0, attribution_window_seconds=3600)
+        finalizer.finalize_run(session, make_uuid(711), now=t0)
+        session.commit()
+    with temp_db() as session:
+        first = exporter.export_batch(session, out_dir=export_dir, producer_version="0.1.0", now=t0)
+        assert first is not None and first.signal_count == 1
+        # The API writer commits a signal after the export snapshot but before the export
+        # marked the run, so it is stored as not-late.
+        session.add(
+            TelemetryOutcomeSignal(
+                signal_id=make_uuid(712),
+                run_id=make_uuid(711),
+                signal_type=SignalType.REJECT.value,
+                strength="strong",
+                confidence=1.0,
+                source="explicit_feedback",
+                observed_at=t0,
+                late=False,
+                export_batch_id=None,
+            )
+        )
+        session.commit()
+        stamped = session.get(TelemetryOutcomeSignal, in_run.signal_id)
+        assert stamped is not None and stamped.export_batch_id == first.batch_id
+
+    with temp_db() as session:
+        second = exporter.export_batch(
+            session, out_dir=export_dir, producer_version="0.1.0", now=t0 + timedelta(hours=1)
+        )
+        session.commit()
+    assert second is not None and second.run_count == 0
+    parsed = json.loads(second.path.read_bytes().decode("utf-8"))
+    assert [s["signal_id"] for s in parsed["late_signals"]] == [make_uuid(712)]
+    with temp_db() as session:
+        assert exporter.export_batch(
+            session, out_dir=export_dir, producer_version="0.1.0", now=t0 + timedelta(hours=2)
+        ) is None
+
 
 
 def test_export_sanitization_failure_fails_closed(

@@ -12,6 +12,7 @@ import threading
 import time
 from collections.abc import Callable
 
+from daily_agent import providers
 from daily_agent.providers import (
     TYPESAFE_INPUT_MICRO_PER_1K,
     TYPESAFE_MODEL_DEFAULT,
@@ -122,6 +123,7 @@ def model_candidates(health: ProviderHealth | None = None) -> tuple[ModelCandida
             provider_healthy=healthy(TYPESAFE_PROVIDER),
             expected_output_tokens=LIVE_ROUTE_EXPECTED_OUTPUT_TOKENS,
             requires_live_models=True,
+            spend_bounds_verified=providers.LIVE_PROVIDER_SPEND_VERIFIED,
             entitled_tiers=frozenset(TIERS),
         ),
     )

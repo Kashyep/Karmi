@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from daily_agent.models import TelemetryRun, TelemetryRunOutcome
+from daily_agent.models import (
+    TelemetryFeedback,
+    TelemetryOutcomeSignal,
+    TelemetryRun,
+    TelemetryRunOutcome,
+)
 from daily_agent.telemetry import retention, writer
 from tests.unit.telemetry.conftest import (
     build_synthetic_feedback_record,
@@ -86,6 +92,59 @@ def test_purge_expired_deletes_only_exported_and_preserves_unexported(
         assert session.get(TelemetryRunOutcome, make_uuid(1002)) is not None
 
         assert session.get(TelemetryRun, make_uuid(1003)) is not None
+
+
+def test_purge_keeps_expired_run_until_its_late_feedback_is_exported_and_drops_orphans(
+    temp_db: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 9, 27, 12, 0, 0, tzinfo=UTC)
+    old_time = now - timedelta(days=100)
+    run = build_synthetic_run_record(
+        run_id=make_uuid(3001), started_at=old_time, completed_at=old_time
+    )
+    with temp_db() as session:
+        writer.persist_events(session, [run], now=old_time, attribution_window_seconds=3600)
+        exported = session.get(TelemetryRun, make_uuid(3001))
+        assert exported is not None
+        exported.export_batch_id = make_hex64("1")
+        session.commit()
+    late = build_synthetic_feedback_record(
+        feedback_id=make_uuid(3002), run_id=make_uuid(3001), created_at=old_time
+    )
+    orphan = build_synthetic_feedback_record(
+        feedback_id=make_uuid(3003), run_id=make_uuid(3999), created_at=old_time
+    )
+    with temp_db() as session:
+        writer.persist_events(
+            session, [late, orphan], now=old_time, attribution_window_seconds=3600
+        )
+        session.commit()
+
+    with temp_db() as session:
+        counts = retention.purge_expired(session, now=now, retention_days=90)
+        session.commit()
+    assert counts["runs"] == 0 and counts["pending_children_kept"] == 1
+    # Orphan feedback plus its strong signal can never be exported; both are purged.
+    assert counts["orphans"] == 2
+    with temp_db() as session:
+        assert session.get(TelemetryRun, make_uuid(3001)) is not None
+        pending = session.get(TelemetryFeedback, make_uuid(3002))
+        assert pending is not None and pending.export_batch_id is None
+        assert session.get(TelemetryFeedback, make_uuid(3003)) is None
+        pending.export_batch_id = make_hex64("2")
+        for signal in session.scalars(
+            select(TelemetryOutcomeSignal).where(TelemetryOutcomeSignal.run_id == make_uuid(3001))
+        ):
+            signal.export_batch_id = make_hex64("2")
+        session.commit()
+
+    with temp_db() as session:
+        counts = retention.purge_expired(session, now=now, retention_days=90)
+        session.commit()
+    assert counts["runs"] == 1 and counts["feedback"] == 1
+    with temp_db() as session:
+        assert session.get(TelemetryRun, make_uuid(3001)) is None
+        assert session.get(TelemetryFeedback, make_uuid(3002)) is None
 
 
 def test_purge_actor_removes_single_actor_completely(temp_db: sessionmaker[Session]) -> None:

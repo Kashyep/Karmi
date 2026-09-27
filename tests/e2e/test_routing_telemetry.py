@@ -16,12 +16,17 @@ from daily_agent.config import Settings, get_settings
 from daily_agent.models import (
     BudgetReservation,
     CostLedger,
+    Note,
     PlatformBudget,
+    Run,
+    Subscription,
     TelemetryFeedback,
+    TelemetryOutcomeSignal,
     TelemetryRouterDecision,
     TelemetryRun,
     TelemetryRunOutcome,
 )
+from daily_agent.policy_artifacts.schema import HARNESS_RECOVERY, ROUTING_POLICY
 from daily_agent.policy_artifacts.store import PolicyStore
 from daily_agent.providers import ProviderCall
 from daily_agent.routing.registry import LOCAL_ROUTE, entitlement_map
@@ -30,7 +35,7 @@ from daily_agent.telemetry import exporter, finalizer
 from daily_agent.telemetry.collector import TelemetryCollector
 from daily_agent.telemetry.events import TelemetryBatchV1
 from tests.conftest import create_identity
-from tests.support.policy_bundles import generate_keypair, tamper_file, write_bundle
+from tests.support.policy_bundles import default_arms, generate_keypair, tamper_file, write_bundle
 
 pytestmark = pytest.mark.e2e
 
@@ -56,6 +61,44 @@ def _use_settings(ctx: dict[str, object], **changes: Any) -> Settings:
     app: Any = ctx["app"]
     app.dependency_overrides[get_settings] = lambda: settings
     return settings
+
+
+def _simulate_live_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    from daily_agent import providers, services
+
+    # The router can exercise live-path accounting without authorizing SDK traffic.
+    monkeypatch.setattr(providers, "LIVE_PROVIDER_SPEND_VERIFIED", True)
+    monkeypatch.setattr(
+        services,
+        "score_notes_relevance",
+        lambda _query, notes, **_kwargs: ([0.0] * len(notes), []),
+    )
+
+
+def _send_no_route(ctx: dict[str, object], token: str, text: str, key: str) -> TelemetryRun:
+    """A no-route deferral is retryable: 503, nothing reserved, no Run under the key."""
+    response = _client(ctx).post(
+        "/v1/messages",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"text": text, "idempotency_key": key},
+    )
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"]["code"] == "NO_ELIGIBLE_ROUTE"
+    assert int(response.headers["Retry-After"]) >= 1
+    with _factory(ctx)() as session:
+        assert session.scalar(select(Run).where(Run.logical_request_id == key)) is None
+        assert session.scalar(
+            select(BudgetReservation).where(BudgetReservation.logical_request_id == key)
+        ) is None
+    _flush(ctx)
+    with _factory(ctx)() as session:
+        (row,) = session.scalars(
+            select(TelemetryRun)
+            .where(TelemetryRun.status == "no_eligible_model")
+            .order_by(TelemetryRun.completed_at.desc())
+            .limit(1)
+        ).all()
+    return row
 
 
 def _token(ctx: dict[str, object], name: str = "Asha") -> str:
@@ -168,18 +211,25 @@ def test_tampered_active_bundle_falls_back_to_static_with_a_reason(
 ) -> None:
     settings, store, _source = _bundle_settings(test_context, tmp_path, mode="bandit")
     store.promote("lin-1")
-    # Tamper after install: load-time re-verification must reject it.
-    tamper_file(settings.router_policy_dir / "bundles" / "lin-1", "policy.json", "{}")
     token = _token(test_context)
+    trusted = _send(test_context, token, "what is on my list", "tampered-control-1")
+    _flush(test_context)
+    assert _run(test_context, trusted["run_id"]).policy_version == "lin-1"
+
+    # Tamper a signed file after install. Serving keeps the bytes it verified in memory;
+    # the next state change re-verifies from disk and must reject the tampered bundle.
+    bundle_dir = settings.router_policy_dir / "bundles" / "lin-1"
+    tampered = json.loads((bundle_dir / ROUTING_POLICY).read_text(encoding="utf-8"))
+    tampered["alpha"] = 0.0
+    tamper_file(bundle_dir, ROUTING_POLICY, json.dumps(tampered))
+    store.set_shadow(None)
 
     body = _send(test_context, token, "what is on my list", "tampered-1")
     assert body["route"] == LOCAL_ROUTE
-
     _flush(test_context)
     run = _run(test_context, body["run_id"])
     assert run.policy_version == "static-v1"
-    assert run.live_fallback_reason is not None
-    assert run.live_fallback_reason.startswith("bundle_rejected_")
+    assert run.live_fallback_reason == "bundle_rejected_checksum_mismatch"
 
 
 def test_routing_crash_serves_the_baseline_route(
@@ -218,6 +268,56 @@ def test_feature_extractor_failure_keeps_static_eligibility(
     assert _decisions(test_context, body["run_id"])[0].selection_probability == 1.0
 
 
+def test_oversized_message_is_rejected_before_budget_or_provider(
+    test_context: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from daily_agent import services
+
+    _use_settings(test_context, live_models_enabled=True)
+    _simulate_live_provider(monkeypatch)
+    monkeypatch.setattr(
+        services,
+        "score_notes_relevance",
+        lambda *_args, **_kw: pytest.fail("provider scoring must not run"),
+    )
+    settings = test_context["settings"]
+    assert isinstance(settings, Settings)
+    with _factory(test_context)() as session:
+        account, user, token = create_identity(session, settings, name="Oversize")
+        subscription = session.scalar(
+            select(Subscription).where(Subscription.account_id == account.id)
+        )
+        assert subscription is not None
+        subscription.plan_id = "part"
+        session.add(Note(account_id=account.id, owner_user_id=user.id, content="saved note"))
+        session.commit()
+    response = _client(test_context).post(
+        "/v1/messages",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"text": "x" * 20_001, "idempotency_key": "oversized-before-provider"},
+    )
+    assert response.status_code == 413
+    with _factory(test_context)() as session:
+        assert session.scalar(
+            select(BudgetReservation).where(
+                BudgetReservation.logical_request_id == "oversized-before-provider"
+            )
+        ) is None
+
+
+def test_live_setting_cannot_authorize_unverified_provider_spending(
+    test_context: dict[str, object]
+) -> None:
+    _use_settings(
+        test_context, live_models_enabled=True, router_disabled_models=[LOCAL_ROUTE]
+    )
+    run = _send_no_route(
+        test_context, _token(test_context), "draft a short note", "unverified-live-1"
+    )
+    rejections = json.loads(run.eligibility_rejections_json)
+    assert "provider_spend_unverified" in rejections["typesafe-system-one"]
+
+
 def test_live_failure_keeps_provider_expense_and_replays_executed_route(
     test_context: dict[str, object], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -225,6 +325,7 @@ def test_live_failure_keeps_provider_expense_and_replays_executed_route(
     from daily_agent import services
 
     _use_settings(test_context, live_models_enabled=True)
+    _simulate_live_provider(monkeypatch)
     call = ProviderCall("typesafe", "jev-latest", "choice", 50, 5, 300, "measured", "fixture")
     monkeypatch.setattr(services, "classify_intent", lambda *_args, **_kw: (None, [call]))
     token = _token(test_context)
@@ -249,12 +350,59 @@ def test_live_failure_keeps_provider_expense_and_replays_executed_route(
     assert decision.selection_probability == 1.0
 
 
+def test_provider_fault_defers_without_customer_charge_but_keeps_expense(
+    test_context: dict[str, object], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from daily_agent import services
+
+    _simulate_live_provider(monkeypatch)
+    arms = default_arms()
+    arms["typesafe-system-one"]["theta"][0] = 10.0
+
+    def disable_local_recovery(docs: dict[str, Any]) -> None:
+        docs[HARNESS_RECOVERY]["fallback_to_local"] = False
+
+    settings, store, _ = _bundle_settings(
+        test_context,
+        tmp_path,
+        mode="bandit",
+        harness=True,
+        arms=arms,
+        mutate=disable_local_recovery,
+    )
+    _use_settings(
+        test_context,
+        router_mode="bandit",
+        router_policy_public_key=settings.router_policy_public_key,
+        live_models_enabled=True,
+    )
+    store.promote("lin-1")
+    call = ProviderCall("typesafe", "jev-latest", "choice", 50, 5, 300, "measured", "fixture")
+    monkeypatch.setattr(services, "classify_intent", lambda *_args, **_kw: (None, [call]))
+    body = _send(test_context, _token(test_context), "draft a short note", "deferred-provider-1")
+    assert body["outcome"] == "DEFERRED" and body["route"] == "typesafe-system-one"
+    with _factory(test_context)() as session:
+        reservation = session.scalar(
+            select(BudgetReservation).where(
+                BudgetReservation.logical_request_id == "deferred-provider-1"
+            )
+        )
+        assert reservation is not None and reservation.status == "released"
+        platform = session.scalar(select(PlatformBudget))
+        assert platform is not None and platform.settled_micro == 300
+        ledger = session.scalars(
+            select(CostLedger).where(CostLedger.reservation_id == reservation.id)
+        ).all()
+    assert [(entry.provider, entry.cost_micro) for entry in ledger] == [("typesafe", 300)]
+
+
 def test_unmeasured_provider_attempt_is_not_treated_as_free(
     test_context: dict[str, object], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from daily_agent import services
 
     _use_settings(test_context, live_models_enabled=True)
+    _simulate_live_provider(monkeypatch)
     monkeypatch.setattr(services, "classify_intent", lambda *_args, **_kw: (None, []))
     token = _token(test_context)
     body = _send(test_context, token, "draft a short note", "unknown-cost-1")
@@ -281,6 +429,7 @@ def test_failed_tool_preserves_paid_provider_expense_without_customer_charge(
     from daily_agent import api, services
 
     _use_settings(test_context, live_models_enabled=True)
+    _simulate_live_provider(monkeypatch)
     call = ProviderCall("typesafe", "jev-latest", "choice", 50, 5, 300, "measured", "fixture")
     monkeypatch.setattr(
         services, "classify_intent", lambda *_args, **_kw: ("store_memory", [call])
@@ -343,14 +492,8 @@ def test_routing_error_cannot_override_operator_model_disable(
     _use_settings(test_context, router_disabled_models=[LOCAL_ROUTE])
     monkeypatch.setattr(RoutingRuntime, "route", explode)
     token = _token(test_context)
-    body = _send(test_context, token, "hello", "disabled-on-error-1")
-    assert body["outcome"] == "DEFERRED" and body["route"] is None
-    with _factory(test_context)() as session:
-        assert session.scalar(
-            select(BudgetReservation).where(
-                BudgetReservation.logical_request_id == "disabled-on-error-1"
-            )
-        ) is None
+    run = _send_no_route(test_context, token, "hello", "disabled-on-error-1")
+    assert json.loads(run.eligibility_rejections_json)[LOCAL_ROUTE] == ["model_disabled"]
 
 
 def test_telemetry_database_outage_does_not_fail_requests(
@@ -385,24 +528,18 @@ def test_telemetry_database_outage_does_not_fail_requests(
     assert spool.exists() and spool.read_text(encoding="utf-8").count('"kind":"run"') == 3
 
 
-def test_no_eligible_model_defers_without_reserving_budget(
+def test_no_eligible_model_defers_retryably_without_reserving_budget(
     test_context: dict[str, object],
 ) -> None:
     _use_settings(test_context, router_disabled_models=[LOCAL_ROUTE])
     token = _token(test_context)
-    body = _send(test_context, token, "hello", "no-route-1")
-    assert body["outcome"] == "DEFERRED"
-    assert body["route"] is None
-    with _factory(test_context)() as session:
-        reservations = session.scalars(
-            select(BudgetReservation).where(BudgetReservation.logical_request_id == "no-route-1")
-        ).all()
-    assert reservations == []
-
-    _flush(test_context)
-    run = _run(test_context, body["run_id"])
-    assert run.status == "no_eligible_model"
+    run = _send_no_route(test_context, token, "hello", "no-route-1")
     assert json.loads(run.eligibility_rejections_json)[LOCAL_ROUTE] == ["model_disabled"]
+
+    # Once the operator re-enables the route, the same idempotency key is served.
+    _use_settings(test_context, router_disabled_models=[])
+    body = _send(test_context, token, "hello", "no-route-1")
+    assert body["route"] == LOCAL_ROUTE and body["outcome"] != "DEFERRED"
 
 
 def test_guardrail_breach_rolls_back_the_live_bundle(
@@ -458,6 +595,42 @@ def test_feedback_is_scoped_to_the_callers_run_and_stores_no_text(
     assert row.feedback_type == "correction"
     assert row.sanitized_corrected_value is None
     assert row.correction_distance is not None and 0.0 < row.correction_distance < 1.0
+
+
+def test_repeated_feedback_cannot_multiply_strong_training_signals(
+    test_context: dict[str, object],
+) -> None:
+    owner = _token(test_context, "Owner")
+    body = _send(test_context, owner, "draft a note to the school", "feedback-flood-1")
+    url = f"/v1/runs/{body['run_id']}/feedback"
+    headers = {"Authorization": f"Bearer {owner}"}
+    ids: set[str] = set()
+    accepted: list[bool] = []
+    # No flush between posts: repeats still in flight must not be emitted again.
+    for kind in ("reject", "reject", "reject", "accept", "accept"):
+        response = _client(test_context).post(url, headers=headers, json={"feedback_type": kind})
+        assert response.status_code == 202
+        ids.add(response.json()["feedback_id"])
+        accepted.append(response.json()["accepted"])
+    _flush(test_context)
+    repeat = _client(test_context).post(url, headers=headers, json={"feedback_type": "reject"})
+    accepted.append(repeat.json()["accepted"])
+
+    assert len(ids) == 2
+    assert accepted == [True, False, False, True, False, False]
+    with _factory(test_context)() as session:
+        feedback = session.scalars(
+            select(TelemetryFeedback).where(TelemetryFeedback.run_id == body["run_id"])
+        ).all()
+        strong = session.scalars(
+            select(TelemetryOutcomeSignal).where(
+                TelemetryOutcomeSignal.run_id == body["run_id"],
+                TelemetryOutcomeSignal.strength == "strong",
+            )
+        ).all()
+    assert sorted(row.feedback_type for row in feedback) == ["accept", "reject"]
+    assert sorted(row.signal_type for row in strong) == ["accept", "reject"]
+
 
 
 def test_admin_observes_routing_and_telemetry_without_customer_access(

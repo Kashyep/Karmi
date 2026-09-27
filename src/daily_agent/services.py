@@ -711,26 +711,38 @@ def build_note_context(
     provider_calls: list[ProviderCall] = []
     attempts: list[AttemptOutcome] = []
     if query_text and notes and use_live:
-        # Bound the scoring fan-out: only the newest N notes go to the provider
-        # (one scored question each); the rest keep chronological order.
-        scored_notes, unscored = notes[:MAX_LIVE_SCORE_NOTES], notes[MAX_LIVE_SCORE_NOTES:]
-        started = time.perf_counter()
-        scores, calls = score_notes_relevance(
-            query_text,
-            scored_notes,
-            prompts=harness.prompts,
-            max_retries=harness.recovery.max_provider_retries,
-        )
-        provider_calls.extend(calls)
-        attempts.append(_provider_attempt("score", calls, success=scores is not None, started=started))
-        if scores is not None:
-            notes = [
-                note
-                for _score, note in sorted(
-                    zip(scores, scored_notes, strict=True), key=lambda pair: pair[0], reverse=True
-                )
-            ] + unscored
-
+        # Score only notes that fit the same bounded context used for classification.
+        # Sending full recent notes first could spend outside the selected route's
+        # context estimate, even if those notes were omitted from the final context.
+        scored_notes: list[Note] = []
+        unscored: list[Note] = []
+        scoring_tokens = 0
+        for index, note in enumerate(notes):
+            estimate = max(1, len(note.content.encode("utf-8")) // 4)
+            if index < MAX_LIVE_SCORE_NOTES and scoring_tokens + estimate <= max_tokens:
+                scored_notes.append(note)
+                scoring_tokens += estimate
+            else:
+                unscored.append(note)
+        if scored_notes:
+            started = time.perf_counter()
+            scores, calls = score_notes_relevance(
+                query_text,
+                scored_notes,
+                prompts=harness.prompts,
+                max_retries=harness.recovery.max_provider_retries,
+            )
+            provider_calls.extend(calls)
+            attempts.append(
+                _provider_attempt("score", calls, success=scores is not None, started=started)
+            )
+            if scores is not None:
+                notes = [
+                    note
+                    for _score, note in sorted(
+                        zip(scores, scored_notes, strict=True), key=lambda pair: pair[0], reverse=True
+                    )
+                ] + unscored
     parts: list[str] = []
     source_ids: list[str] = []
     omitted: list[str] = []

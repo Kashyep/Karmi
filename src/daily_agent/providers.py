@@ -37,6 +37,10 @@ TYPESAFE_TIMEOUT_SECONDS = 5.0
 TYPESAFE_MAX_RETRIES = 1
 TYPESAFE_RETRY_BUDGET_SECONDS = 15.0
 
+# No verified provider rate, request size or billable retry/output bound is available.
+# Turning on live_models_enabled alone must never authorize paid calls.
+LIVE_PROVIDER_SPEND_VERIFIED = False
+
 
 @dataclass(frozen=True)
 class ProviderCall:
@@ -78,6 +82,8 @@ def _record(response: Any, operation: str) -> ProviderCall:
 
 
 def _client(max_retries: int = TYPESAFE_MAX_RETRIES) -> Any:
+    if not LIVE_PROVIDER_SPEND_VERIFIED:
+        raise RuntimeError("live provider spending is disabled until cost bounds are verified")
     from typesafe_sdk import RetryPolicy, TypeSafeClient
 
     return TypeSafeClient(

@@ -202,7 +202,7 @@
 ## Routing, telemetry and signed policy loop (2026-09-27, 14:20 UTC)
 
 - Baseline `00b7224`, clean before this work; branch `Kashyep/routing-telemetry-loop`.
-  Candidate uncommitted at this entry. ADR-0003, `docs/task-cards/{RTR,TEL,ART}-001.md`,
+  Commits listed below. ADR-0003, `docs/task-cards/{RTR,TEL,ART}-001.md`,
   `docs/runbooks/routing-telemetry.md` and generated `docs/contracts/` describe the scope.
 - Implemented hard eligibility, static/shadow/LinUCB/canary routing, provider health, signed
   PolicyBundleV1 verification/store/rollback, guarded harness selection, pseudonymous
@@ -211,23 +211,35 @@
   provider failure keeps known/unknown costs, failed actions retain provider expense
   while refunding customer usage, and router crashes recheck eligibility. Signed
   JSON rejects ambiguous duplicate keys (failing-before/passing-after test).
-- VERIFIED on local Windows/Python 3.14: `python scripts/tasks.py lint` (ruff + secret scan),
-  `typecheck` (50 files), `test-unit` (211), `test-e2e` (37), `benchmark-demo` (60-case
-  suite validation, 5-attempt offline demo). SQLite migration/model drift test included.
-  Smoke: `python scripts/tasks.py routing --help`, `telemetry --help`, export/schema
-  roundtrip in E2E; no real provider calls.
-- Synthetic 4-way concurrent static-route load (100 requests, baseline `00b7224`):
-  baseline p50/p95 16.6/192.71 ms, 56.23 req/s; candidate 40.12/383.49 ms,
-  28.02 req/s. SQLite writer contention and run-to-run variance possible; treat as an
-  observed regression, not a PostgreSQL forecast. Reproduce with
-  `python scripts/bench_routing_latency.py --requests 100`.
-- NOT VERIFIED: `test-integration` (Docker daemon unavailable), real provider rates/context
-  caps/usage and paid traffic, Parakh consumer (repository absent), device/manual gates,
-  production migration or deployment. Live calls/checkout/WhatsApp remain disabled.
-  Independent verifier/security review BLOCKED: Orca Antigravity HIGH launch attempts
-  failed at agent readiness because `agy` is not installed in this Windows terminal
-  (one verifier retry with a 180-second window had the same cause). Owned terminals
-  were released. Do not treat the worker slice reports as independent acceptance.
-- Source candidate committed as `08e4c7b` (87 scoped files). A follow-up test-only fix
-  restores the original telemetry collector after the simulated outage; final E2E 37,
-  ruff and secret scan passed again. No push/production action.
+- Source candidate committed as `08e4c7b` (87 files) plus test-sink fix `0d96aa3`, then a
+  remediation commit (telemetry writer batching + security findings F1–F9). No push.
+- VERIFIED on the final tree (2026-09-27, local Windows/Python 3.14.3, Docker 29.6.1):
+  `python scripts/tasks.py lint` PASS, `typecheck` PASS (50 files), `test-unit` 220,
+  `test-e2e` 41, `test-integration` 2 (PostgreSQL/Redis). Regression tests for F2–F9 and the
+  writer batch dedupe failed on `0d96aa3` in a throwaway worktree and pass now. A CLI smoke on a
+  temp store showed quarantine, the no-op re-promote and deactivate→rollback staying static.
+- Latency (100 req, concurrency 4, before remediation; hot path unchanged by it): SQLite
+  baseline 17.2/289.87 ms p50/p95, 53.67 rps vs candidate 18.81/351.84, 45.89. Disposable
+  PostgreSQL runs: baseline 79.58/149.55, 45.7 and 75.17/126.55, 49.52; candidate
+  91.32/146.31, 41.59 and 90.93/139.81, 41.22. The extra SQL runs on the telemetry writer
+  thread. `docs/release-evidence/routing-telemetry-2026-09-27.md` has the details.
+- Reviews (task-tool subagents; Orca Antigravity workers can't launch because `agy` is missing):
+  - verifier: ACCEPT.
+  - security: REWORK F1–F9 → re-review: F2–F4, F6–F9 RESOLVED; F1 PARTIAL/contained; F5 PARTIAL.
+  - Follow-ups: in-flight feedback emit dedupe and N2 chunked actor purge (both done); N1 older
+    builds reject the new `state.json` field (fail-closed; documented).
+- Decisions:
+  - Live provider spend is hard-disabled (`providers.LIVE_PROVIDER_SPEND_VERIFIED=False` →
+    eligibility `provider_spend_unverified`; the client refuses to construct).
+  - Messages over 20k characters get a 413 before a budget hold.
+  - No-route is a 503 with Retry-After and no persisted Run.
+  - A DEFERRED provider fault refunds the customer and keeps the expense.
+  - Rollback quarantines the failing version, persisted in `state.json`.
+- NOT VERIFIED / blocked:
+  - F1 worst-case reservation: needs verified TypeSafe billable rates, a max-output/retry bound
+    and spend authorisation. The single-call estimate and `min(cap, estimate)` clamp remain.
+  - Feedback per-principal rate limit and spool size cap: not built.
+  - Parakh consumer (repo absent), concurrent-money/restore gates, device/manual gates, production
+    migration/deploy. Live calls, checkout and WhatsApp remain disabled.
+- Next: obtain verified TypeSafe pricing/bounds and approval before any live-spend change;
+  run Parakh ingestion against a real export; decide on a feedback rate limit.

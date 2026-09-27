@@ -49,6 +49,7 @@ def test_reason_codes_tuple_complete() -> None:
         "tools_unsupported",
         "structured_output_unsupported",
         "provider_unhealthy",
+        "provider_spend_unverified",
         "request_budget",
         "period_budget",
     )
@@ -159,8 +160,22 @@ def test_reason_code_live_models_disabled() -> None:
         live_models_enabled=False,
     )
     assert LIVE_ROUTE not in result.eligible_models
-    assert result.rejections[LIVE_ROUTE] == ("live_models_disabled",)
+    assert result.rejections[LIVE_ROUTE] == (
+        "live_models_disabled",
+        "provider_spend_unverified",
+    )
     assert LOCAL_ROUTE in result.eligible_models
+
+def test_unverified_provider_spend_rejects_live_route_even_when_enabled() -> None:
+    result = filter_eligible(
+        _base_context(tier="part"),
+        model_candidates(),
+        plan=SYNTHETIC_POLICIES["part"],
+        disabled_models=(),
+        live_models_enabled=True,
+    )
+    assert result.eligible_models == (LOCAL_ROUTE,)
+    assert result.rejections[LIVE_ROUTE] == ("provider_spend_unverified",)
 
 
 def test_reason_code_context_capacity() -> None:
@@ -291,7 +306,10 @@ def test_reason_code_provider_unhealthy() -> None:
         live_models_enabled=True,
     )
     assert LIVE_ROUTE not in result.eligible_models
-    assert result.rejections[LIVE_ROUTE] == ("provider_unhealthy",)
+    assert result.rejections[LIVE_ROUTE] == (
+        "provider_spend_unverified",
+        "provider_unhealthy",
+    )
     assert LOCAL_ROUTE in result.eligible_models
 
 

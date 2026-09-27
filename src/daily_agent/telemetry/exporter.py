@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from daily_agent.models import (
@@ -92,12 +92,20 @@ def export_batch(
     )
     run_pairs = list(session.execute(run_stmt).all())
 
-    # 2. Fetch unexported late signals and feedback
+    # 2. Unexported signals/feedback whose run is already exported. `late` is set by the
+    # writer when the run was exported first; the run-join also catches rows written
+    # between a previous export's snapshot and its commit.
+    exported_runs_subq = select(TelemetryRun.run_id).where(
+        TelemetryRun.export_batch_id.is_not(None)
+    )
     late_signals_stmt = (
         select(TelemetryOutcomeSignal)
         .where(
-            TelemetryOutcomeSignal.late.is_(True),
             TelemetryOutcomeSignal.export_batch_id.is_(None),
+            or_(
+                TelemetryOutcomeSignal.late.is_(True),
+                TelemetryOutcomeSignal.run_id.in_(exported_runs_subq),
+            ),
         )
         .order_by(TelemetryOutcomeSignal.observed_at.asc(), TelemetryOutcomeSignal.signal_id.asc())
     )
@@ -106,8 +114,11 @@ def export_batch(
     late_feedback_stmt = (
         select(TelemetryFeedback)
         .where(
-            TelemetryFeedback.late.is_(True),
             TelemetryFeedback.export_batch_id.is_(None),
+            or_(
+                TelemetryFeedback.late.is_(True),
+                TelemetryFeedback.run_id.in_(exported_runs_subq),
+            ),
         )
         .order_by(TelemetryFeedback.created_at.asc(), TelemetryFeedback.feedback_id.asc())
     )
@@ -132,6 +143,8 @@ def export_batch(
 
     # 4. Assemble ExportedRunV1 records
     exported_runs: list[ExportedRunV1] = []
+    in_run_signal_rows: list[TelemetryOutcomeSignal] = []
+    in_run_feedback_rows: list[TelemetryFeedback] = []
     for run, outcome in run_pairs:
         # Decisions
         dec_stmt = (
@@ -230,11 +243,12 @@ def export_batch(
             select(TelemetryOutcomeSignal)
             .where(
                 TelemetryOutcomeSignal.run_id == run.run_id,
-                TelemetryOutcomeSignal.late.is_(False),
+                TelemetryOutcomeSignal.export_batch_id.is_(None),
             )
             .order_by(TelemetryOutcomeSignal.observed_at.asc(), TelemetryOutcomeSignal.signal_id.asc())
         )
         sig_rows = session.scalars(sig_stmt).all()
+        in_run_signal_rows.extend(sig_rows)
         signals = [
             SignalRecord(
                 signal_id=s.signal_id,
@@ -248,16 +262,17 @@ def export_batch(
             for s in sig_rows
         ]
 
-        # Feedback for this run (non-late)
+        # Feedback for this run
         fb_stmt = (
             select(TelemetryFeedback)
             .where(
                 TelemetryFeedback.run_id == run.run_id,
-                TelemetryFeedback.late.is_(False),
+                TelemetryFeedback.export_batch_id.is_(None),
             )
             .order_by(TelemetryFeedback.created_at.asc(), TelemetryFeedback.feedback_id.asc())
         )
         fb_rows = session.scalars(fb_stmt).all()
+        in_run_feedback_rows.extend(fb_rows)
         feedback = [
             FeedbackRecord(
                 feedback_id=f.feedback_id,
@@ -381,12 +396,13 @@ def export_batch(
     file_sha256 = hashlib.sha256(file_bytes).hexdigest()
     sha_file.write_text(f"{file_sha256}  {final_file.name}\n", encoding="utf-8")
 
-    # 9. Mark exported rows in database
+    # 9. Mark every exported row, including in-run signals/feedback, so a row is exported
+    # exactly once and retention can tell exported from pending children.
     for run, _ in run_pairs:
         run.export_batch_id = batch_id
-    for s in late_signal_rows:
+    for s in (*in_run_signal_rows, *late_signal_rows):
         s.export_batch_id = batch_id
-    for fb in late_feedback_rows:
+    for fb in (*in_run_feedback_rows, *late_feedback_rows):
         fb.export_batch_id = batch_id
 
     total_signals = sum(len(r.signals) for r in exported_runs) + len(exported_late_signals)

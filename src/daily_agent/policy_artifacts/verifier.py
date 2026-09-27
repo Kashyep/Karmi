@@ -7,11 +7,13 @@ are strictly validated before any learned policy is staged, shadowed, or promote
 from __future__ import annotations
 
 import base64
+import errno
 import hashlib
 import hmac
 import json
 import math
 import os
+import stat
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
@@ -92,6 +94,44 @@ def _load_strict_json(raw: bytes, filename: str) -> Any:
         raise BundleRejected("invalid_json", f"File {filename} contains invalid JSON: {e}") from e
 
 
+_OPEN_FLAGS = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _read_regular_file(path: Path, rel_file: str) -> bytes:
+    """Read one bundle file exactly once, refusing links, non-regular files and oversize.
+
+    The returned bytes are the only copy that is hashed and parsed, so a file swapped
+    on disk after the read cannot change what was verified.
+    """
+    try:
+        fd = os.open(path, _OPEN_FLAGS)
+    except OSError as e:
+        code = "symlink" if e.errno == errno.ELOOP else "missing_file"
+        raise BundleRejected(code, f"Cannot open {rel_file} safely: {e}") from e
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise BundleRejected("unexpected_file", f"{rel_file} is not a regular file")
+        chunks: list[bytes] = []
+        remaining = MAX_FILE_BYTES + 1
+        while remaining > 0:
+            chunk = os.read(fd, min(remaining, 1 << 16))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+    finally:
+        os.close(fd)
+    raw = b"".join(chunks)
+    if len(raw) > MAX_FILE_BYTES:
+        raise BundleRejected(
+            "file_too_large",
+            f"File {rel_file} exceeds maximum size {MAX_FILE_BYTES} bytes",
+        )
+    return raw
+
+
+
 def verify_bundle(
     path: Path,
     *,
@@ -144,6 +184,12 @@ def verify_bundle(
                 )
             present_files.add(rel_file)
 
+    # Snapshot every file exactly once; all hashing and parsing below uses these bytes.
+    contents = {
+        rel_file: _read_regular_file(target_path / rel_file, rel_file)
+        for rel_file in sorted(present_files)
+    }
+
     # 2. Required files present.
     missing_required = REQUIRED_FILES - present_files
     if missing_required:
@@ -169,15 +215,10 @@ def verify_bundle(
     except Exception as e:
         raise BundleRejected("bad_public_key", f"Invalid public key: {e}") from e
 
-    checksums_path = target_path / CHECKSUMS
-    try:
-        checksums_raw = checksums_path.read_bytes()
-    except Exception as e:
-        raise BundleRejected("missing_file", f"Cannot read checksums.json: {e}") from e
+    checksums_raw = contents[CHECKSUMS]
 
-    sig_path = target_path / SIGNATURE
     try:
-        sig_text = sig_path.read_text(encoding="utf-8").strip()
+        sig_text = contents[SIGNATURE].decode("utf-8").strip()
         sig_bytes = base64.b64decode(sig_text, validate=True)
     except Exception as e:
         raise BundleRejected("bad_signature", f"Cannot decode signature.sig: {e}") from e
@@ -205,7 +246,7 @@ def verify_bundle(
         )
 
     for rel_file, expected_sha in checksums_model.files.items():
-        file_bytes = (target_path / rel_file).read_bytes()
+        file_bytes = contents[rel_file]
         actual_sha = hashlib.sha256(file_bytes).hexdigest()
         if not hmac.compare_digest(actual_sha, expected_sha):
             raise BundleRejected(
@@ -214,7 +255,7 @@ def verify_bundle(
             )
 
     # 5. Parse JSON strictly: UTF-8, reject NaN/Infinity, validate Pydantic model for each file.
-    manifest_data = _load_strict_json((target_path / MANIFEST).read_bytes(), MANIFEST)
+    manifest_data = _load_strict_json(contents[MANIFEST], MANIFEST)
     try:
         manifest = PolicyBundleManifestV1.model_validate(manifest_data)
     except ValidationError as e:
@@ -227,7 +268,7 @@ def verify_bundle(
                 "harness_mismatch",
                 "manifest.harness_included is True but harness files are missing",
             )
-        prompts_data = _load_strict_json((target_path / HARNESS_PROMPTS).read_bytes(), HARNESS_PROMPTS)
+        prompts_data = _load_strict_json(contents[HARNESS_PROMPTS], HARNESS_PROMPTS)
         try:
             harness_prompts = HarnessPromptsV1.model_validate(prompts_data)
         except ValidationError as e:
@@ -236,10 +277,7 @@ def verify_bundle(
                 f"harness/prompts.json failed schema validation: {e}",
             ) from e
 
-        recovery_data = _load_strict_json(
-            (target_path / HARNESS_RECOVERY).read_bytes(),
-            HARNESS_RECOVERY,
-        )
+        recovery_data = _load_strict_json(contents[HARNESS_RECOVERY], HARNESS_RECOVERY)
         try:
             recovery_policy = RecoveryPolicyV1.model_validate(recovery_data)
         except ValidationError as e:
@@ -260,7 +298,7 @@ def verify_bundle(
             )
         harness_bundle = None
 
-    policy_data = _load_strict_json((target_path / ROUTING_POLICY).read_bytes(), ROUTING_POLICY)
+    policy_data = _load_strict_json(contents[ROUTING_POLICY], ROUTING_POLICY)
     try:
         policy = LinUCBPolicyV1.model_validate(policy_data)
     except ValidationError as e:
@@ -269,7 +307,7 @@ def verify_bundle(
             f"routing_policy.json failed schema validation: {e}",
         ) from e
 
-    metadata_data = _load_strict_json((target_path / ROUTER_METADATA).read_bytes(), ROUTER_METADATA)
+    metadata_data = _load_strict_json(contents[ROUTER_METADATA], ROUTER_METADATA)
     try:
         metadata = RouterMetadataV1.model_validate(metadata_data)
     except ValidationError as e:
@@ -278,10 +316,7 @@ def verify_bundle(
             f"router_metadata.json failed schema validation: {e}",
         ) from e
 
-    feature_schema_data = _load_strict_json(
-        (target_path / FEATURE_SCHEMA).read_bytes(),
-        FEATURE_SCHEMA,
-    )
+    feature_schema_data = _load_strict_json(contents[FEATURE_SCHEMA], FEATURE_SCHEMA)
     try:
         feature_schema = RoutingFeatureSchemaV1.model_validate(feature_schema_data)
     except ValidationError as e:
@@ -290,10 +325,7 @@ def verify_bundle(
             f"feature_schema.json failed schema validation: {e}",
         ) from e
 
-    evaluation_data = _load_strict_json(
-        (target_path / EVALUATION_SUMMARY).read_bytes(),
-        EVALUATION_SUMMARY,
-    )
+    evaluation_data = _load_strict_json(contents[EVALUATION_SUMMARY], EVALUATION_SUMMARY)
     try:
         evaluation = EvaluationSummaryV1.model_validate(evaluation_data)
     except ValidationError as e:
@@ -302,7 +334,7 @@ def verify_bundle(
             f"evaluation_summary.json failed schema validation: {e}",
         ) from e
 
-    provenance_data = _load_strict_json((target_path / PROVENANCE).read_bytes(), PROVENANCE)
+    provenance_data = _load_strict_json(contents[PROVENANCE], PROVENANCE)
     try:
         provenance = ProvenanceV1.model_validate(provenance_data)
     except ValidationError as e:

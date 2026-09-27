@@ -78,7 +78,9 @@ def purge() -> None:
         session.commit()
     typer.echo(
         f"Purge complete: {counts['runs']} runs, {counts['signals']} signals, "
-        f"{counts['feedback']} feedback deleted. {counts['unexported_kept']} unexported runs preserved."
+        f"{counts['feedback']} feedback, {counts['orphans']} orphan rows deleted. "
+        f"{counts['unexported_kept']} unexported runs and "
+        f"{counts['pending_children_kept']} runs with unexported signals/feedback preserved."
     )
 
 

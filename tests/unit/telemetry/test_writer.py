@@ -146,6 +146,49 @@ def test_derived_retry_signal_generation(temp_db: sessionmaker[Session]) -> None
         assert sig.late is False
 
 
+def test_single_batch_dedupes_and_attributes_retry_to_newest_earlier_run(
+    temp_db: sessionmaker[Session],
+) -> None:
+    base = datetime(2026, 9, 27, 11, 0, 0, tzinfo=UTC)
+    actor = make_hex64("8")
+    fingerprint = make_hex64("e")
+    runs = [
+        build_synthetic_run_record(
+            run_id=make_uuid(70 + index),
+            anonymous_actor_id=actor,
+            request_fingerprint=fingerprint,
+            started_at=base + timedelta(seconds=10 * index),
+            completed_at=base + timedelta(seconds=10 * index + 1),
+        )
+        for index in range(3)
+    ]
+    feedback = build_synthetic_feedback_record(
+        feedback_id=make_uuid(79), run_id=make_uuid(70), feedback_type=FeedbackType.REJECT
+    )
+    # Spool replay can repeat events inside one batch; rows are not flushed until commit.
+    batch = [runs[0], runs[0], feedback, feedback, runs[1], runs[2], runs[2]]
+
+    with temp_db() as session:
+        writer.persist_events(session, batch, now=base, attribution_window_seconds=86_400)
+        session.commit()
+
+    with temp_db() as session:
+        assert len(session.scalars(select(TelemetryRun)).all()) == 3
+        assert len(session.scalars(select(TelemetryFeedback)).all()) == 1
+        retries = session.scalars(
+            select(TelemetryOutcomeSignal).where(
+                TelemetryOutcomeSignal.signal_type == SignalType.RETRY.value
+            )
+        ).all()
+        assert sorted(signal.run_id for signal in retries) == [make_uuid(70), make_uuid(71)]
+        explicit = session.scalars(
+            select(TelemetryOutcomeSignal).where(
+                TelemetryOutcomeSignal.source == SignalSource.EXPLICIT_FEEDBACK.value
+            )
+        ).all()
+        assert [signal.run_id for signal in explicit] == [make_uuid(70)]
+
+
 def test_feedback_persists_and_emits_matching_explicit_signal(
     temp_db: sessionmaker[Session],
 ) -> None:

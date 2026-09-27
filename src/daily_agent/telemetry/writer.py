@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -45,6 +46,41 @@ _FEEDBACK_TO_SIGNAL_MAP: dict[FeedbackType, SignalType] = {
 }
 
 
+def _utc(value: datetime) -> datetime:
+    # SQLite returns naive datetimes for DateTime(timezone=True) columns.
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+class _Batch:
+    """Rows added in the current transaction, visible to later events in the batch.
+
+    Autoflush is off while a batch is built, so pending rows are invisible to
+    ``Session.get`` and queries; this view keeps in-batch duplicate and retry
+    detection equivalent to row-at-a-time flushing.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+        self._pending: dict[tuple[type[object], str], object] = {}
+
+    def get[RowT](self, model: type[RowT], key: str) -> RowT | None:
+        pending = self._pending.get((model, key))
+        if pending is not None:
+            return cast(RowT, pending)
+        return self.session.get(model, key)
+
+    def add(self, row: object, key: str) -> None:
+        self._pending[(type(row), key)] = row
+        self.session.add(row)
+
+    def pending[RowT](self, model: type[RowT]) -> list[RowT]:
+        return [cast(RowT, row) for (kind, _), row in self._pending.items() if kind is model]
+
+
+def _feedback_signal_id(feedback_id: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_OID, f"feedback-signal:{feedback_id}"))
+
+
 def persist_events(
     session: Session,
     events: Sequence[TelemetryEvent],
@@ -55,29 +91,35 @@ def persist_events(
     """Persist a batch of telemetry events in one transaction (caller commits).
 
     Idempotent by primary key: rows whose PK already exists are skipped without error.
+    Inserts are flushed together at commit rather than before each existence check, so
+    the database write lock (SQLite: whole database) is held only for the final flush.
     """
-    for event in events:
-        if isinstance(event, RunRecord):
-            _persist_run(session, event, now=now, attribution_window_seconds=attribution_window_seconds)
-        elif isinstance(event, SignalRecord):
-            _persist_signal(session, event)
-        elif isinstance(event, FeedbackRecord):
-            _persist_feedback(session, event)
-        elif isinstance(event, OpsEventRecord):
-            _persist_ops_event(session, event)
+    batch = _Batch(session)
+    with session.no_autoflush:
+        for event in events:
+            if isinstance(event, RunRecord):
+                _persist_run(
+                    batch, event, now=now, attribution_window_seconds=attribution_window_seconds
+                )
+            elif isinstance(event, SignalRecord):
+                _persist_signal(batch, event)
+            elif isinstance(event, FeedbackRecord):
+                _persist_feedback(batch, event)
+            elif isinstance(event, OpsEventRecord):
+                _persist_ops_event(batch, event)
 
 
 def _persist_run(
-    session: Session,
+    batch: _Batch,
     event: RunRecord,
     *,
     now: datetime,
     attribution_window_seconds: int,
 ) -> None:
-    if session.get(TelemetryRun, event.run_id) is not None:
+    if batch.get(TelemetryRun, event.run_id) is not None:
         return
 
-    session.add(
+    batch.add(
         TelemetryRun(
             run_id=event.run_id,
             request_id=event.request_id,
@@ -106,12 +148,13 @@ def _persist_run(
             shadow_error=event.shadow_error,
             export_batch_id=None,
             created_at=now,
-        )
+        ),
+        event.run_id,
     )
 
     for d in event.decisions:
-        if session.get(TelemetryRouterDecision, d.decision_id) is None:
-            session.add(
+        if batch.get(TelemetryRouterDecision, d.decision_id) is None:
+            batch.add(
                 TelemetryRouterDecision(
                     decision_id=d.decision_id,
                     run_id=event.run_id,
@@ -131,17 +174,18 @@ def _persist_run(
                     shadow=d.shadow,
                     agreed_with_live=d.agreed_with_live,
                     created_at=d.created_at,
-                )
+                ),
+                d.decision_id,
             )
 
     for a in event.attempts:
-        if session.get(TelemetryModelAttempt, a.attempt_id) is None:
+        if batch.get(TelemetryModelAttempt, a.attempt_id) is None:
             cost_m = (
                 a.cost_measurement.value
                 if hasattr(a.cost_measurement, "value")
                 else str(a.cost_measurement)
             )
-            session.add(
+            batch.add(
                 TelemetryModelAttempt(
                     attempt_id=a.attempt_id,
                     run_id=event.run_id,
@@ -157,12 +201,13 @@ def _persist_run(
                     success=a.success,
                     error_type=a.error_type,
                     retry_number=a.retry_number,
-                )
+                ),
+                a.attempt_id,
             )
 
     for t in event.tool_events:
-        if session.get(TelemetryToolEvent, t.event_id) is None:
-            session.add(
+        if batch.get(TelemetryToolEvent, t.event_id) is None:
+            batch.add(
                 TelemetryToolEvent(
                     event_id=t.event_id,
                     run_id=event.run_id,
@@ -172,16 +217,17 @@ def _persist_run(
                     execution_success=t.execution_success,
                     latency_ms=t.latency_ms,
                     error_class=t.error_class,
-                )
+                ),
+                t.event_id,
             )
 
-    if session.get(TelemetryRunOutcome, event.run_id) is None:
+    if batch.get(TelemetryRunOutcome, event.run_id) is None:
         cost_m_out = (
             event.outcome.cost_measurement.value
             if hasattr(event.outcome.cost_measurement, "value")
             else str(event.outcome.cost_measurement)
         )
-        session.add(
+        batch.add(
             TelemetryRunOutcome(
                 run_id=event.run_id,
                 completed=event.outcome.completed,
@@ -199,58 +245,89 @@ def _persist_run(
                 cost_measurement=cost_m_out,
                 outcome=event.outcome.outcome,
                 finalized_at=None,
-            )
+            ),
+            event.run_id,
         )
 
-    # Derived retry attribution
     if event.request_fingerprint is not None:
-        cutoff = event.started_at - timedelta(seconds=attribution_window_seconds)
-        earlier_stmt = (
-            select(TelemetryRun)
-            .where(
-                TelemetryRun.anonymous_actor_id == event.anonymous_actor_id,
-                TelemetryRun.request_fingerprint == event.request_fingerprint,
-                TelemetryRun.run_id != event.run_id,
-                TelemetryRun.completed_at <= event.started_at,
-                TelemetryRun.completed_at >= cutoff,
-            )
-            .order_by(TelemetryRun.completed_at.desc())
+        _attribute_retry(batch, event, attribution_window_seconds=attribution_window_seconds)
+
+
+def _attribute_retry(
+    batch: _Batch, event: RunRecord, *, attribution_window_seconds: int
+) -> None:
+    """Mark the newest earlier run with the same actor and request as retried."""
+    started = _utc(event.started_at)
+    cutoff = started - timedelta(seconds=attribution_window_seconds)
+    candidates = [
+        run
+        for run in batch.pending(TelemetryRun)
+        if run.run_id != event.run_id
+        and run.anonymous_actor_id == event.anonymous_actor_id
+        and run.request_fingerprint == event.request_fingerprint
+        and cutoff <= _utc(run.completed_at) <= started
+    ]
+    stored = batch.session.scalar(
+        select(TelemetryRun)
+        .where(
+            TelemetryRun.anonymous_actor_id == event.anonymous_actor_id,
+            TelemetryRun.request_fingerprint == event.request_fingerprint,
+            TelemetryRun.run_id != event.run_id,
+            TelemetryRun.completed_at <= event.started_at,
+            TelemetryRun.completed_at >= cutoff,
         )
-        earlier_runs = list(session.scalars(earlier_stmt).all())
-        if earlier_runs:
-            earlier_run = earlier_runs[0]
-            existing_sig = session.scalar(
-                select(TelemetryOutcomeSignal).where(
-                    TelemetryOutcomeSignal.run_id == earlier_run.run_id,
-                    TelemetryOutcomeSignal.signal_type == SignalType.RETRY.value,
-                    TelemetryOutcomeSignal.source == SignalSource.DERIVED.value,
-                )
-            )
-            if existing_sig is None:
-                is_late = earlier_run.export_batch_id is not None
-                session.add(
-                    TelemetryOutcomeSignal(
-                        signal_id=str(uuid.uuid4()),
-                        run_id=earlier_run.run_id,
-                        signal_type=SignalType.RETRY.value,
-                        strength=SignalStrength.WEAK.value,
-                        confidence=0.6,
-                        source=SignalSource.DERIVED.value,
-                        observed_at=event.started_at,
-                        late=is_late,
-                        export_batch_id=None,
-                    )
-                )
+        .order_by(TelemetryRun.completed_at.desc())
+        .limit(1)
+    )
+    if stored is not None:
+        candidates.append(stored)
+    if not candidates:
+        return
+    earlier_run = max(candidates, key=lambda run: _utc(run.completed_at))
+
+    def is_derived_retry(signal: TelemetryOutcomeSignal) -> bool:
+        return (
+            signal.run_id == earlier_run.run_id
+            and signal.signal_type == SignalType.RETRY.value
+            and signal.source == SignalSource.DERIVED.value
+        )
+
+    if any(is_derived_retry(signal) for signal in batch.pending(TelemetryOutcomeSignal)):
+        return
+    existing_sig = batch.session.scalar(
+        select(TelemetryOutcomeSignal).where(
+            TelemetryOutcomeSignal.run_id == earlier_run.run_id,
+            TelemetryOutcomeSignal.signal_type == SignalType.RETRY.value,
+            TelemetryOutcomeSignal.source == SignalSource.DERIVED.value,
+        )
+    )
+    if existing_sig is not None:
+        return
+    signal_id = str(uuid.uuid4())
+    batch.add(
+        TelemetryOutcomeSignal(
+            signal_id=signal_id,
+            run_id=earlier_run.run_id,
+            signal_type=SignalType.RETRY.value,
+            strength=SignalStrength.WEAK.value,
+            confidence=0.6,
+            source=SignalSource.DERIVED.value,
+            observed_at=event.started_at,
+            late=earlier_run.export_batch_id is not None,
+            export_batch_id=None,
+        ),
+        signal_id,
+    )
 
 
-def _persist_signal(session: Session, event: SignalRecord) -> None:
-    if session.get(TelemetryOutcomeSignal, event.signal_id) is not None:
+def _persist_signal(batch: _Batch, event: SignalRecord) -> None:
+    if batch.get(TelemetryOutcomeSignal, event.signal_id) is not None:
         return
 
-    run = session.get(TelemetryRun, event.run_id)
+    run = batch.get(TelemetryRun, event.run_id)
     is_late = run.export_batch_id is not None if run else False
 
-    session.add(
+    batch.add(
         TelemetryOutcomeSignal(
             signal_id=event.signal_id,
             run_id=event.run_id,
@@ -265,18 +342,19 @@ def _persist_signal(session: Session, event: SignalRecord) -> None:
             observed_at=event.observed_at,
             late=is_late,
             export_batch_id=None,
-        )
+        ),
+        event.signal_id,
     )
 
 
-def _persist_feedback(session: Session, event: FeedbackRecord) -> None:
-    if session.get(TelemetryFeedback, event.feedback_id) is not None:
+def _persist_feedback(batch: _Batch, event: FeedbackRecord) -> None:
+    if batch.get(TelemetryFeedback, event.feedback_id) is not None:
         return
 
-    run = session.get(TelemetryRun, event.run_id)
+    run = batch.get(TelemetryRun, event.run_id)
     is_late = run.export_batch_id is not None if run else False
 
-    session.add(
+    batch.add(
         TelemetryFeedback(
             feedback_id=event.feedback_id,
             run_id=event.run_id,
@@ -289,15 +367,16 @@ def _persist_feedback(session: Session, event: FeedbackRecord) -> None:
             created_at=event.created_at,
             late=is_late,
             export_batch_id=None,
-        )
+        ),
+        event.feedback_id,
     )
 
     # Strong explicit signal from feedback
     sig_type = _FEEDBACK_TO_SIGNAL_MAP.get(event.feedback_type)
     if sig_type is not None:
-        sig_id = str(uuid.uuid5(uuid.NAMESPACE_OID, f"feedback-signal:{event.feedback_id}"))
-        if session.get(TelemetryOutcomeSignal, sig_id) is None:
-            session.add(
+        sig_id = _feedback_signal_id(event.feedback_id)
+        if batch.get(TelemetryOutcomeSignal, sig_id) is None:
+            batch.add(
                 TelemetryOutcomeSignal(
                     signal_id=sig_id,
                     run_id=event.run_id,
@@ -308,20 +387,22 @@ def _persist_feedback(session: Session, event: FeedbackRecord) -> None:
                     observed_at=event.created_at,
                     late=is_late,
                     export_batch_id=None,
-                )
+                ),
+                sig_id,
             )
 
 
-def _persist_ops_event(session: Session, event: OpsEventRecord) -> None:
-    if session.get(TelemetryOpsEvent, event.event_id) is not None:
+def _persist_ops_event(batch: _Batch, event: OpsEventRecord) -> None:
+    if batch.get(TelemetryOpsEvent, event.event_id) is not None:
         return
 
-    session.add(
+    batch.add(
         TelemetryOpsEvent(
             event_id=event.event_id,
             event_type=event.event_type,
             detail=event.detail,
             policy_version=event.policy_version,
             created_at=event.created_at,
-        )
+        ),
+        event.event_id,
     )

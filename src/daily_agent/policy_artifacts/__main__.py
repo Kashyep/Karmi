@@ -136,7 +136,7 @@ def mark_good_command(
 def rollback_command(
     reason: Annotated[str, typer.Option("--reason", "-r", help="Reason for rollback")],
 ) -> None:
-    """Roll back active policy to previous, last-known-good, or static."""
+    """Roll back and quarantine the active policy (to previous, last-known-good or static)."""
     store = _get_store()
     try:
         new_active = store.rollback(reason=reason)
@@ -173,6 +173,8 @@ def status_command() -> None:
         typer.echo(f"Shadow: {state.shadow}")
         installed_str = ", ".join(state.installed) if state.installed else "none"
         typer.echo(f"Installed: {installed_str}")
+        quarantined_str = ", ".join(state.quarantined) if state.quarantined else "none"
+        typer.echo(f"Quarantined: {quarantined_str}")
     except StoreCorrupt as e:
         typer.echo(f"Store corrupt: {e}", err=True)
         raise typer.Exit(code=1) from e

@@ -213,12 +213,17 @@ class TelemetryCollector:
                 self._cond.notify_all()
 
     def health(self) -> dict[str, object]:
-        """Return operational health snapshot."""
+        """Return operational health snapshot; ``spool_bytes`` is the disk-growth alert input."""
+        try:
+            spool_bytes = self._spool_path.stat().st_size
+        except OSError:
+            spool_bytes = 0
         return {
             "enabled": True,
             "running": self._running,
             "queue_depth": self._queue.qsize(),
             "spool_exists": self._spool_path.exists(),
+            "spool_bytes": spool_bytes,
             "last_flush_ms": self._metrics.gauge("telemetry_last_flush_ms"),
             "dropped_optional": self._metrics.counter("telemetry_dropped_optional_total"),
             "spooled_mandatory": self._metrics.counter("telemetry_spooled_total"),

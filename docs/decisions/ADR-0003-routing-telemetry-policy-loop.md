@@ -70,7 +70,10 @@ JSON Schemas for Parakh are generated from these models into `docs/contracts/`.
 3. Shadow means shadow *selection*: the shadow model is never called.
 4. Bundles are data (JSON only), Ed25519-signed over `checksums.json`; every file hashed; any
    unexpected file, symlink, oversize file, schema/feature/model/version mismatch or self-test
-   disagreement rejects the bundle. The live policy is untouched until an atomic swap.
+   disagreement rejects the bundle. Each file is read once and the hashed bytes are the parsed
+   bytes; the signed `artifact_version` must equal its store directory. The live policy is
+   untouched until an atomic swap. Rollback never re-selects the failing version: the demoted
+   version is persisted as `quarantined` in `state.json` until an operator promotes it again.
 5. Telemetry never blocks or fails a request. Mandatory records (run with decisions,
    probabilities, attempts, tool events, outcome; signals; feedback) are spooled to disk
    rather than dropped; optional ops events may be dropped.
@@ -84,10 +87,19 @@ JSON Schemas for Parakh are generated from these models into `docs/contracts/`.
 
 ## 3. Known deviations from the baseline
 
-- Request-cost eligibility uses the expected cost of the live route (input + context budget
-  at the declared rate). An Ananta request near the 20k-character limit with a full context
-  budget exceeds the 2,000-micro cap and is served by `fake-economy` instead of attempting the
-  live route. Before, the reservation was silently clamped to the cap.
+- Live provider spending is **fail-closed**. `providers.LIVE_PROVIDER_SPEND_VERIFIED = False`
+  makes the live route ineligible (`provider_spend_unverified`) even when
+  `live_models_enabled` is true, and the SDK client refuses to construct. The reservation
+  still uses the baseline `min(request cap, estimate)` clamp and eligibility still prices one
+  call; neither is a proven worst-case bound for the score + classify calls with retries.
+  Enabling live spending requires verified TypeSafe billable rates, bounded output/retries
+  and a reservation that covers the worst case; until then only `fake-economy` executes.
+- Messages over 20,000 characters are rejected with 413 before retrieval, provider calls or a
+  budget hold. Before, the check ran after note scoring.
+- A no-route deferral returns 503 with `Retry-After`, reserves nothing and stores no run, so
+  the same idempotency key is routed again later. Before this change there was no such path.
+- A provider-fault `DEFERRED` result refunds the customer reservation and keeps the provider
+  expense in the ledger and platform budget; before, it was settled to the customer.
 - An open provider circuit skips the live call and serves `fake-economy` directly; before,
   the call was attempted and fell back to the same heuristics.
 

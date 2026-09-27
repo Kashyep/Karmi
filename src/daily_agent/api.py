@@ -1,13 +1,17 @@
 import hashlib
 import json
 import logging
+import math
+import threading
 import time
 import uuid
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NoReturn
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, HTMLResponse
@@ -30,6 +34,7 @@ from daily_agent.models import (
     RunStatus,
     Subscription,
     Task,
+    TelemetryFeedback,
     UsagePeriod,
     UsageWindow,
     User,
@@ -119,6 +124,26 @@ NO_ROUTE_RESPONSE = (
 )
 
 
+class _RecentIds:
+    """Thread-safe bounded set of recently seen ids (oldest evicted first)."""
+
+    def __init__(self, capacity: int) -> None:
+        self._capacity = capacity
+        self._ids: OrderedDict[str, None] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def add(self, item: str) -> bool:
+        """Record ``item``; return False when it was already present."""
+        with self._lock:
+            if item in self._ids:
+                self._ids.move_to_end(item)
+                return False
+            self._ids[item] = None
+            if len(self._ids) > self._capacity:
+                self._ids.popitem(last=False)
+            return True
+
+
 def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -140,6 +165,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Daily Agent", version="0.1.0", lifespan=lifespan)
     app.state.telemetry = None
     app.state.routing = None
+    app.state.feedback_seen = _RecentIds(capacity=10_000)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -511,6 +537,13 @@ def create_app() -> FastAPI:
                 response=existing.response_text or "",
                 route=_route_for(session, principal.account_id, body.idempotency_key),
             )
+        # Reject an oversized request before retrieval, scoring or any budget hold.
+        # fake_generate's later check cannot protect the paid relevance call.
+        if len(body.text) > 20_000:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="request exceeds the bounded 20,000-character route",
+            )
         _subscription, policy = policy_for(session, principal.account_id)
         runtime = _routing_runtime(request, settings)
         trace = _RequestTrace.begin(settings, principal, body.text, policy.plan_id, _telemetry(request))
@@ -528,9 +561,7 @@ def create_app() -> FastAPI:
                 settings=settings, context=context, plan=policy, actor_id=trace.actor_id
             )
         except NoEligibleModel as exc:
-            return _defer_without_route(
-                session, principal, body, request_hash, trace, exc, runtime, settings
-            )
+            _defer_without_route(trace, exc, runtime, settings)
         except Exception as exc:
             # A failed policy or feature extractor must not bypass eligibility.
             logger.error("routing failed: %s; evaluating static eligibility", type(exc).__name__)
@@ -544,9 +575,7 @@ def create_app() -> FastAPI:
                 )
                 trace.rejections = eligibility.rejections
             except NoEligibleModel as no_route:
-                return _defer_without_route(
-                    session, principal, body, request_hash, trace, no_route, runtime, settings
-                )
+                _defer_without_route(trace, no_route, runtime, settings)
             except Exception as fallback_error:
                 logger.error("static eligibility unavailable: %s", type(fallback_error).__name__)
                 raise HTTPException(
@@ -647,13 +676,21 @@ def create_app() -> FastAPI:
                 run_id=trace.run_id,
                 route=result.route,
             )
-            settle_budget(
-                session,
-                reservation,
-                attempt_id=f"{run.id}:1",
-                actual_micro=actual_micro,
-                calls=provider_calls,
-            )
+            if result.outcome == Outcome.DEFERRED:
+                release_failed_execution(
+                    session,
+                    reservation,
+                    attempt_id=f"{run.id}:1",
+                    calls=provider_calls,
+                )
+            else:
+                settle_budget(
+                    session,
+                    reservation,
+                    attempt_id=f"{run.id}:1",
+                    actual_micro=actual_micro,
+                    calls=provider_calls,
+                )
             session.commit()
             if tool_name:
                 trace.tools.append(
@@ -751,8 +788,15 @@ def create_app() -> FastAPI:
             key=telemetry_key(settings.auth_secret),
             store_text=settings.telemetry_store_correction_text,
         )
+        # (run, type) ids are deterministic: skip repeats already persisted or recently
+        # emitted so a client loop cannot grow the queue or the mandatory-event spool.
+        seen: _RecentIds = request.app.state.feedback_seen
+        if session.get(TelemetryFeedback, record.feedback_id) is not None or not seen.add(
+            record.feedback_id
+        ):
+            return {"feedback_id": record.feedback_id, "accepted": False, "duplicate": True}
         _telemetry(request).emit(record)
-        return {"feedback_id": record.feedback_id, "accepted": True}
+        return {"feedback_id": record.feedback_id, "accepted": True, "duplicate": False}
 
     @app.post("/webhooks/internal-test")
     async def internal_webhook(
@@ -1067,46 +1111,25 @@ class _RequestTrace:
 
 
 def _defer_without_route(
-    session: Session,
-    principal: Principal,
-    body: MessageCreate,
-    request_hash: str,
     trace: _RequestTrace,
     exc: NoEligibleModel,
     runtime: RoutingRuntime,
     settings: Settings,
-) -> MessageView:
-    """No route survived eligibility: defer without reserving or charging anything."""
+) -> NoReturn:
+    """No route survived eligibility: defer without reserving, charging or persisting a run.
+
+    No Run is stored under the idempotency key, so a retry with the same key is routed
+    again once a provider recovers or an operator re-enables a model.
+    """
     METRICS.inc("router_no_eligible_model_total")
     trace.rejections = exc.rejections
-    try:
-        run = persist_completed_run(
-            session,
-            account_id=principal.account_id,
-            user_id=principal.user_id,
-            logical_request_id=body.idempotency_key,
-            response=NO_ROUTE_RESPONSE,
-            outcome=Outcome.DEFERRED,
-            request_hash=request_hash,
-            run_id=trace.run_id,
-        )
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        trace.finish(runtime, settings, TelemetryRunStatus.DUPLICATE, outcome=None, cost=None)
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="request already in flight; retry to observe its result",
-        ) from None
     trace.finish(
         runtime, settings, TelemetryRunStatus.NO_ELIGIBLE_MODEL, outcome=Outcome.DEFERRED, cost=0
     )
-    return MessageView(
-        run_id=run.id,
-        status=run.status,
-        outcome=Outcome.DEFERRED,
-        response=NO_ROUTE_RESPONSE,
-        route=None,
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={"code": "NO_ELIGIBLE_ROUTE", "message": NO_ROUTE_RESPONSE},
+        headers={"Retry-After": str(max(1, math.ceil(settings.router_circuit_cooldown_seconds)))},
     )
 
 

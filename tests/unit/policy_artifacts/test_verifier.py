@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from daily_agent.policy_artifacts import verifier
 from daily_agent.policy_artifacts.schema import (
     EVALUATION_SUMMARY,
     HARNESS_PROMPTS,
@@ -162,6 +166,37 @@ def test_reject_file_too_large(tmp_path: Path) -> None:
             now=NOW,
         )
     assert exc.value.code == "file_too_large"
+
+
+def test_verified_bytes_are_the_parsed_bytes_when_a_file_is_swapped_mid_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    priv, pub = generate_keypair()
+    bundle_dir = write_bundle(tmp_path / "b_swap", private_key=priv, alpha=0.5)
+    policy_file = bundle_dir / ROUTING_POLICY
+    signed = policy_file.read_bytes()
+    swapped = json.loads(signed)
+    swapped["alpha"] = 9.0
+    real_sha256 = hashlib.sha256
+
+    def sha256_then_swap(data: bytes = b"") -> Any:
+        digest = real_sha256(data)
+        if data == signed:
+            # Attacker replaces the file right after its checksum was verified.
+            policy_file.write_text(json.dumps(swapped), encoding="utf-8")
+        return digest
+
+    monkeypatch.setattr(verifier.hashlib, "sha256", sha256_then_swap)
+    loaded = verify_bundle(
+        bundle_dir,
+        public_key_b64=pub,
+        known_models=KNOWN_MODELS,
+        karmi_version=KARMI_VERSION,
+        now=NOW,
+    )
+    assert policy_file.read_bytes() != signed
+    assert loaded.policy.alpha == 0.5
+
 
 
 def test_reject_bad_public_key(tmp_path: Path) -> None:

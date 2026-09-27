@@ -25,8 +25,14 @@ from daily_agent.routing.static_policy import (
 @pytest.mark.parametrize("tier", TIERS)
 @pytest.mark.parametrize("live_enabled", [True, False])
 @pytest.mark.parametrize("live_healthy", [True, False])
-def test_static_parity_table(tier: str, live_enabled: bool, live_healthy: bool) -> None:
+def test_static_parity_table(
+    tier: str, live_enabled: bool, live_healthy: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Parity: (live enabled × live healthy × tier) -> expected baseline route."""
+    from daily_agent import providers
+
+    # Synthetic policy selection only; no real provider calls are permitted.
+    monkeypatch.setattr(providers, "LIVE_PROVIDER_SPEND_VERIFIED", True)
     health = ProviderHealth(failure_threshold=1, cooldown_seconds=60.0)
     if not live_healthy:
         health.record_failure("typesafe")
