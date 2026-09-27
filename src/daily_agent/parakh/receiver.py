@@ -38,9 +38,14 @@ TRANSITIONS: dict[str, frozenset[str]] = {
 LIVE_TRAFFIC_STATES = frozenset({"canary", "production"})
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
 
-# (bundle id, checksums digest) -> verified policy. Verification is pure-Python Ed25519, so a
-# stored bundle is verified once per process rather than on every request.
-_loaded: dict[tuple[str, str], LoadedPolicy] = {}
+# (bundle id, checksums digest, trusted keys) -> verified policy. Verification is pure-Python
+# Ed25519, so a stored bundle is verified once per process and trust set, not on every request;
+# removing a key from settings takes effect on the next request.
+_loaded: dict[tuple[str, str, tuple[str, ...]], LoadedPolicy] = {}
+
+
+def _cache_key(record: PolicyBundleRecord, settings: Settings) -> tuple[str, str, tuple[str, ...]]:
+    return (record.id, record.checksums_sha256, tuple(sorted(settings.parakh_trusted_public_keys)))
 
 
 class BundleStateError(Exception):
@@ -130,7 +135,7 @@ def receive_bundle(
 
 
 def _load_stored(record: PolicyBundleRecord, settings: Settings) -> LoadedPolicy:
-    key = (record.id, record.checksums_sha256)
+    key = _cache_key(record, settings)
     cached = _loaded.get(key)
     if cached is not None:
         return cached
@@ -162,7 +167,7 @@ def transition(
     if to_state not in TRANSITIONS.get(record.state, frozenset()):
         raise BundleStateError(f"cannot move {artifact_version} from {record.state} to {to_state}")
     if to_state in (STAGED, SHADOW):
-        _loaded.pop((record.id, record.checksums_sha256), None)
+        _loaded.pop(_cache_key(record, settings), None)
         _load_stored(record, settings)  # re-verify the stored copy under current trust/registry
     if to_state == SHADOW:
         for other in session.scalars(

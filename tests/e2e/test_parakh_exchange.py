@@ -194,7 +194,6 @@ def test_broken_shadow_policy_cannot_fail_a_live_request(exchange: dict[str, Any
         receiver.transition(session, settings, "policy-karmi.1", receiver.STAGED, **OPERATOR)
         receiver.transition(session, settings, "policy-karmi.1", receiver.SHADOW, **OPERATOR)
         session.commit()
-    receiver._loaded.clear()
     settings.parakh_trusted_public_keys = []  # trust revoked: stored copy no longer verifies
     reply = _send(exchange, "msg-after-revoke")
     assert reply["route"] == "fake-economy"
