@@ -228,3 +228,6 @@
   failed at agent readiness because `agy` is not installed in this Windows terminal
   (one verifier retry with a 180-second window had the same cause). Owned terminals
   were released. Do not treat the worker slice reports as independent acceptance.
+- Source candidate committed as `08e4c7b` (87 scoped files). A follow-up test-only fix
+  restores the original telemetry collector after the simulated outage; final E2E 37,
+  ruff and secret scan passed again. No push/production action.

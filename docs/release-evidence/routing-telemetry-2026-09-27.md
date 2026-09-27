@@ -1,6 +1,6 @@
 # Karmi routing/telemetry actor — implementation evidence
 
-Observed 2026-09-27 on Windows x64, Python 3.14.3. Candidate branch `Kashyep/routing-telemetry-loop` from clean baseline `00b7224`. This is implementation evidence, **not** a production-readiness or deployment attestation. Parakh (`rossonerian-parakh`) is a separate repository and was not available for consumer testing.
+Observed 2026-09-27 on Windows x64, Python 3.14.3. Candidate branch `Kashyep/routing-telemetry-loop`, implementation commit `08e4c7b` from clean baseline `00b7224`. A follow-up test-only fix restores the original telemetry collector after the simulated outage; E2E (37), lint and secret scan passed again. This is implementation evidence, **not** a production-readiness or deployment attestation. Parakh (`rossonerian-parakh`) is a separate repository and was not available for consumer testing.
 
 ## Baseline and architecture
 

@@ -369,6 +369,7 @@ def test_telemetry_database_outage_does_not_fail_requests(
         attribution_window_seconds=60,
     )
     app: Any = test_context["app"]
+    original = app.state.telemetry
     app.state.telemetry = broken
     broken.start()
     try:
@@ -379,6 +380,7 @@ def test_telemetry_database_outage_does_not_fail_requests(
         broken.flush(timeout=2.0)
     finally:
         broken.stop(timeout=2.0)
+        app.state.telemetry = original
     # Mandatory run records were spooled, not lost.
     assert spool.exists() and spool.read_text(encoding="utf-8").count('"kind":"run"') == 3
 
