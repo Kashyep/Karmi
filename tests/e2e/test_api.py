@@ -169,7 +169,7 @@ def test_billing_sandbox_is_not_routed_in_production(test_context: dict[str, obj
             "account_id": account.id,
             "version": 99,
             "type": "activated",
-            "plan_id": "part",
+            "plan_id": "parth",
         },
         separators=(",", ":"),
     ).encode()

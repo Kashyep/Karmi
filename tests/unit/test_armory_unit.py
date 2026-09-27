@@ -21,27 +21,27 @@ def test_plan_to_tier_mapping() -> None:
     assert tier_for_plan("ananta") == 1
     assert tier_for_plan("yanta") == 2
     assert tier_for_plan("trika") == 3
-    assert tier_for_plan("part") == 4
+    assert tier_for_plan("parth") == 4
     assert tier_for_plan("nonexistent") == 1
 
     assert plan_for_tier(1) == "ananta"
     assert plan_for_tier(2) == "yanta"
     assert plan_for_tier(3) == "trika"
-    assert plan_for_tier(4) == "part"
+    assert plan_for_tier(4) == "parth"
     assert plan_for_tier(99) == "ananta"
 
     assert PLAN_TO_TIER["ananta"] == 1
     assert PLAN_TO_TIER["yanta"] == 2
     assert PLAN_TO_TIER["trika"] == 3
-    assert PLAN_TO_TIER["part"] == 4
+    assert PLAN_TO_TIER["parth"] == 4
 
     assert TIER_TO_PLAN[1] == "ananta"
     assert TIER_TO_PLAN[2] == "yanta"
     assert TIER_TO_PLAN[3] == "trika"
-    assert TIER_TO_PLAN[4] == "part"
+    assert TIER_TO_PLAN[4] == "parth"
 
     # Verify synthetic policy display name for part is Parth
-    assert SYNTHETIC_POLICIES["part"].display_name == "Parth"
+    assert SYNTHETIC_POLICIES["parth"].display_name == "Parth"
 
 
 def test_upgrade_raises_unlocked_tier_and_keeps_active_theme(
@@ -58,7 +58,7 @@ def test_upgrade_raises_unlocked_tier_and_keeps_active_theme(
             select(Subscription).where(Subscription.account_id == account.id)
         )
         assert subscription is not None
-        subscription.plan_id = "part"
+        subscription.plan_id = "parth"
         subscription.status = "active"
         session.commit()
 
@@ -78,7 +78,7 @@ def test_downgrade_clamps_active_theme(test_context: dict[str, object]) -> None:
             select(Subscription).where(Subscription.account_id == account.id)
         )
         assert subscription is not None
-        subscription.plan_id = "part"
+        subscription.plan_id = "parth"
         subscription.status = "active"
         user.unlocked_tier = 4
         user.active_theme = 4
@@ -144,7 +144,7 @@ def test_sync_account_progression_updates_all_users_in_account(
             select(Subscription).where(Subscription.account_id == account.id)
         )
         assert subscription is not None
-        subscription.plan_id = "part"
+        subscription.plan_id = "parth"
         subscription.status = "active"
         user1.unlocked_tier = 4
         user1.active_theme = 4

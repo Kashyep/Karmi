@@ -45,7 +45,7 @@ def test_armory_defaults_and_tier_structure(test_context: dict[str, object]) -> 
     assert tiers[0] == {"id": 1, "key": "ananta", "label": "Ananta", "plan_id": "ananta"}
     assert tiers[1] == {"id": 2, "key": "yanta", "label": "Yanta", "plan_id": "yanta"}
     assert tiers[2] == {"id": 3, "key": "trika", "label": "Trika", "plan_id": "trika"}
-    assert tiers[3] == {"id": 4, "key": "parth", "label": "Parth", "plan_id": "part"}
+    assert tiers[3] == {"id": 4, "key": "parth", "label": "Parth", "plan_id": "parth"}
 
 
 def test_activating_locked_tier_returns_403_and_leaves_state_unchanged(
@@ -116,7 +116,7 @@ def test_billing_lifecycle_upgrade_downgrade_and_cancel(
         assert res.status_code == 200
 
     # 1. Upgrade to part (tier 4)
-    post_billing_event("evt-1", 1, "part")
+    post_billing_event("evt-1", 1, "parth")
     get_res = client.get("/v1/armory", headers=auth(token))  # type: ignore[union-attr]
     assert get_res.status_code == 200
     assert get_res.json()["unlocked_tier"] == 4
@@ -162,11 +162,11 @@ def test_multi_user_account_independent_themes_and_isolation(
     # Upgrade Account A to part (tier 4)
     raw = json.dumps(
         {
-            "event_id": "evt-a-part",
+            "event_id": "evt-a-parth",
             "account_id": account_a.id,
             "version": 1,
             "type": "activated",
-            "plan_id": "part",
+            "plan_id": "parth",
         },
         separators=(",", ":"),
     ).encode()
