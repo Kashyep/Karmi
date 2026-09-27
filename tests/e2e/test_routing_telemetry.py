@@ -288,7 +288,7 @@ def test_oversized_message_is_rejected_before_budget_or_provider(
             select(Subscription).where(Subscription.account_id == account.id)
         )
         assert subscription is not None
-        subscription.plan_id = "part"
+        subscription.plan_id = "parth"
         session.add(Note(account_id=account.id, owner_user_id=user.id, content="saved note"))
         session.commit()
     response = _client(test_context).post(

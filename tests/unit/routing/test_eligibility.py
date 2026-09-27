@@ -59,7 +59,7 @@ def test_reason_codes_tuple_complete() -> None:
 def test_reason_code_tier_not_entitled() -> None:
     candidate = ModelCandidate(
         provider="test",
-        model="exclusive-part",
+        model="exclusive-parth",
         model_version="v1",
         max_context_tokens=10000,
         supports_tools=True,
@@ -67,7 +67,7 @@ def test_reason_code_tier_not_entitled() -> None:
         estimated_input_cost_per_token=0.0,
         estimated_output_cost_per_token=0.0,
         provider_healthy=True,
-        entitled_tiers=frozenset({"part"}),
+        entitled_tiers=frozenset({"parth"}),
     )
     ctx = _base_context(tier="ananta")
     result = filter_eligible(
@@ -78,7 +78,7 @@ def test_reason_code_tier_not_entitled() -> None:
         live_models_enabled=True,
     )
     assert not result.eligible
-    assert result.rejections["exclusive-part"] == ("tier_not_entitled",)
+    assert result.rejections["exclusive-parth"] == ("tier_not_entitled",)
 
 
 def test_reason_code_bundle_tier_restriction_narrowing_only() -> None:
@@ -92,7 +92,7 @@ def test_reason_code_bundle_tier_restriction_narrowing_only() -> None:
         estimated_input_cost_per_token=0.0,
         estimated_output_cost_per_token=0.0,
         provider_healthy=True,
-        entitled_tiers=frozenset({"ananta", "yanta", "trika", "part"}),
+        entitled_tiers=frozenset({"ananta", "yanta", "trika", "parth"}),
     )
     # Narrowing: restrict shared-model to yanta and trika
     restrictions = {"shared-model": ["yanta", "trika"]}
@@ -168,9 +168,9 @@ def test_reason_code_live_models_disabled() -> None:
 
 def test_unverified_provider_spend_rejects_live_route_even_when_enabled() -> None:
     result = filter_eligible(
-        _base_context(tier="part"),
+        _base_context(tier="parth"),
         model_candidates(),
-        plan=SYNTHETIC_POLICIES["part"],
+        plan=SYNTHETIC_POLICIES["parth"],
         disabled_models=(),
         live_models_enabled=True,
     )
@@ -374,7 +374,7 @@ def test_multiple_reasons_collected_and_sorted() -> None:
         provider_healthy=False,  # provider unhealthy
         fixed_cost_micro=50000,  # request + period budget
         requires_live_models=True,  # live models disabled
-        entitled_tiers=frozenset({"part"}),  # tier not entitled
+        entitled_tiers=frozenset({"parth"}),  # tier not entitled
     )
     ctx = _base_context(tier="ananta", context_budget_tokens=100)
     result = filter_eligible(

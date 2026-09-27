@@ -45,7 +45,7 @@ TASK_DOMAINS: tuple[str, ...] = (
     "general",
 )
 
-TIERS: tuple[str, ...] = ("ananta", "yanta", "trika", "part")
+TIERS: tuple[str, ...] = ("ananta", "yanta", "trika", "parth")
 
 
 @dataclass(frozen=True)

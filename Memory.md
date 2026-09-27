@@ -214,6 +214,13 @@
 - Source candidate committed as `08e4c7b` (87 files) plus test-sink fix `0d96aa3`, then a
   remediation commit `7c0fe49` (telemetry writer batching + security findings F1–F9). Pushed
   to `origin/Kashyep/routing-telemetry-loop`; no PR opened, no deploy.
+- PR #22 CI (run 36344052976) failed 9 unit tests on the merge with `main`. Causes: `main` #21
+  renamed plan id `part`→`parth` (routing `TIERS` and tests still used `part`), and
+  `tests/unit/telemetry/test_cli.py` had used the default `./data/development.db`, whose tables
+  only existed locally. Fix: merged `origin/main`, renamed the tier to `parth` in routing and
+  tests. The CLI tests now run on a temp Alembic-migrated DB with a seeded run. That exposed and
+  fixed a `telemetry status` naive/aware datetime crash on SQLite. Telemetry models/migration
+  were already present; no schema change.
 - VERIFIED on the final tree (2026-09-27, local Windows/Python 3.14.3, Docker 29.6.1):
   `python scripts/tasks.py lint` PASS, `typecheck` PASS (50 files), `test-unit` 220,
   `test-e2e` 41, `test-integration` 2 (PostgreSQL/Redis). Regression tests for F2–F9 and the

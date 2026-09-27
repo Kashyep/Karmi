@@ -78,7 +78,7 @@ def _benchmark(source: Path, count: int) -> dict[str, Any]:
             session.add(account)
             session.flush()
             user = User(account_id=account.id, display_name="Load fixture", role="customer")
-            session.add_all([user, Subscription(account_id=account.id, plan_id="part")])
+            session.add_all([user, Subscription(account_id=account.id, plan_id="parth")])
             session.commit()
             token = issue_development_token(user, settings)
         headers = {"Authorization": f"Bearer {token}"}

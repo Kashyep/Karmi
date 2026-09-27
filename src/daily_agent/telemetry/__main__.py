@@ -6,6 +6,7 @@ purge expired telemetry data according to retention policy, and check operationa
 
 from __future__ import annotations
 
+from datetime import UTC
 from pathlib import Path
 from typing import Annotated
 
@@ -119,6 +120,8 @@ def status() -> None:
             .order_by(TelemetryRun.completed_at.asc())
             .limit(1)
         )
+        if oldest_unexp is not None and oldest_unexp.tzinfo is None:
+            oldest_unexp = oldest_unexp.replace(tzinfo=UTC)  # SQLite drops tzinfo; stored as UTC
         oldest_age_s = (
             max(0.0, (now - oldest_unexp).total_seconds()) if oldest_unexp is not None else 0.0
         )
