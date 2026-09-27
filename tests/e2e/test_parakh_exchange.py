@@ -10,10 +10,11 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from daily_agent.config import Settings
-from daily_agent.models import PolicyBundleEvent, RoutingDecision, Subscription
+from daily_agent.models import PolicyBundleEvent, PolicyBundleRecord, RoutingDecision, Subscription
 from daily_agent.parakh import receiver
 from daily_agent.parakh.bundle import BundleRejected
 from daily_agent.parakh.telemetry import build_telemetry_batch
@@ -208,3 +209,23 @@ def test_signed_bundle_requiring_newer_karmi_is_rejected(exchange: dict[str, Any
     sign_directory(bundle)
     with exchange["factory"]() as session, pytest.raises(BundleRejected, match="too old"):
         receiver.receive_bundle(session, exchange["settings"], bundle, **OPERATOR)
+
+
+def test_database_refuses_a_second_shadow_bundle(exchange: dict[str, Any]) -> None:
+    """Concurrent operators cannot leave two bundles in SHADOW: the database refuses it."""
+    settings: Settings = exchange["settings"]
+    with exchange["factory"]() as session:
+        for version in ("policy-karmi.1", "policy-karmi.2"):
+            path = make_karmi_bundle(exchange["tmp"] / "in", version,
+                                     bias={"karmi/fake-economy": 1.0})
+            receiver.receive_bundle(session, settings, path, **OPERATOR)
+            receiver.transition(session, settings, version, receiver.STAGED, **OPERATOR)
+        receiver.transition(session, settings, "policy-karmi.1", receiver.SHADOW, **OPERATOR)
+        session.commit()
+        second = session.scalar(
+            select(PolicyBundleRecord).where(PolicyBundleRecord.artifact_version == "policy-karmi.2")
+        )
+        assert second is not None
+        second.state = receiver.SHADOW  # bypasses transition(), as a racing process effectively would
+        with pytest.raises(IntegrityError):
+            session.commit()

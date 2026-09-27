@@ -35,6 +35,14 @@ def upgrade() -> None:
         sa.UniqueConstraint("artifact_version"),
     )
     op.create_index(op.f("ix_policy_bundles_state"), "policy_bundles", ["state"], unique=False)
+    op.create_index(
+        "ix_policy_bundles_single_shadow",
+        "policy_bundles",
+        ["state"],
+        unique=True,
+        sqlite_where=sa.text("state = 'shadow'"),
+        postgresql_where=sa.text("state = 'shadow'"),
+    )
     op.create_table(
         "policy_bundle_events",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -98,6 +106,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_index("ix_policy_bundles_single_shadow", table_name="policy_bundles")
     op.drop_index(op.f("ix_routing_records_completed_at"), table_name="routing_records")
     op.drop_table("routing_records")
     op.drop_index(op.f("ix_routing_decisions_run_id"), table_name="routing_decisions")

@@ -10,11 +10,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -317,6 +319,16 @@ class PolicyBundleRecord(Base):
     """A verified Parakh PolicyBundleV1 copy. ``state`` is Karmi's pointer; history is in events."""
 
     __tablename__ = "policy_bundles"
+    # At most one bundle in SHADOW, even under concurrent operator transitions.
+    __table_args__ = (
+        Index(
+            "ix_policy_bundles_single_shadow",
+            "state",
+            unique=True,
+            sqlite_where=text("state = 'shadow'"),
+            postgresql_where=text("state = 'shadow'"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     artifact_version: Mapped[str] = mapped_column(String(80), unique=True)

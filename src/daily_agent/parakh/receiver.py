@@ -178,6 +178,8 @@ def transition(
             _event(session, other, SHADOW, RETIRED, actor=actor,
                    reason=f"superseded in shadow by {artifact_version}")
             other.state = RETIRED
+        # Retire first: the single-shadow unique index would reject both rows in one flush.
+        session.flush()
     _event(session, record, record.state, to_state, actor=actor, reason=reason)
     record.state = to_state
     session.flush()
