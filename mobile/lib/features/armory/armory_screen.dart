@@ -220,6 +220,7 @@ class TierCard extends StatelessWidget {
                 status,
               ],
             ),
+            const SizedBox(height: 8),
             Text(tier.tagline, style: text.bodyMedium),
             if (locked) ...[
               const SizedBox(height: 4),

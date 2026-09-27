@@ -149,7 +149,7 @@
 2. A person runs TalkBack swipe/speech and VoiceOver on real devices; record in the evidence file.
 3. Owner reviews goldens (T3.3); backend card for a structured `ASK_USER` action payload.
 
-## Tier themes, Liquid Glass and Armory (2026-09-27, uncommitted)
+## Tier themes, Liquid Glass and Armory (2026-09-27)
 
 - Source: `docs/design/implementation_plan.md`, `docs/design/karmi_tier_color_palettes.md`
   (merged via PR #19; this branch was fast-forwarded to `9f6e726`, no commit made).
@@ -184,3 +184,17 @@
 - The Android alias/icon switch was exercised on the Pixel 9a with a local
   synthetic account. No iOS device validation; alternate icon bridge remains
   NOT VERIFIED at runtime. No paid checkout, provider call, or customer message.
+
+### PR #20 Armory contrast follow-up
+
+- CI run `36311395158`, job `108597892680`: three Linux
+  `textContrastGuideline` failures reported for the gallery and Ananta/Yanta
+  light. Independent token checks passed; Linux pixel inspection found
+  Yanta's dark tagline ink `#050806` on white, but Flutter's inflated text
+  sampling rectangle included 37 pale pixels from the status chip just above
+  it (more than the 34 fully dark glyph pixels). Added 8px separation between
+  chip row and tagline; no palette, text token or a11y assertion changes.
+- Post-fix: Windows and Linux Docker `flutter test --exclude-tags golden`
+  229/229 each, `flutter analyze` 0 issues, `dart format` 0 changed.
+  Regenerated only 8 tier Armory goldens per OS; both golden suites 90/90.
+  CI had not run on this fix at the time of local verification.
