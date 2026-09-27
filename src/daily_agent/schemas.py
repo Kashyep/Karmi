@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field, StrictInt
 
@@ -53,6 +54,13 @@ class MessageView(BaseModel):
     outcome: Outcome
     response: str
     route: str | None = None
+
+
+class FeedbackCreate(BaseModel):
+    """Explicit feedback on one of the caller's runs; correction text is never stored raw."""
+
+    feedback_type: Literal["accept", "reject", "correction", "preference", "changed_intent"]
+    corrected_text: str | None = Field(default=None, min_length=1, max_length=20_000)
 
 
 class UsageView(BaseModel):

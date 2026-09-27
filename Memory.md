@@ -198,3 +198,33 @@
   229/229 each, `flutter analyze` 0 issues, `dart format` 0 changed.
   Regenerated only 8 tier Armory goldens per OS; both golden suites 90/90.
   CI had not run on this fix at the time of local verification.
+
+## Routing, telemetry and signed policy loop (2026-09-27, 14:20 UTC)
+
+- Baseline `00b7224`, clean before this work; branch `Kashyep/routing-telemetry-loop`.
+  Candidate uncommitted at this entry. ADR-0003, `docs/task-cards/{RTR,TEL,ART}-001.md`,
+  `docs/runbooks/routing-telemetry.md` and generated `docs/contracts/` describe the scope.
+- Implemented hard eligibility, static/shadow/LinUCB/canary routing, provider health, signed
+  PolicyBundleV1 verification/store/rollback, guarded harness selection, pseudonymous
+  non-blocking telemetry, finalization/export/retention and authenticated feedback/admin
+  endpoints. Default static route preserves the local response in synthetic E2E;
+  provider failure keeps known/unknown costs, failed actions retain provider expense
+  while refunding customer usage, and router crashes recheck eligibility. Signed
+  JSON rejects ambiguous duplicate keys (failing-before/passing-after test).
+- VERIFIED on local Windows/Python 3.14: `python scripts/tasks.py lint` (ruff + secret scan),
+  `typecheck` (50 files), `test-unit` (211), `test-e2e` (37), `benchmark-demo` (60-case
+  suite validation, 5-attempt offline demo). SQLite migration/model drift test included.
+  Smoke: `python scripts/tasks.py routing --help`, `telemetry --help`, export/schema
+  roundtrip in E2E; no real provider calls.
+- Synthetic 4-way concurrent static-route load (100 requests, baseline `00b7224`):
+  baseline p50/p95 16.6/192.71 ms, 56.23 req/s; candidate 40.12/383.49 ms,
+  28.02 req/s. SQLite writer contention and run-to-run variance possible; treat as an
+  observed regression, not a PostgreSQL forecast. Reproduce with
+  `python scripts/bench_routing_latency.py --requests 100`.
+- NOT VERIFIED: `test-integration` (Docker daemon unavailable), real provider rates/context
+  caps/usage and paid traffic, Parakh consumer (repository absent), device/manual gates,
+  production migration or deployment. Live calls/checkout/WhatsApp remain disabled.
+  Independent verifier/security review BLOCKED: Orca Antigravity HIGH launch attempts
+  failed at agent readiness because `agy` is not installed in this Windows terminal
+  (one verifier retry with a 180-second window had the same cause). Owned terminals
+  were released. Do not treat the worker slice reports as independent acceptance.

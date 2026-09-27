@@ -1,0 +1,102 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "algorithm": {
+      "const": "linucb",
+      "title": "Algorithm",
+      "type": "string"
+    },
+    "artifact_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+      "title": "Artifact Version",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "evaluation_run_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Evaluation Run Ids",
+      "type": "array"
+    },
+    "feature_schema_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+      "title": "Feature Schema Version",
+      "type": "string"
+    },
+    "harness_included": {
+      "default": false,
+      "title": "Harness Included",
+      "type": "boolean"
+    },
+    "min_karmi_version": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Min Karmi Version",
+      "type": "string"
+    },
+    "model_registry": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+        "type": "string"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Model Registry",
+      "type": "array"
+    },
+    "policy_schema_version": {
+      "const": "LinUCBPolicyV1",
+      "title": "Policy Schema Version",
+      "type": "string"
+    },
+    "previous_compatible_version": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Compatible Version"
+    },
+    "schema": {
+      "const": "PolicyBundleV1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "tier_restrictions": {
+      "patternProperties": {
+        "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "title": "Tier Restrictions",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "artifact_version",
+    "policy_schema_version",
+    "feature_schema_version",
+    "algorithm",
+    "min_karmi_version",
+    "model_registry",
+    "created_at"
+  ],
+  "title": "PolicyBundleManifestV1",
+  "type": "object"
+}

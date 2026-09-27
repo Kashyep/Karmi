@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "SelfTestCaseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "eligible_models": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Eligible Models",
+          "type": "array"
+        },
+        "expected_model": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Expected Model",
+          "type": "string"
+        },
+        "feature_vector": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Feature Vector",
+          "type": "array"
+        }
+      },
+      "required": [
+        "feature_vector",
+        "eligible_models",
+        "expected_model"
+      ],
+      "title": "SelfTestCaseV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Description",
+      "type": "string"
+    },
+    "schema": {
+      "const": "RouterMetadataV1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "self_test_cases": {
+      "items": {
+        "$ref": "#/$defs/SelfTestCaseV1"
+      },
+      "maxItems": 512,
+      "minItems": 1,
+      "title": "Self Test Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "self_test_cases"
+  ],
+  "title": "RouterMetadataV1",
+  "type": "object"
+}

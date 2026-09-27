@@ -1,0 +1,909 @@
+{
+  "$defs": {
+    "AttemptRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "pattern": "^[0-9a-f-]{36}$",
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "cost_measurement": {
+          "$ref": "#/$defs/CostMeasurement"
+        },
+        "decision_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f-]{36}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decision Id"
+        },
+        "error_type": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Type"
+        },
+        "estimated_cost_micro": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Cost Micro"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "latency_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency Ms"
+        },
+        "model": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Model",
+          "type": "string"
+        },
+        "operation": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Operation",
+          "type": "string"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Tokens"
+        },
+        "provider": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Provider",
+          "type": "string"
+        },
+        "retry_number": {
+          "minimum": 0,
+          "title": "Retry Number",
+          "type": "integer"
+        },
+        "success": {
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "attempt_id",
+        "decision_id",
+        "provider",
+        "model",
+        "operation",
+        "cost_measurement",
+        "success",
+        "retry_number"
+      ],
+      "title": "AttemptRecord",
+      "type": "object"
+    },
+    "CostMeasurement": {
+      "enum": [
+        "measured",
+        "fixed",
+        "unknown"
+      ],
+      "title": "CostMeasurement",
+      "type": "string"
+    },
+    "DecisionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "action_probabilities": {
+          "patternProperties": {
+            "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$": {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            }
+          },
+          "title": "Action Probabilities",
+          "type": "object"
+        },
+        "agreed_with_live": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agreed With Live"
+        },
+        "algorithm": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "decision_id": {
+          "pattern": "^[0-9a-f-]{36}$",
+          "title": "Decision Id",
+          "type": "string"
+        },
+        "eligible_models": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+            "type": "string"
+          },
+          "title": "Eligible Models",
+          "type": "array"
+        },
+        "exploration": {
+          "title": "Exploration",
+          "type": "boolean"
+        },
+        "feature_schema_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Feature Schema Version",
+          "type": "string"
+        },
+        "policy_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "selected_model": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Selected Model",
+          "type": "string"
+        },
+        "selected_provider": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Selected Provider",
+          "type": "string"
+        },
+        "selection_probability": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Selection Probability",
+          "type": "number"
+        },
+        "shadow": {
+          "title": "Shadow",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "decision_id",
+        "policy_version",
+        "feature_schema_version",
+        "algorithm",
+        "selected_model",
+        "selected_provider",
+        "selection_probability",
+        "action_probabilities",
+        "eligible_models",
+        "exploration",
+        "shadow",
+        "created_at"
+      ],
+      "title": "DecisionRecord",
+      "type": "object"
+    },
+    "ExportedRunV1": {
+      "additionalProperties": false,
+      "properties": {
+        "anonymous_actor_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Anonymous Actor Id",
+          "type": "string"
+        },
+        "app_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "App Version",
+          "type": "string"
+        },
+        "attempts": {
+          "items": {
+            "$ref": "#/$defs/AttemptRecord"
+          },
+          "title": "Attempts",
+          "type": "array"
+        },
+        "completed_at": {
+          "format": "date-time",
+          "title": "Completed At",
+          "type": "string"
+        },
+        "decisions": {
+          "items": {
+            "$ref": "#/$defs/DecisionRecord"
+          },
+          "title": "Decisions",
+          "type": "array"
+        },
+        "eligibility_rejections": {
+          "patternProperties": {
+            "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$": {
+              "items": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "title": "Eligibility Rejections",
+          "type": "object"
+        },
+        "eligible_models": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+            "type": "string"
+          },
+          "title": "Eligible Models",
+          "type": "array"
+        },
+        "feature_schema_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Feature Schema Version",
+          "type": "string"
+        },
+        "features": {
+          "patternProperties": {
+            "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$": {
+              "type": "number"
+            }
+          },
+          "title": "Features",
+          "type": "object"
+        },
+        "feedback": {
+          "items": {
+            "$ref": "#/$defs/FeedbackRecord"
+          },
+          "title": "Feedback",
+          "type": "array"
+        },
+        "harness_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Harness Version",
+          "type": "string"
+        },
+        "live_fallback_reason": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Live Fallback Reason"
+        },
+        "outcome": {
+          "$ref": "#/$defs/FinalOutcomeV1"
+        },
+        "policy_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "prompt_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[0-9a-f-]{36}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[0-9a-f-]{36}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "session_id_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id Hash"
+        },
+        "shadow_error": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Shadow Error"
+        },
+        "signals": {
+          "items": {
+            "$ref": "#/$defs/SignalRecord"
+          },
+          "title": "Signals",
+          "type": "array"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "task_domain": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Task Domain",
+          "type": "string"
+        },
+        "telemetry_schema_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Telemetry Schema Version",
+          "type": "string"
+        },
+        "tier": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Tier",
+          "type": "string"
+        },
+        "tool_events": {
+          "items": {
+            "$ref": "#/$defs/ToolEventRecord"
+          },
+          "title": "Tool Events",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "request_id",
+        "session_id_hash",
+        "anonymous_actor_id",
+        "started_at",
+        "completed_at",
+        "task_domain",
+        "tier",
+        "harness_version",
+        "prompt_version",
+        "policy_version",
+        "feature_schema_version",
+        "telemetry_schema_version",
+        "app_version",
+        "status",
+        "features",
+        "eligible_models",
+        "eligibility_rejections",
+        "live_fallback_reason",
+        "shadow_error",
+        "decisions",
+        "attempts",
+        "tool_events",
+        "outcome",
+        "signals",
+        "feedback"
+      ],
+      "title": "ExportedRunV1",
+      "type": "object"
+    },
+    "FeedbackRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "correction_distance": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correction Distance"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "feedback_id": {
+          "pattern": "^[0-9a-f-]{36}$",
+          "title": "Feedback Id",
+          "type": "string"
+        },
+        "feedback_type": {
+          "$ref": "#/$defs/FeedbackType"
+        },
+        "kind": {
+          "const": "feedback",
+          "default": "feedback",
+          "title": "Kind",
+          "type": "string"
+        },
+        "original_value_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Original Value Hash"
+        },
+        "run_id": {
+          "pattern": "^[0-9a-f-]{36}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "sanitized_corrected_value": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sanitized Corrected Value"
+        }
+      },
+      "required": [
+        "feedback_id",
+        "run_id",
+        "feedback_type",
+        "original_value_hash",
+        "created_at"
+      ],
+      "title": "FeedbackRecord",
+      "type": "object"
+    },
+    "FeedbackType": {
+      "enum": [
+        "accept",
+        "reject",
+        "correction",
+        "preference",
+        "changed_intent"
+      ],
+      "title": "FeedbackType",
+      "type": "string"
+    },
+    "FinalOutcomeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "completed": {
+          "title": "Completed",
+          "type": "boolean"
+        },
+        "correction_distance": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Correction Distance"
+        },
+        "cost_measurement": {
+          "$ref": "#/$defs/CostMeasurement"
+        },
+        "final_cost_micro": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Final Cost Micro"
+        },
+        "final_latency_ms": {
+          "minimum": 0,
+          "title": "Final Latency Ms",
+          "type": "integer"
+        },
+        "finalized_at": {
+          "format": "date-time",
+          "title": "Finalized At",
+          "type": "string"
+        },
+        "first_shot_success": {
+          "title": "First Shot Success",
+          "type": "boolean"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Outcome"
+        },
+        "retry_count": {
+          "minimum": 0,
+          "title": "Retry Count",
+          "type": "integer"
+        },
+        "structured_output_valid": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Structured Output Valid"
+        },
+        "tool_success": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tool Success"
+        },
+        "user_abandon_signal": {
+          "title": "User Abandon Signal",
+          "type": "boolean"
+        },
+        "user_accept_signal": {
+          "title": "User Accept Signal",
+          "type": "boolean"
+        },
+        "user_correction_signal": {
+          "title": "User Correction Signal",
+          "type": "boolean"
+        },
+        "user_retry_signal": {
+          "title": "User Retry Signal",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "completed",
+        "first_shot_success",
+        "structured_output_valid",
+        "tool_success",
+        "retry_count",
+        "user_retry_signal",
+        "user_abandon_signal",
+        "user_accept_signal",
+        "user_correction_signal",
+        "correction_distance",
+        "final_latency_ms",
+        "cost_measurement",
+        "outcome",
+        "finalized_at"
+      ],
+      "title": "FinalOutcomeV1",
+      "type": "object"
+    },
+    "ProducerV1": {
+      "additionalProperties": false,
+      "properties": {
+        "repo": {
+          "const": "kashyep-karmi",
+          "default": "kashyep-karmi",
+          "title": "Repo",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "title": "ProducerV1",
+      "type": "object"
+    },
+    "RunStatus": {
+      "enum": [
+        "completed",
+        "deferred",
+        "failed",
+        "duplicate",
+        "no_eligible_model"
+      ],
+      "title": "RunStatus",
+      "type": "string"
+    },
+    "SignalRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "kind": {
+          "const": "signal",
+          "default": "signal",
+          "title": "Kind",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[0-9a-f-]{36}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "signal_id": {
+          "pattern": "^[0-9a-f-]{36}$",
+          "title": "Signal Id",
+          "type": "string"
+        },
+        "signal_type": {
+          "$ref": "#/$defs/SignalType"
+        },
+        "source": {
+          "$ref": "#/$defs/SignalSource"
+        },
+        "strength": {
+          "$ref": "#/$defs/SignalStrength"
+        }
+      },
+      "required": [
+        "signal_id",
+        "run_id",
+        "signal_type",
+        "strength",
+        "confidence",
+        "source",
+        "observed_at"
+      ],
+      "title": "SignalRecord",
+      "type": "object"
+    },
+    "SignalSource": {
+      "enum": [
+        "explicit_feedback",
+        "derived"
+      ],
+      "title": "SignalSource",
+      "type": "string"
+    },
+    "SignalStrength": {
+      "enum": [
+        "strong",
+        "weak"
+      ],
+      "title": "SignalStrength",
+      "type": "string"
+    },
+    "SignalType": {
+      "enum": [
+        "retry",
+        "accept",
+        "reject",
+        "correction",
+        "preference",
+        "changed_intent",
+        "execution_failure",
+        "task_completed",
+        "no_followup_after_ask"
+      ],
+      "title": "SignalType",
+      "type": "string"
+    },
+    "ToolEventRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_number": {
+          "minimum": 1,
+          "title": "Attempt Number",
+          "type": "integer"
+        },
+        "error_class": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Class"
+        },
+        "event_id": {
+          "pattern": "^[0-9a-f-]{36}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "execution_success": {
+          "title": "Execution Success",
+          "type": "boolean"
+        },
+        "latency_ms": {
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "integer"
+        },
+        "schema_valid": {
+          "title": "Schema Valid",
+          "type": "boolean"
+        },
+        "tool_name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "tool_name",
+        "attempt_number",
+        "schema_valid",
+        "execution_success",
+        "latency_ms"
+      ],
+      "title": "ToolEventRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Batch Id",
+      "type": "string"
+    },
+    "feature_names": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+        "type": "string"
+      },
+      "title": "Feature Names",
+      "type": "array"
+    },
+    "feature_schema_version": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+      "title": "Feature Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "late_feedback": {
+      "items": {
+        "$ref": "#/$defs/FeedbackRecord"
+      },
+      "title": "Late Feedback",
+      "type": "array"
+    },
+    "late_signals": {
+      "items": {
+        "$ref": "#/$defs/SignalRecord"
+      },
+      "title": "Late Signals",
+      "type": "array"
+    },
+    "payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Payload Sha256",
+      "type": "string"
+    },
+    "producer": {
+      "$ref": "#/$defs/ProducerV1"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/ExportedRunV1"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "schema": {
+      "const": "TelemetryBatchV1",
+      "default": "TelemetryBatchV1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "telemetry_schema_version": {
+      "default": "telemetry-v1",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+      "title": "Telemetry Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "batch_id",
+    "generated_at",
+    "producer",
+    "feature_schema_version",
+    "feature_names",
+    "payload_sha256",
+    "runs"
+  ],
+  "title": "TelemetryBatchV1",
+  "type": "object"
+}

@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "evaluation_run_ids": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Evaluation Run Ids",
+      "type": "array"
+    },
+    "metrics": {
+      "maxProperties": 256,
+      "patternProperties": {
+        "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$": {
+          "type": "number"
+        }
+      },
+      "title": "Metrics",
+      "type": "object"
+    },
+    "passed_regression": {
+      "title": "Passed Regression",
+      "type": "boolean"
+    },
+    "schema": {
+      "const": "EvaluationSummaryV1",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "passed_regression"
+  ],
+  "title": "EvaluationSummaryV1",
+  "type": "object"
+}
