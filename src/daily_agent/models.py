@@ -5,6 +5,7 @@ from uuid import uuid4
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -54,6 +55,11 @@ class Account(Base):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("unlocked_tier BETWEEN 1 AND 4", name="check_users_unlocked_tier"),
+        CheckConstraint("active_theme BETWEEN 1 AND 4", name="check_users_active_theme"),
+        CheckConstraint("active_theme <= unlocked_tier", name="check_users_theme_le_unlocked"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
@@ -61,6 +67,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="customer")
     # Bump to revoke all outstanding tokens for this user.
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    unlocked_tier: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    active_theme: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     account: Mapped[Account] = relationship(back_populates="users")
 
 

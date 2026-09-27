@@ -21,11 +21,58 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+        </activity>
+        <!-- Tier launcher icons (implementation_plan.md §3.3). Exactly one alias is
+             enabled; MainActivity.kt switches them when the active theme changes.
+             Ananta is the default. -->
+        <activity-alias
+            android:name=".LauncherAnanta"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_ananta"
+            android:label="Karmi"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherYanta"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_yanta"
+            android:label="Karmi"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherTrika"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_trika"
+            android:label="Karmi"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherParth"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_parth"
+            android:label="Karmi"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

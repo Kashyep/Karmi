@@ -27,6 +27,14 @@ final class LimitReachedException extends KarmiApiException {
   final DateTime? resetAt;
 }
 
+/// HTTP 403 `detail.code == "TIER_LOCKED"` from `PUT /v1/armory/active-theme`:
+/// the requested theme is above the account's unlocked tier.
+final class TierLockedException extends KarmiApiException {
+  const TierLockedException({this.unlockedTier});
+
+  final int? unlockedTier;
+}
+
 /// The request never produced an HTTP response (socket error, client error or timeout).
 final class NetworkException extends KarmiApiException {
   const NetworkException();

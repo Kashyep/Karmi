@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/karmi_colors.dart';
+import '../../theme/karmi_tier.dart';
 import '../../widgets/karmi_card.dart';
 import '../chat/status_chip.dart';
 
@@ -19,7 +20,7 @@ const List<PlanInfo> kPlans = [
   PlanInfo('ananta', 'Ananta', 20),
   PlanInfo('yanta', 'Yanta', 100),
   PlanInfo('trika', 'Trika', 250),
-  PlanInfo('part', 'Part', 500),
+  PlanInfo('part', 'Parth', 500),
 ];
 
 /// Read-only plan card. Purchasing is disabled (CLAUDE.md: no paid checkout).
@@ -42,6 +43,16 @@ class PlanCard extends StatelessWidget {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              if (KarmiTier.fromPlanId(plan.id) case final tier?)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    'assets/app_icons/${tier.name}.webp',
+                    width: 40,
+                    height: 40,
+                    excludeFromSemantics: true,
+                  ),
+                ),
               Semantics(
                 header: true,
                 child: Text(plan.label, style: text.titleLarge),

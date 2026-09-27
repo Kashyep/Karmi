@@ -54,7 +54,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               shrinkWrap: true,
               padding: const EdgeInsets.all(24),
               children: [
-                Icon(Icons.eco, size: 48, color: colors.primary),
+                Icon(Icons.eco, size: 48, color: colors.primaryText),
                 const SizedBox(height: 16),
                 Semantics(
                   header: true,

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:karmi_app/api/karmi_api.dart';
+import 'package:karmi_app/theme/karmi_tier.dart';
 
 typedef Handler = FutureOr<http.Response> Function(http.Request request);
 
@@ -60,9 +61,49 @@ class FakeBackend {
   KarmiApi api({String? token = 'test-token'}) =>
       KarmiApi(baseUrl: 'http://karmi.test', client: client, token: token);
 
+  /// Server-side armory state: enforces `active_theme <= unlocked_tier` like
+  /// API-002 (403 TIER_LOCKED, 422 invalid).
+  int unlockedTier = 1;
+  int activeTheme = 1;
+
+  Map<String, Object?> armoryJson() => {
+    'unlocked_tier': unlockedTier,
+    'active_theme': activeTheme,
+    'tiers': [
+      for (final t in KarmiTier.values)
+        {'id': t.id, 'key': t.name, 'label': t.label, 'plan_id': t.planId},
+    ],
+  };
+
+  void routeArmory() {
+    on('GET', '/v1/armory', (_) {
+      if (activeTheme > unlockedTier) activeTheme = unlockedTier;
+      return jsonResponse(armoryJson());
+    });
+    on('PUT', '/v1/armory/active-theme', (request) {
+      final value = (jsonDecode(request.body) as Map)['active_theme'];
+      if (value is! int || value < 1 || value > 4) {
+        return jsonResponse({'detail': 'invalid'}, 422);
+      }
+      if (value > unlockedTier) {
+        return jsonResponse({
+          'detail': {'code': 'TIER_LOCKED', 'unlocked_tier': unlockedTier},
+        }, 403);
+      }
+      activeTheme = value;
+      return jsonResponse(armoryJson());
+    });
+  }
+
   /// A backend where every read succeeds with realistic synthetic data.
-  static FakeBackend healthy() {
-    final backend = FakeBackend();
+  static FakeBackend healthy({
+    KarmiTier unlocked = KarmiTier.ananta,
+    KarmiTier active = KarmiTier.ananta,
+  }) {
+    final backend = FakeBackend()
+      ..unlockedTier = unlocked.id
+      ..activeTheme = active.id
+      ..routeArmory();
     backend
       ..on(
         'POST',

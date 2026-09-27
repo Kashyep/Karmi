@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/fonts.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 
@@ -16,7 +17,7 @@ void main() {
   test(
     'every text style loads from bundled assets with fetching off',
     () async {
-      final theme = KarmiTheme.light;
+      final theme = KarmiTheme.of(KarmiTier.ananta, Brightness.light);
       final styles = <String, TextStyle?>{
         'displaySmall': theme.textTheme.displaySmall,
         'headlineSmall': theme.textTheme.headlineSmall,
@@ -63,7 +64,7 @@ void main() {
   testWidgets('every text style renders (Latin and Devanagari)', (
     tester,
   ) async {
-    final theme = KarmiTheme.light;
+    final theme = KarmiTheme.of(KarmiTier.ananta, Brightness.light);
     await tester.pumpWidget(
       MaterialApp(
         theme: theme,
@@ -100,7 +101,10 @@ void main() {
   testWidgets('Devanagari glyphs resolve through the Noto fallback', (
     tester,
   ) async {
-    final body = KarmiTheme.light.textTheme.bodyLarge!;
+    final body = KarmiTheme.of(
+      KarmiTier.ananta,
+      Brightness.light,
+    ).textTheme.bodyLarge!;
     await tester.runAsync(GoogleFonts.pendingFonts);
     double width(TextStyle style) {
       final painter = TextPainter(
@@ -139,7 +143,10 @@ void main() {
 
   testWidgets('licence page lists each font family', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(theme: KarmiTheme.light, home: const LicensePage()),
+      MaterialApp(
+        theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
+        home: const LicensePage(),
+      ),
     );
     // LicensePage collects licences asynchronously.
     for (var i = 0; i < 20; i++) {

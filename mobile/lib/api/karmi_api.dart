@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import 'errors.dart';
 import 'models.dart';
+import '../theme/karmi_tier.dart';
 
 export 'errors.dart';
 export 'models.dart';
@@ -102,6 +103,23 @@ class KarmiApi {
     return TaskView.fromJson(body as Map<String, dynamic>);
   }
 
+  Future<ArmoryView> getArmory() => _armory(_send('GET', '/v1/armory'));
+
+  /// Throws [TierLockedException] when [tier] is above the unlocked tier.
+  Future<ArmoryView> setActiveTheme(KarmiTier tier) => _armory(
+    _send('PUT', '/v1/armory/active-theme', json: {'active_theme': tier.id}),
+  );
+
+  static Future<ArmoryView> _armory(Future<Object?> body) async {
+    try {
+      return ArmoryView.fromJson((await body)! as Map<String, dynamic>);
+    } on FormatException {
+      throw const ServerException(200);
+    } on TypeError {
+      throw const ServerException(200);
+    }
+  }
+
   void close() => _client.close();
 
   Future<Object?> _send(
@@ -151,6 +169,14 @@ class KarmiApi {
       case 401:
         onUnauthorized?.call();
         return const UnauthorizedException();
+      case 403:
+        if (detail is Map && detail['code'] == 'TIER_LOCKED') {
+          final unlocked = detail['unlocked_tier'];
+          return TierLockedException(
+            unlockedTier: unlocked is int ? unlocked : null,
+          );
+        }
+        return const ServerException(403);
       case 409:
         return detail is String && detail.contains('in flight')
             ? const InFlightException()

@@ -28,13 +28,13 @@ class KarmiLoader extends StatelessWidget {
                 ? Icon(
                     Icons.hourglass_top,
                     size: 20,
-                    color: colors.primary,
+                    color: colors.primaryText,
                     key: const ValueKey('karmi-loader-static'),
                   )
                 : CircularProgressIndicator(
                     strokeWidth: 2.5,
                     key: const ValueKey('karmi-loader-spinner'),
-                    color: colors.primary,
+                    color: colors.primaryText,
                   ),
           ),
           const SizedBox(width: 12),
@@ -68,7 +68,7 @@ class EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 40, color: colors.primary),
+          Icon(icon, size: 40, color: colors.primaryText),
           const SizedBox(height: 16),
           Text(
             quote,
@@ -118,7 +118,7 @@ class ErrorBanner extends StatelessWidget {
     final accent = switch (tone) {
       ErrorTone.danger => colors.destructive,
       ErrorTone.warning => colors.warning,
-      ErrorTone.info => colors.primary,
+      ErrorTone.info => colors.primaryText,
     };
     return Semantics(
       container: true,

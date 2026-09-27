@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+import 'armory/armory_controller.dart';
 import 'auth/session.dart';
 import 'features/welcome/welcome_screen.dart';
 import 'settings/karmi_settings.dart';
@@ -9,18 +10,22 @@ import 'theme/karmi_glass.dart';
 import 'theme/karmi_motion.dart';
 import 'theme/karmi_theme.dart';
 
-/// Root widget: themes (incl. high-contrast variants), glass setup (§5) and the
-/// signed-in / signed-out switch.
+/// Root widget and dual-axis theme provider (implementation_plan.md §2.1):
+/// mode (System/Light/Dark, [KarmiSettings]) × tier ([ArmoryController]).
+/// Both are applied once at the root — the Flutter equivalent of
+/// `<html data-theme data-tier>` — by picking a cached [ThemeData].
 class KarmiApp extends StatefulWidget {
   const KarmiApp({
     super.key,
     required this.settings,
     required this.session,
+    required this.armory,
     this.adaptiveGlassQuality = true,
   });
 
   final KarmiSettings settings;
   final KarmiSession session;
+  final ArmoryController armory;
 
   /// Runs liquid_glass_widgets' device benchmark. Off in widget tests.
   final bool adaptiveGlassQuality;
@@ -37,6 +42,7 @@ class _KarmiAppState extends State<KarmiApp> {
   void initState() {
     super.initState();
     widget.session.addListener(_onSession);
+    if (_signedIn) _loadArmory();
   }
 
   @override
@@ -45,46 +51,73 @@ class _KarmiAppState extends State<KarmiApp> {
     super.dispose();
   }
 
-  /// Sign-out or 401: drop any pushed routes so Welcome is on top.
-  void _onSession() {
-    if (_signedIn && !widget.session.isSignedIn) {
-      _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+  /// Progression is server-authoritative; a failed fetch keeps the cached
+  /// (already clamped) tier, and 401s are handled by the session.
+  Future<void> _loadArmory() async {
+    try {
+      await widget.armory.load();
+    } on Exception {
+      // Keep the cached tier; the Armory screen offers a retry.
     }
-    setState(() => _signedIn = widget.session.isSignedIn);
+  }
+
+  /// Sign-in loads the tier; sign-out or 401 drops pushed routes so Welcome
+  /// is on top and forgets the account's tier.
+  void _onSession() {
+    final signedIn = widget.session.isSignedIn;
+    if (_signedIn && !signedIn) {
+      _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      widget.armory.reset();
+    } else if (!_signedIn && signedIn) {
+      _loadArmory();
+    }
+    setState(() => _signedIn = signedIn);
   }
 
   @override
   Widget build(BuildContext context) {
-    return LiquidGlassWidgets.wrap(
-      theme: KarmiGlass.themeData(),
-      brightnessResolver: Theme.maybeBrightnessOf,
-      adaptiveQuality: widget.adaptiveGlassQuality,
-      child: ListenableBuilder(
-        listenable: widget.settings,
-        builder: (context, _) => MaterialApp(
-          navigatorKey: _navigatorKey,
-          title: 'Karmi',
-          debugShowCheckedModeBanner: false,
-          theme: KarmiTheme.light,
-          darkTheme: KarmiTheme.dark,
-          highContrastTheme: KarmiTheme.highContrastLight,
-          highContrastDarkTheme: KarmiTheme.highContrastDark,
-          themeMode: widget.settings.themeMode,
-          themeAnimationDuration: Duration.zero,
-          builder: karmiAccessibilityBuilder(widget.settings),
-          home: _signedIn
-              ? KarmiShell(
-                  key: const ValueKey('shell'),
-                  api: widget.session.api,
-                  settings: widget.settings,
-                  session: widget.session,
-                )
-              : WelcomeScreen(
-                  key: const ValueKey('welcome'),
-                  session: widget.session,
-                ),
-        ),
-      ),
+    return ListenableBuilder(
+      listenable: Listenable.merge([widget.settings, widget.armory]),
+      builder: (context, _) {
+        final tier = widget.armory.effectiveTier;
+        return LiquidGlassWidgets.wrap(
+          theme: KarmiGlass.themeData(tier),
+          brightnessResolver: Theme.maybeBrightnessOf,
+          adaptiveQuality: widget.adaptiveGlassQuality,
+          child: MaterialApp(
+            navigatorKey: _navigatorKey,
+            title: 'Karmi',
+            debugShowCheckedModeBanner: false,
+            theme: KarmiTheme.of(tier, Brightness.light),
+            darkTheme: KarmiTheme.of(tier, Brightness.dark),
+            highContrastTheme: KarmiTheme.of(
+              tier,
+              Brightness.light,
+              highContrast: true,
+            ),
+            highContrastDarkTheme: KarmiTheme.of(
+              tier,
+              Brightness.dark,
+              highContrast: true,
+            ),
+            themeMode: widget.settings.themeMode,
+            themeAnimationDuration: Duration.zero,
+            builder: karmiAccessibilityBuilder(widget.settings),
+            home: _signedIn
+                ? KarmiShell(
+                    key: const ValueKey('shell'),
+                    api: widget.session.api,
+                    settings: widget.settings,
+                    session: widget.session,
+                    armory: widget.armory,
+                  )
+                : WelcomeScreen(
+                    key: const ValueKey('welcome'),
+                    session: widget.session,
+                  ),
+          ),
+        );
+      },
     );
   }
 }

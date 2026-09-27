@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/features/plans/plan_selection_screen.dart';
 import 'package:karmi_app/theme/karmi_colors.dart';
 import 'package:karmi_app/theme/karmi_glass.dart';
@@ -32,11 +33,14 @@ void main() {
         find.byKey(const ValueKey('karmi-glass-opaque')),
       );
       final decoration = box.decoration as BoxDecoration;
-      expect(decoration.color, KarmiColors.light.card);
+      expect(
+        decoration.color,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.light).card,
+      );
       expect(decoration.color!.a, 1.0);
       expect(
         (decoration.border! as Border).top.color,
-        KarmiColors.light.border,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.light).border,
       );
       expect((decoration.border! as Border).top.width, 1.0);
     });
@@ -93,17 +97,32 @@ void main() {
         env: const Env(highContrast: true),
       );
       final colors = theme.extension<KarmiColors>()!;
-      expect(colors.border, KarmiColors.light.foreground);
-      expect(colors.borderSubtle, KarmiColors.light.foreground);
-      expect(theme.colorScheme.outline, KarmiColors.light.foreground);
+      expect(
+        colors.border,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.light).foreground,
+      );
+      expect(
+        colors.borderSubtle,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.light).foreground,
+      );
+      expect(
+        theme.colorScheme.outline,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.light).foreground,
+      );
       expect(theme.extension<KarmiShape>()!.focusRingWidth, 3);
       final side = theme.outlinedButtonTheme.style!.side!.resolve({
         WidgetState.focused,
       })!;
       expect(side.width, 3);
-      expect(side.color, KarmiColors.light.ring);
+      expect(
+        side.color,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.light).ring,
+      );
       final idle = theme.outlinedButtonTheme.style!.side!.resolve({})!;
-      expect(idle.color, KarmiColors.light.foreground);
+      expect(
+        idle.color,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.light).foreground,
+      );
       final input = theme.inputDecorationTheme.focusedBorder!.borderSide;
       expect(input.width, 3);
     });
@@ -123,7 +142,10 @@ void main() {
         env: const Env(brightness: Brightness.dark),
       );
       expect(theme.brightness, Brightness.dark);
-      expect(theme.extension<KarmiColors>()!.border, KarmiColors.dark.border);
+      expect(
+        theme.extension<KarmiColors>()!.border,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.dark).border,
+      );
       expect(theme.extension<KarmiShape>()!.focusRingWidth, 2);
       final side = theme.filledButtonTheme.style!.side!.resolve({
         WidgetState.focused,
@@ -163,21 +185,27 @@ void main() {
       );
       final shape = material.shape! as OutlinedBorder;
       expect(shape.side.width, 3);
-      expect(shape.side.color, KarmiColors.light.ring);
+      expect(
+        shape.side.color,
+        KarmiColors.forTier(KarmiTier.ananta, Brightness.light).ring,
+      );
     });
   });
 
   group('glass theme', () {
-    test('both brightness variants carry their own tint floor', () {
-      final data = KarmiGlass.themeData();
-      expect(
-        data.light.settings!.glassColor,
-        KarmiColors.light.card.withValues(alpha: 0.72),
-      );
-      expect(
-        data.dark.settings!.glassColor,
-        KarmiColors.dark.card.withValues(alpha: 0.78),
-      );
+    test('every tier has both brightness variants at the tint floor', () {
+      for (final tier in KarmiTier.values) {
+        final data = KarmiGlass.themeData(tier);
+        final light = data.light.settings!.glassColor!;
+        final dark = data.dark.settings!.glassColor!;
+        expect(light, KarmiColors.forTier(tier, Brightness.light).glassBase);
+        expect(dark, KarmiColors.forTier(tier, Brightness.dark).glassBase);
+        expect(
+          light.a,
+          greaterThanOrEqualTo(KarmiGlass.lightTintAlpha - 0.005),
+        );
+        expect(dark.a, greaterThanOrEqualTo(KarmiGlass.darkTintAlpha - 0.005));
+      }
     });
 
     for (final brightness in Brightness.values) {
@@ -193,14 +221,14 @@ void main() {
               return const SizedBox();
             },
           ),
-          env: Env(brightness: brightness),
+          env: Env(brightness: brightness, tier: KarmiTier.trika),
         );
         expect(GlassTheme.brightnessOf(ctx), brightness);
         final tint = GlassThemeData.of(ctx).settingsFor(ctx)!.glassColor;
-        final card = brightness == Brightness.light
-            ? KarmiColors.light.card
-            : KarmiColors.dark.card;
-        expect(tint!.withValues(alpha: 1), card);
+        expect(
+          tint,
+          KarmiColors.forTier(KarmiTier.trika, brightness).glassBase,
+        );
       });
     }
   });

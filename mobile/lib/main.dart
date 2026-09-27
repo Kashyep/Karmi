@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api/karmi_api.dart';
 import 'app.dart';
+import 'armory/armory_controller.dart';
 import 'auth/session.dart';
 import 'fonts.dart';
 import 'settings/karmi_settings.dart';
@@ -14,7 +15,14 @@ Future<void> main() async {
   await LiquidGlassWidgets.initialize();
 
   final prefs = await SharedPreferences.getInstance();
-  final session = KarmiSession(api: KarmiApi(), prefs: prefs);
+  final api = KarmiApi();
+  final session = KarmiSession(api: api, prefs: prefs);
 
-  runApp(KarmiApp(settings: KarmiSettings(prefs), session: session));
+  runApp(
+    KarmiApp(
+      settings: KarmiSettings(prefs),
+      session: session,
+      armory: ArmoryController(api: api, prefs: prefs),
+    ),
+  );
 }

@@ -3,6 +3,8 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../api/karmi_api.dart';
 import '../auth/session.dart';
+import '../armory/armory_controller.dart';
+import '../features/armory/armory_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/memory/memory_screen.dart';
 import '../features/plans/plan_selection_screen.dart';
@@ -11,7 +13,6 @@ import '../features/tasks/tasks_screen.dart';
 import '../features/usage/usage_screen.dart';
 import '../settings/karmi_settings.dart';
 import '../theme/karmi_colors.dart';
-import '../theme/karmi_glass.dart';
 import '../theme/karmi_motion.dart';
 import '../widgets/focus_ring.dart';
 
@@ -39,11 +40,13 @@ class KarmiShell extends StatefulWidget {
     required this.api,
     required this.settings,
     required this.session,
+    required this.armory,
   });
 
   final KarmiApi api;
   final KarmiSettings settings;
   final KarmiSession session;
+  final ArmoryController armory;
 
   @override
   State<KarmiShell> createState() => _KarmiShellState();
@@ -52,9 +55,20 @@ class KarmiShell extends StatefulWidget {
 class _KarmiShellState extends State<KarmiShell> {
   int _index = 0;
 
-  void _openPlans() => Navigator.of(
-    context,
-  ).push(KarmiMotion.route<void>(context, (_) => const PlanSelectionScreen()));
+  void _openPlans() => Navigator.of(context).push(
+    KarmiMotion.route<void>(
+      context,
+      (_) =>
+          PlanSelectionScreen(currentPlanId: widget.armory.unlockedTier.planId),
+    ),
+  );
+
+  void _openArmory() => Navigator.of(context).push(
+    KarmiMotion.route<void>(
+      context,
+      (_) => ArmoryScreen(armory: widget.armory),
+    ),
+  );
 
   void _openLicences() =>
       showLicensePage(context: context, applicationName: 'Karmi');
@@ -64,7 +78,12 @@ class _KarmiShellState extends State<KarmiShell> {
     TasksScreen(api: widget.api),
     UsageScreen(api: widget.api),
     MemoryScreen(api: widget.api),
-    SettingsScreen(settings: widget.settings, session: widget.session),
+    SettingsScreen(
+      settings: widget.settings,
+      session: widget.session,
+      armory: widget.armory,
+      onOpenArmory: _openArmory,
+    ),
   ];
 
   /// Keeps tab state (e.g. the chat transcript) when the shell switches between
@@ -87,10 +106,14 @@ class _KarmiShellState extends State<KarmiShell> {
         appBar: AppBar(
           title: Semantics(header: true, child: title),
           actions: [
-            _OverflowMenu(onPlans: _openPlans, onLicences: _openLicences),
+            _OverflowMenu(
+              onArmory: _openArmory,
+              onPlans: _openPlans,
+              onLicences: _openLicences,
+            ),
           ],
         ),
-        body: body,
+        body: _withPreviewBanner(body, top: 8),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,
           onDestinationSelected: _select,
@@ -107,11 +130,17 @@ class _KarmiShellState extends State<KarmiShell> {
     }
 
     final appBar = GlassAppBar(
-      backgroundColor: KarmiGlass.tint(Theme.of(context).brightness),
+      backgroundColor: KarmiColors.of(context).glassBase,
       title: Semantics(header: true, child: title),
       // Material menu, not GlassMenu: on device GlassMenu's items were
       // missing from the accessibility tree (TalkBack could not reach them).
-      actions: [_OverflowMenu(onPlans: _openPlans, onLicences: _openLicences)],
+      actions: [
+        _OverflowMenu(
+          onArmory: _openArmory,
+          onPlans: _openPlans,
+          onLicences: _openLicences,
+        ),
+      ],
     );
     final tabBar = GlassTabBar.bottom(
       selectedIndex: _index,
@@ -154,15 +183,43 @@ class _KarmiShellState extends State<KarmiShell> {
         // GlassScaffold installs a Cupertino IconTheme (primary colour) that
         // IconButton adopts as its foreground; restore the Material one so
         // controls look the same as in the opaque shell.
-        child: IconTheme(data: Theme.of(context).iconTheme, child: body),
+        child: IconTheme(
+          data: Theme.of(context).iconTheme,
+          child: _withPreviewBanner(body, top: bodyPadding.top + 8),
+        ),
       ),
     );
   }
+
+  /// While a locked tier is previewed, the countdown banner floats over every
+  /// tab so the user can explore the whole app in that theme.
+  Widget _withPreviewBanner(Widget body, {required double top}) =>
+      ListenableBuilder(
+        listenable: widget.armory,
+        builder: (context, child) => Stack(
+          children: [
+            child!,
+            if (widget.armory.isPreviewing)
+              Positioned(
+                top: top,
+                left: 12,
+                right: 12,
+                child: ArmoryPreviewBanner(armory: widget.armory),
+              ),
+          ],
+        ),
+        child: body,
+      );
 }
 
 class _OverflowMenu extends StatelessWidget {
-  const _OverflowMenu({required this.onPlans, required this.onLicences});
+  const _OverflowMenu({
+    required this.onArmory,
+    required this.onPlans,
+    required this.onLicences,
+  });
 
+  final VoidCallback onArmory;
   final VoidCallback onPlans;
   final VoidCallback onLicences;
 
@@ -171,6 +228,7 @@ class _OverflowMenu extends StatelessWidget {
     tooltip: 'More options',
     onSelected: (action) => action(),
     itemBuilder: (context) => [
+      PopupMenuItem(value: onArmory, child: const Text('Armory')),
       PopupMenuItem(value: onPlans, child: const Text('Plans')),
       PopupMenuItem(value: onLicences, child: const Text('Licences')),
     ],

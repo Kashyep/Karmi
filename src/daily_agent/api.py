@@ -25,9 +25,13 @@ from daily_agent.models import (
     Task,
     UsagePeriod,
     UsageWindow,
+    User,
 )
 from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.schemas import (
+    ARMORY_TIERS,
+    ActiveThemeUpdate,
+    ArmoryView,
     MessageCreate,
     MessageView,
     NoteCreate,
@@ -68,8 +72,10 @@ from daily_agent.services import (
     seed_development_identity,
     settle_budget,
     subscription_period,
+    sync_account_progression,
+    sync_theme_progression,
 )
-from daily_agent.web import render_shell
+from daily_agent.web import build_manifest, render_shell
 
 
 def create_app() -> FastAPI:
@@ -189,6 +195,50 @@ def create_app() -> FastAPI:
             reset_at=window.reset_at if window else day_reset,
             period_reset_at=period.reset_at if period else period_reset,
             policy_version=subscription.policy_version if subscription else "synthetic-dev-v1",
+        )
+
+    @app.get("/v1/armory", response_model=ArmoryView)
+    def get_armory(
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> ArmoryView:
+        user = session.get(User, principal.user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+        prev_unlocked = user.unlocked_tier
+        prev_theme = user.active_theme
+        sync_theme_progression(session, user)
+        if user.unlocked_tier != prev_unlocked or user.active_theme != prev_theme:
+            session.commit()
+        return ArmoryView(
+            unlocked_tier=user.unlocked_tier,
+            active_theme=user.active_theme,
+            tiers=list(ARMORY_TIERS),
+        )
+
+    @app.put("/v1/armory/active-theme", response_model=ArmoryView)
+    def update_active_theme(
+        body: ActiveThemeUpdate,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> ArmoryView:
+        user = session.get(User, principal.user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+        sync_theme_progression(session, user)
+        if body.active_theme > user.unlocked_tier:
+            locked_tier = user.unlocked_tier
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "TIER_LOCKED", "unlocked_tier": locked_tier},
+            )
+        user.active_theme = body.active_theme
+        session.commit()
+        return ArmoryView(
+            unlocked_tier=user.unlocked_tier,
+            active_theme=user.active_theme,
+            tiers=list(ARMORY_TIERS),
         )
 
     @app.post("/v1/notes", response_model=NoteView)
@@ -567,6 +617,7 @@ def create_app() -> FastAPI:
             subscription.status = (
                 "cancelled" if payload["type"] == "cancelled" else "active"
             )
+            sync_account_progression(session, payload["account_id"])
         try:
             session.commit()
         except IntegrityError:
@@ -578,11 +629,21 @@ def create_app() -> FastAPI:
     def index() -> HTMLResponse:
         return HTMLResponse(render_shell())
 
-    @app.get("/manifest.webmanifest", include_in_schema=False)
-    def manifest() -> FileResponse:
-        path = Path(__file__).with_name("web") / "manifest.webmanifest"
-        return FileResponse(path, media_type="application/manifest+json")
+    @app.get("/static/{path:path}", include_in_schema=False)
+    def static_file(path: str) -> FileResponse:
+        static_dir = (Path(__file__).resolve().parent / "web" / "static").resolve()
+        target = (static_dir / path).resolve()
+        if not target.is_file() or not target.is_relative_to(static_dir):
+            raise HTTPException(status_code=404, detail="File not found")
+        return FileResponse(target)
 
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    def manifest(tier: str | None = None) -> Response:
+        data = build_manifest(tier)
+        return Response(
+            content=json.dumps(data, indent=2),
+            media_type="application/manifest+json",
+        )
     return app
 
 
