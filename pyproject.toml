@@ -35,6 +35,7 @@ dev = [
 
 [project.scripts]
 daily-agent = "daily_agent.main:run"
+karmi-parakh = "daily_agent.parakh.cli:app"
 model-lab = "model_lab.cli:app"
 
 [tool.hatch.build.targets.wheel]

@@ -19,6 +19,9 @@ src/daily_agent/
   db.py         lazy engine (get_engine) + get_session dependency
   worker.py     delivery worker: leases queued outbox rows + due reminders -> local test adapter
   web/shell.py  inline HTML/JS shell served at /
+  parakh/       Parakh exchange: routing evidence + TelemetryBatchV1 export, PolicyBundleV1
+                verification and received/staged/shadow/retired slots, `karmi-parakh` CLI
+                (see docs/contracts/parakh/README.md). Shadow never changes the live route.
 src/model_lab/  offline benchmark CLI (typer) over SQLite; independent of daily_agent
 migrations/     Alembic; env.py reads the DB URL from Settings
 tests/          unit/, e2e/ (TestClient + temp SQLite), web/, model_lab/, integration/ (Docker)
@@ -26,7 +29,8 @@ tests/          unit/, e2e/ (TestClient + temp SQLite), web/, model_lab/, integr
 
 Request flow for `POST /v1/messages`: idempotency check → `reserve_budget` → **commit** →
 `build_note_context` + `fake_generate` (optional live provider calls) → `_apply_intent` →
-`persist_completed_run` → `settle_budget` → commit. Any failure after reserve → `release_budget`.
+`persist_completed_run` → `record_routing_evidence` (routing record, live decision, optional shadow
+decision) → `settle_budget` → commit. Any failure after reserve → `release_budget`.
 A live duplicate request gets 409 (`ReservationInFlight`). Reservations left RESERVED past
 `RESERVATION_LEASE_SECONDS` are reclaimed and charged as unknown cost.
 

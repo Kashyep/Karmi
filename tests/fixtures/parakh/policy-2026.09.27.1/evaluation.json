@@ -1,0 +1,1210 @@
+{
+  "config": {
+    "bootstrap_resamples": 400,
+    "core_allowed_drop": 0.0,
+    "cost_increase_margin": 0.25,
+    "critical_domains": [
+      "privacy",
+      "automation",
+      "expenses"
+    ],
+    "critical_failure_margin": 0.01,
+    "harness_holdout_margin": 0.0,
+    "holdout_margin": 0.03,
+    "latency_increase_margin": 0.25,
+    "min_ess": 30.0,
+    "min_segment_examples": 30,
+    "min_support": 0.95,
+    "ope_margin": 0.02,
+    "rubric_margin": 0.05,
+    "seed": 0,
+    "segment_margin": 0.05,
+    "tier_cost_ceiling_usd": {
+      "ananta": 0.04,
+      "part": 0.25,
+      "trika": 0.2,
+      "yanta": 0.04
+    },
+    "tier_latency_ceiling_ms": {
+      "ananta": 6000,
+      "part": 8000,
+      "trika": 8000,
+      "yanta": 6000
+    },
+    "tool_failure_margin": 0.02
+  },
+  "core_regression": {
+    "baseline": {
+      "by_domain": {
+        "automation": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016585999999999999,
+          "latency_ms_mean": 1502.1975,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "calendar": {
+          "abstained": 16,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 0,
+          "deterministic_pass_rate": null,
+          "estimated_cost_mean": 0.0016607999999999998,
+          "latency_ms_mean": 1502.28,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "communication": {
+          "abstained": 16,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 0,
+          "deterministic_pass_rate": null,
+          "estimated_cost_mean": 0.0016557999999999998,
+          "latency_ms_mean": 1502.0925,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "conversation_memory": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016635999999999999,
+          "latency_ms_mean": 1502.385,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "document_extraction": {
+          "abstained": 8,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 8,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.001656,
+          "latency_ms_mean": 1502.1,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "expenses": {
+          "abstained": 8,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 8,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016503999999999998,
+          "latency_ms_mean": 1501.8899999999999,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "multilingual": {
+          "abstained": 16,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 0,
+          "deterministic_pass_rate": null,
+          "estimated_cost_mean": 0.0016465999999999998,
+          "latency_ms_mean": 1501.7475,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "privacy": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016598,
+          "latency_ms_mean": 1502.2425,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "support": {
+          "abstained": 16,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 0,
+          "deterministic_pass_rate": null,
+          "estimated_cost_mean": 0.0016577999999999999,
+          "latency_ms_mean": 1502.1675,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "tabular_analysis": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016454,
+          "latency_ms_mean": 1501.7025,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "task_planning": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016487999999999997,
+          "latency_ms_mean": 1501.83,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "travel": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016602,
+          "latency_ms_mean": 1502.2575,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        }
+      },
+      "by_role": {
+        "train": {
+          "abstained": 116,
+          "action_distribution": {
+            "sim/balanced": 144
+          },
+          "decided": 28,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.001655222222222222,
+          "latency_ms_mean": 1502.0708333333332,
+          "n": 144,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "validation": {
+          "abstained": 36,
+          "action_distribution": {
+            "sim/balanced": 48
+          },
+          "decided": 12,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016556,
+          "latency_ms_mean": 1502.085,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        }
+      },
+      "by_tier": {
+        "ananta": {
+          "abstained": 38,
+          "action_distribution": {
+            "sim/balanced": 48
+          },
+          "decided": 10,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016553166666666665,
+          "latency_ms_mean": 1502.074375,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "part": {
+          "abstained": 38,
+          "action_distribution": {
+            "sim/balanced": 48
+          },
+          "decided": 10,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016553166666666665,
+          "latency_ms_mean": 1502.074375,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "trika": {
+          "abstained": 38,
+          "action_distribution": {
+            "sim/balanced": 48
+          },
+          "decided": 10,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016553166666666665,
+          "latency_ms_mean": 1502.074375,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "yanta": {
+          "abstained": 38,
+          "action_distribution": {
+            "sim/balanced": 48
+          },
+          "decided": 10,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016553166666666665,
+          "latency_ms_mean": 1502.074375,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        }
+      },
+      "overall": {
+        "abstained": 152,
+        "action_distribution": {
+          "sim/balanced": 192
+        },
+        "decided": 40,
+        "deterministic_pass_rate": 1.0,
+        "estimated_cost_mean": 0.0016553166666666665,
+        "latency_ms_mean": 1502.074375,
+        "n": 192,
+        "rubric_mean": null,
+        "unsupported": 0
+      },
+      "unsupported": []
+    },
+    "candidate": {
+      "by_domain": {
+        "automation": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 8,
+            "sim/flagship": 8
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.006012425,
+          "latency_ms_mean": 2353.44275,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "calendar": {
+          "abstained": 16,
+          "action_distribution": {
+            "sim/balanced": 12,
+            "sim/flagship": 4
+          },
+          "decided": 0,
+          "deterministic_pass_rate": null,
+          "estimated_cost_mean": 0.0038406,
+          "latency_ms_mean": 1927.926,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "communication": {
+          "abstained": 16,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 0,
+          "deterministic_pass_rate": null,
+          "estimated_cost_mean": 0.0016557999999999998,
+          "latency_ms_mean": 1502.0925,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "conversation_memory": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016635999999999999,
+          "latency_ms_mean": 1502.385,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "document_extraction": {
+          "abstained": 8,
+          "action_distribution": {
+            "sim/balanced": 8,
+            "sim/flagship": 8
+          },
+          "decided": 8,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.006003,
+          "latency_ms_mean": 2353.29,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "expenses": {
+          "abstained": 8,
+          "action_distribution": {
+            "sim/balanced": 8,
+            "sim/flagship": 8
+          },
+          "decided": 8,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0059827000000000005,
+          "latency_ms_mean": 2352.961,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "multilingual": {
+          "abstained": 16,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 0,
+          "deterministic_pass_rate": null,
+          "estimated_cost_mean": 0.0016465999999999998,
+          "latency_ms_mean": 1501.7475,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "privacy": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 8,
+            "sim/flagship": 8
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.006016775,
+          "latency_ms_mean": 2353.51325,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "support": {
+          "abstained": 16,
+          "action_distribution": {
+            "sim/balanced": 16
+          },
+          "decided": 0,
+          "deterministic_pass_rate": null,
+          "estimated_cost_mean": 0.0016577999999999999,
+          "latency_ms_mean": 1502.1675,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "tabular_analysis": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 8,
+            "sim/flagship": 8
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.005964575,
+          "latency_ms_mean": 2352.66725,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "task_planning": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 15,
+            "sim/flagship": 1
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.002182725,
+          "latency_ms_mean": 1608.1522499999999,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "travel": {
+          "abstained": 12,
+          "action_distribution": {
+            "sim/balanced": 15,
+            "sim/flagship": 1
+          },
+          "decided": 4,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.002194125,
+          "latency_ms_mean": 1608.5797499999999,
+          "n": 16,
+          "rubric_mean": null,
+          "unsupported": 0
+        }
+      },
+      "by_role": {
+        "train": {
+          "abstained": 116,
+          "action_distribution": {
+            "sim/balanced": 114,
+            "sim/flagship": 30
+          },
+          "decided": 28,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0034630888888888887,
+          "latency_ms_mean": 1856.7059444444444,
+          "n": 144,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "validation": {
+          "abstained": 36,
+          "action_distribution": {
+            "sim/balanced": 32,
+            "sim/flagship": 16
+          },
+          "decided": 12,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.004550975,
+          "latency_ms_mean": 2069.52375,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        }
+      },
+      "by_tier": {
+        "ananta": {
+          "abstained": 38,
+          "action_distribution": {
+            "sim/balanced": 48
+          },
+          "decided": 10,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016553166666666665,
+          "latency_ms_mean": 1502.074375,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "part": {
+          "abstained": 38,
+          "action_distribution": {
+            "sim/balanced": 22,
+            "sim/flagship": 26
+          },
+          "decided": 10,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.006356079166666666,
+          "latency_ms_mean": 2424.128166666667,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "trika": {
+          "abstained": 38,
+          "action_distribution": {
+            "sim/balanced": 28,
+            "sim/flagship": 20
+          },
+          "decided": 10,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0052735291666666665,
+          "latency_ms_mean": 2211.364666666667,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "yanta": {
+          "abstained": 38,
+          "action_distribution": {
+            "sim/balanced": 48
+          },
+          "decided": 10,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016553166666666665,
+          "latency_ms_mean": 1502.074375,
+          "n": 48,
+          "rubric_mean": null,
+          "unsupported": 0
+        }
+      },
+      "overall": {
+        "abstained": 152,
+        "action_distribution": {
+          "sim/balanced": 146,
+          "sim/flagship": 46
+        },
+        "decided": 40,
+        "deterministic_pass_rate": 1.0,
+        "estimated_cost_mean": 0.0037350604166666666,
+        "latency_ms_mean": 1909.9103958333333,
+        "n": 192,
+        "rubric_mean": null,
+        "unsupported": 0
+      },
+      "unsupported": []
+    }
+  },
+  "dataset_id": "ds-39fc98787a16158fc274",
+  "evaluation_run_ids": [
+    "bench-sim-balanced-9f82842371ab-s7",
+    "bench-sim-cheap-9f82842371ab-s7",
+    "bench-sim-flagship-9f82842371ab-s7"
+  ],
+  "evidence_class": "SIMULATED",
+  "failed_gates": [],
+  "grader_versions": {
+    "exact_json": "1.0",
+    "rubric": "1.0"
+  },
+  "hard_gates": [
+    {
+      "details": {
+        "findings": []
+      },
+      "gate": "oracle_isolation",
+      "passed": true,
+      "reason": "no oracle material reachable"
+    },
+    {
+      "details": {
+        "candidate": "55c0ff818fe5360e",
+        "current": "55c0ff818fe5360e"
+      },
+      "gate": "feature_schema_compatible",
+      "passed": true,
+      "reason": "candidate, dataset and current feature schema agree"
+    },
+    {
+      "details": {
+        "max_abs_diff": 0.0,
+        "parameters_checksum_match": true,
+        "reproducible": true
+      },
+      "gate": "reproducible",
+      "passed": true,
+      "reason": "retraining reproduces parameters"
+    },
+    {
+      "details": {
+        "git": {
+          "branch": "main",
+          "commit": "41674dd6b19d088dc10e8c67709c4f7a2e13902c",
+          "dirty": false
+        }
+      },
+      "gate": "provenance_ready",
+      "passed": true,
+      "reason": "git commit known and tree clean"
+    },
+    {
+      "details": {
+        "ess": 420.22575507021884,
+        "support": 1.0,
+        "warnings": []
+      },
+      "gate": "ope_support",
+      "passed": true,
+      "reason": "logged data supports the candidate"
+    },
+    {
+      "details": {
+        "candidate": 0.5750220600187318,
+        "ci": [
+          0.041345123352262036,
+          0.09985115202990136
+        ],
+        "difference": 0.07215658632348187,
+        "logging": 0.502865473695248
+      },
+      "gate": "ope_non_inferior",
+      "passed": true,
+      "reason": "validation: lower 95% bound of candidate - logging >= -0.02 (non_inferior)"
+    },
+    {
+      "details": {
+        "failures": [],
+        "segments": {
+          "task_domain=ambiguity": {
+            "ci": [
+              -0.06896995094788771,
+              0.10636633592305522
+            ],
+            "difference": 0.02443076233598218,
+            "margin": 0.05,
+            "n": 50,
+            "verdict": "inconclusive"
+          },
+          "task_domain=automation": {
+            "ci": [
+              0.002086595345482556,
+              0.3260517786734858
+            ],
+            "difference": 0.19275532090800865,
+            "margin": 0.05,
+            "n": 60,
+            "verdict": "non_inferior"
+          },
+          "task_domain=calendar": {
+            "ci": [
+              -0.058627070458069475,
+              0.0859822828036032
+            ],
+            "difference": 0.011902465517747096,
+            "margin": 0.05,
+            "n": 48,
+            "verdict": "inconclusive"
+          },
+          "task_domain=communication": {
+            "ci": [
+              -0.03560509094440928,
+              0.07664251615346451
+            ],
+            "difference": 0.018586873335626364,
+            "margin": 0.05,
+            "n": 60,
+            "verdict": "non_inferior"
+          },
+          "task_domain=conversation_memory": {
+            "ci": [
+              -0.01910769560546599,
+              0.09193700256025494
+            ],
+            "difference": 0.03216013158339137,
+            "margin": 0.05,
+            "n": 58,
+            "verdict": "non_inferior"
+          },
+          "task_domain=document_extraction": {
+            "ci": [
+              -0.1914868684059276,
+              0.1645525473619791
+            ],
+            "difference": 0.024750511652799567,
+            "margin": 0.05,
+            "n": 48,
+            "verdict": "inconclusive"
+          },
+          "task_domain=expenses": {
+            "ci": [
+              -0.028511230103232754,
+              0.08990300242663063
+            ],
+            "difference": 0.023488009491622663,
+            "margin": 0.05,
+            "n": 53,
+            "verdict": "non_inferior"
+          },
+          "task_domain=multilingual": {
+            "ci": [
+              0.009026284252293015,
+              0.13657748200579456
+            ],
+            "difference": 0.06523432537653351,
+            "margin": 0.05,
+            "n": 51,
+            "verdict": "non_inferior"
+          },
+          "task_domain=privacy": {
+            "ci": [
+              -0.05992652205191171,
+              0.3840320854147013
+            ],
+            "difference": 0.16767962626263236,
+            "margin": 0.05,
+            "n": 65,
+            "verdict": "inconclusive"
+          },
+          "task_domain=shopping": {
+            "ci": [
+              -0.06661188747991831,
+              0.02063848344832475
+            ],
+            "difference": -0.016803317389555206,
+            "margin": 0.05,
+            "n": 54,
+            "verdict": "inconclusive"
+          },
+          "task_domain=source_reasoning": {
+            "ci": [
+              0.027766970694044213,
+              0.34595770076548915
+            ],
+            "difference": 0.2095571920755926,
+            "margin": 0.05,
+            "n": 55,
+            "verdict": "non_inferior"
+          },
+          "task_domain=support": {
+            "ci": [
+              -0.06104665298688927,
+              0.05911743515521217
+            ],
+            "difference": -0.0019493466914207724,
+            "margin": 0.05,
+            "n": 42,
+            "verdict": "inconclusive"
+          },
+          "task_domain=tabular_analysis": {
+            "ci": [
+              0.00719111281686291,
+              0.25416809490406095
+            ],
+            "difference": 0.1403059775293094,
+            "margin": 0.05,
+            "n": 57,
+            "verdict": "non_inferior"
+          },
+          "task_domain=task_planning": {
+            "ci": [
+              -0.008726966242271983,
+              0.09746216932626495
+            ],
+            "difference": 0.04272514890937873,
+            "margin": 0.05,
+            "n": 68,
+            "verdict": "non_inferior"
+          },
+          "task_domain=travel": {
+            "ci": [
+              -0.0073856813521541165,
+              0.051379992431898946
+            ],
+            "difference": 0.018004897342674298,
+            "margin": 0.05,
+            "n": 51,
+            "verdict": "non_inferior"
+          },
+          "tier=ananta": {
+            "ci": [
+              0.01053692161991493,
+              0.05552618897832917
+            ],
+            "difference": 0.033346863062646726,
+            "margin": 0.05,
+            "n": 217,
+            "verdict": "non_inferior"
+          },
+          "tier=part": {
+            "ci": [
+              0.10272491598742595,
+              0.2327230578927204
+            ],
+            "difference": 0.17146972389390835,
+            "margin": 0.05,
+            "n": 194,
+            "verdict": "non_inferior"
+          },
+          "tier=trika": {
+            "ci": [
+              -0.0021213764007552705,
+              0.18299805061895025
+            ],
+            "difference": 0.0925837704013468,
+            "margin": 0.05,
+            "n": 207,
+            "verdict": "non_inferior"
+          },
+          "tier=yanta": {
+            "ci": [
+              0.011719407097920964,
+              0.07285480148279128
+            ],
+            "difference": 0.03644830739603899,
+            "margin": 0.05,
+            "n": 202,
+            "verdict": "non_inferior"
+          }
+        },
+        "unverified": [
+          "task_domain=ambiguity (inconclusive, n=50, ci [-0.06896995094788771, 0.10636633592305522])",
+          "task_domain=calendar (inconclusive, n=48, ci [-0.058627070458069475, 0.0859822828036032])",
+          "task_domain=document_extraction (inconclusive, n=48, ci [-0.1914868684059276, 0.1645525473619791])",
+          "task_domain=privacy (inconclusive, n=65, ci [-0.05992652205191171, 0.3840320854147013])",
+          "task_domain=shopping (inconclusive, n=54, ci [-0.06661188747991831, 0.02063848344832475])",
+          "task_domain=support (inconclusive, n=42, ci [-0.06104665298688927, 0.05911743515521217])"
+        ]
+      },
+      "gate": "segment_non_inferior",
+      "passed": true,
+      "reason": "no segment confidently worse; no tier or critical domain estimated below margin"
+    },
+    {
+      "details": {
+        "candidate": 0.013898041343985154,
+        "logging": 0.018292682926829267
+      },
+      "gate": "critical_failures",
+      "passed": true,
+      "reason": "critical failure rate not above logging"
+    },
+    {
+      "details": {
+        "candidate": 0.09697460636146274,
+        "logging": 0.15752032520325202
+      },
+      "gate": "tool_schema_failures",
+      "passed": true,
+      "reason": "tool/schema failure penalty not increased"
+    },
+    {
+      "details": {
+        "failures": {},
+        "tiers": {
+          "ananta": {
+            "bound": 0.04,
+            "candidate": 0.026840917236763802,
+            "logging": 0.027022024423963134,
+            "source": "owner_ceiling"
+          },
+          "part": {
+            "bound": 0.25,
+            "candidate": 0.08304251977212831,
+            "logging": 0.05174689020618557,
+            "source": "owner_ceiling"
+          },
+          "trika": {
+            "bound": 0.2,
+            "candidate": 0.16273802084159716,
+            "logging": 0.07779616328502416,
+            "source": "owner_ceiling"
+          },
+          "yanta": {
+            "bound": 0.04,
+            "candidate": 0.023982917716535424,
+            "logging": 0.02333111287128713,
+            "source": "owner_ceiling"
+          }
+        }
+      },
+      "gate": "tier_budget",
+      "passed": true,
+      "reason": "expected cost within every tier bound (owner ceiling, else logging + margin; unknown fails)"
+    },
+    {
+      "details": {
+        "failures": {},
+        "tiers": {
+          "ananta": {
+            "bound": 6000.0,
+            "candidate": 2678.799226650801,
+            "logging": 2658.6705069124423,
+            "source": "owner_ceiling"
+          },
+          "part": {
+            "bound": 8000.0,
+            "candidate": 3660.03494147313,
+            "logging": 3155.751030927835,
+            "source": "owner_ceiling"
+          },
+          "trika": {
+            "bound": 8000.0,
+            "candidate": 4700.147434906935,
+            "logging": 3721.1816425120774,
+            "source": "owner_ceiling"
+          },
+          "yanta": {
+            "bound": 6000.0,
+            "candidate": 2591.403100393698,
+            "logging": 2506.9648514851488,
+            "source": "owner_ceiling"
+          }
+        }
+      },
+      "gate": "tier_latency",
+      "passed": true,
+      "reason": "expected latency within every tier bound (owner ceiling, else logging + margin; unknown fails)"
+    },
+    {
+      "details": {
+        "baseline": {
+          "abstained": 152,
+          "action_distribution": {
+            "sim/balanced": 192
+          },
+          "decided": 40,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0016553166666666665,
+          "latency_ms_mean": 1502.074375,
+          "n": 192,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "candidate": {
+          "abstained": 152,
+          "action_distribution": {
+            "sim/balanced": 146,
+            "sim/flagship": 46
+          },
+          "decided": 40,
+          "deterministic_pass_rate": 1.0,
+          "estimated_cost_mean": 0.0037350604166666666,
+          "latency_ms_mean": 1909.9103958333333,
+          "n": 192,
+          "rubric_mean": null,
+          "unsupported": 0
+        },
+        "regressions": [],
+        "rubric": {
+          "n": 0,
+          "non_inferior": null,
+          "reason": "no paired stochastic scores"
+        },
+        "unsupported": []
+      },
+      "gate": "core_regression",
+      "passed": true,
+      "reason": "no deterministic regression, full evidence support, rubric non-inferior"
+    },
+    {
+      "details": {
+        "core_evidence": {
+          "decided": 0,
+          "rubric_pairs": 0
+        },
+        "core_regressions": [],
+        "core_rubric": {
+          "n": 0,
+          "non_inferior": null,
+          "reason": "no paired stochastic scores"
+        },
+        "telemetry": {
+          "ci": [
+            0.05593890094050036,
+            0.1142599179736229
+          ],
+          "difference": 0.08554895828143527,
+          "margin": 0.03,
+          "n": 793,
+          "verdict": "non_inferior"
+        },
+        "telemetry_candidate": 0.6171144898177161,
+        "telemetry_logging": 0.5315655315362783,
+        "warnings": []
+      },
+      "gate": "holdout",
+      "passed": true,
+      "reason": "sealed telemetry holdout and core holdout not degraded"
+    }
+  ],
+  "harness": null,
+  "harness_candidate_id": null,
+  "human_review_run_ids": [],
+  "limitations": [
+    "Evidence class SIMULATED: synthetic/simulated evidence is not production performance.",
+    "6 segments are not individually verified (too few examples or an interval spanning the margin): task_domain=ambiguity (inconclusive, n=50, ci [-0.06896995094788771, 0.10636633592305522]); task_domain=calendar (inconclusive, n=48, ci [-0.058627070458069475, 0.0859822828036032]); task_domain=document_extraction (inconclusive, n=48, ci [-0.1914868684059276, 0.1645525473619791]); task_domain=privacy (inconclusive, n=65, ci [-0.05992652205191171, 0.3840320854147013]); task_domain=shopping (inconclusive, n=54, ci [-0.06661188747991831, 0.02063848344832475]); task_domain=support (inconclusive, n=42, ci [-0.06104665298688927, 0.05911743515521217])",
+    "Off-policy estimates assume logged propensities are exact and contexts are i.i.d.; they are estimates, not ground truth.",
+    "Core-benchmark holdout cases are rubric-only and have no blind-review scores for the chosen actions: the core holdout is unverified; the holdout gate rests on the sealed telemetry holdout."
+  ],
+  "ope": {
+    "holdout": {
+      "action_distribution": {
+        "sim/balanced": 0.7184216057166882,
+        "sim/cheap": 0.0173182009247583,
+        "sim/flagship": 0.26426019335855405
+      },
+      "bootstrap_ci": [
+        0.5794961871630943,
+        0.6530764450170893
+      ],
+      "critical_failure_rate": 0.003685491206549962,
+      "dm": 0.5913194349910956,
+      "dr": 0.606884798548246,
+      "ess": 391.8980996524965,
+      "expected_cost": 0.06879134960317804,
+      "expected_latency": 3423.2171282572926,
+      "ips": 0.6105839356866847,
+      "max_weight": 5.799988400023199,
+      "n": 793,
+      "reliable": true,
+      "share_weights_above_10": 0.0,
+      "snips": 0.6171144898177161,
+      "success_rate": 0.8478433915494724,
+      "support": 1.0,
+      "warnings": []
+    },
+    "logging_validation": {
+      "bootstrap_ci": [
+        0.4652526252741539,
+        0.5393113793180815
+      ],
+      "n": 820,
+      "value": 0.502865473695248
+    },
+    "validation": {
+      "action_distribution": {
+        "sim/balanced": 0.7393902439024362,
+        "sim/cheap": 0.012439024390243927,
+        "sim/flagship": 0.24817073170731774
+      },
+      "bootstrap_ci": [
+        0.5361325673435146,
+        0.6139862154025516
+      ],
+      "critical_failure_rate": 0.013898041343985154,
+      "dm": 0.5758049593921721,
+      "dr": 0.5756141809413339,
+      "ess": 420.22575507021884,
+      "expected_cost": 0.07121417306873593,
+      "expected_latency": 3357.6942270029444,
+      "ips": 0.5499757649713144,
+      "max_weight": 5.799988400023199,
+      "n": 820,
+      "reliable": true,
+      "share_weights_above_10": 0.0,
+      "snips": 0.5750220600187318,
+      "success_rate": 0.828643959626076,
+      "support": 1.0,
+      "warnings": []
+    }
+  },
+  "passed": true,
+  "policy_candidate_id": "pol-affaf69c692915b0f203",
+  "report_id": "ver-00d5a434b8213a359c54",
+  "schema_version": "verification-report.v1",
+  "soft_metrics": {
+    "action_distribution": {
+      "sim/balanced": 0.7393902439024362,
+      "sim/cheap": 0.012439024390243927,
+      "sim/flagship": 0.24817073170731774
+    },
+    "core_rubric_mean": null,
+    "expected_cost": 0.07121417306873593,
+    "expected_latency_ms": 3357.6942270029444,
+    "expected_reward": {
+      "cheapest": 0.39518583316210465,
+      "flagship": 0.5519663147412289,
+      "linucb": 0.5750220600187318,
+      "logging": 0.502865473695248
+    },
+    "frontier_migration": {
+      "overall_rate": 0.0,
+      "per_domain": {
+        "ambiguity": {
+          "baseline_value": 0.5874154908768678,
+          "candidate_value": 0.6709727852016153,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "automation": {
+          "baseline_value": -0.06891138567747797,
+          "candidate_value": 0.25426828757682884,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "calendar": {
+          "baseline_value": 0.6694506590303946,
+          "candidate_value": 0.7712916210733025,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "communication": {
+          "baseline_value": 0.5177106236300112,
+          "candidate_value": 0.6020649900905792,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "conversation_memory": {
+          "baseline_value": 0.6565827028475731,
+          "candidate_value": 0.738672997641932,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "document_extraction": {
+          "baseline_value": 0.2420642316758465,
+          "candidate_value": 0.41476204410327355,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "expenses": {
+          "baseline_value": 0.3705877709405733,
+          "candidate_value": 0.7214095931394217,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "multilingual": {
+          "baseline_value": 0.6030864171296295,
+          "candidate_value": 0.7283180455290392,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "privacy": {
+          "baseline_value": -0.11328778335353852,
+          "candidate_value": 0.16798708872337573,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "shopping": {
+          "baseline_value": 0.646875547715742,
+          "candidate_value": 0.5714597456164742,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "source_reasoning": {
+          "baseline_value": 0.06997091754753772,
+          "candidate_value": 0.48477146220244255,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "support": {
+          "baseline_value": 0.6030228816612568,
+          "candidate_value": 0.672919616246933,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "tabular_analysis": {
+          "baseline_value": 0.13901436921346688,
+          "candidate_value": 0.41490166120264044,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "task_planning": {
+          "baseline_value": 0.6157554595790453,
+          "candidate_value": 0.7542553385525624,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        },
+        "travel": {
+          "baseline_value": 0.5557571921469164,
+          "candidate_value": 0.7055255000254532,
+          "cost_known": true,
+          "non_inferior": false,
+          "shifted_to_cheaper": false
+        }
+      }
+    },
+    "holdout_gap": -0.04209242979898431,
+    "reward_per_dollar": 8.074545209753689,
+    "success_rate": 0.828643959626076,
+    "train_validation_gap": -0.058234548719586665
+  }
+}

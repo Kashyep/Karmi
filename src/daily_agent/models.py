@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -260,3 +261,83 @@ class BillingEvent(Base):
     event_type: Mapped[str] = mapped_column(String(60))
     payload_hash: Mapped[str] = mapped_column(String(64))
 
+
+class RoutingRecord(Base):
+    """Sanitized per-run routing evidence for the Parakh TelemetryBatchV1 export.
+
+    Written once in the run's own transaction and never updated. Holds routing
+    features and measured metrics only: never message text, note content or identities.
+    """
+
+    __tablename__ = "routing_records"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    tier: Mapped[str] = mapped_column(String(20))
+    task_domain: Mapped[str] = mapped_column(String(40))
+    routing_context: Mapped[str] = mapped_column(Text)
+    attempts: Mapped[str] = mapped_column(Text)
+    harness_version: Mapped[str] = mapped_column(String(40))
+    prompt_version: Mapped[str] = mapped_column(String(40))
+    policy_version: Mapped[str] = mapped_column(String(80))
+    feature_schema_version: Mapped[str] = mapped_column(String(40))
+    executed_action: Mapped[str] = mapped_column(String(120))
+    latency_ms: Mapped[float] = mapped_column(Float)
+    cost_micro: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class RoutingDecision(Base):
+    """One routing decision for a run: the executed live one or a shadow candidate's."""
+
+    __tablename__ = "routing_decisions"
+    __table_args__ = (
+        UniqueConstraint("run_id", "shadow", "policy_version"),
+        CheckConstraint(
+            "selection_probability > 0 AND selection_probability <= 1",
+            name="check_routing_decisions_probability",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    shadow: Mapped[bool] = mapped_column(Boolean)
+    policy_version: Mapped[str] = mapped_column(String(80))
+    feature_schema_version: Mapped[str] = mapped_column(String(40))
+    selected_action: Mapped[str] = mapped_column(String(120))
+    selection_probability: Mapped[float] = mapped_column(Float)
+    exploration: Mapped[bool] = mapped_column(Boolean)
+    eligible_actions: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PolicyBundleRecord(Base):
+    """A verified Parakh PolicyBundleV1 copy. ``state`` is Karmi's pointer; history is in events."""
+
+    __tablename__ = "policy_bundles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    artifact_version: Mapped[str] = mapped_column(String(80), unique=True)
+    checksums_sha256: Mapped[str] = mapped_column(String(64))
+    signer_public_key: Mapped[str] = mapped_column(String(64))
+    storage_path: Mapped[str] = mapped_column(String(500))
+    state: Mapped[str] = mapped_column(String(20), index=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PolicyBundleEvent(Base):
+    """Append-only audit trail of every policy bundle state transition."""
+
+    __tablename__ = "policy_bundle_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    bundle_id: Mapped[str] = mapped_column(
+        ForeignKey("policy_bundles.id", ondelete="CASCADE"), index=True
+    )
+    from_state: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_state: Mapped[str] = mapped_column(String(20))
+    actor: Mapped[str] = mapped_column(String(120))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

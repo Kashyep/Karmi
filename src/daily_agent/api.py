@@ -1,5 +1,6 @@
 import hashlib
 import json
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -27,6 +28,7 @@ from daily_agent.models import (
     UsageWindow,
     User,
 )
+from daily_agent.parakh.routing import RunTiming, record_routing_evidence
 from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.schemas import (
     ARMORY_TIERS,
@@ -462,6 +464,8 @@ def create_app() -> FastAPI:
         # Commit the reservation before provider calls so network latency does
         # not hold row locks on the account's budget rows.
         session.commit()
+        started_at = datetime.now(UTC)
+        started = time.perf_counter()
         try:
             context = build_note_context(
                 session,
@@ -472,6 +476,11 @@ def create_app() -> FastAPI:
                 settings=settings,
             )
             result = fake_generate(body.text, context, settings=settings)
+            timing = RunTiming(
+                started_at=started_at,
+                completed_at=datetime.now(UTC),
+                latency_ms=round((time.perf_counter() - started) * 1000, 3),
+            )
         except Exception:
             session.rollback()
             release_budget(session, reservation)
@@ -487,6 +496,16 @@ def create_app() -> FastAPI:
                 response=result.response,
                 outcome=result.outcome,
                 request_hash=request_hash,
+            )
+            record_routing_evidence(
+                session,
+                run_id=run.id,
+                settings=settings,
+                plan=policy,
+                text=body.text,
+                context=context,
+                result=result,
+                timing=timing,
             )
             provider_calls = [*context.provider_calls, *result.provider_calls]
             settle_budget(

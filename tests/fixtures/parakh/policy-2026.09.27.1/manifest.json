@@ -1,0 +1,50 @@
+{
+  "algorithm": "linucb",
+  "artifact_version": "policy-2026.09.27.1",
+  "created_at": "2026-09-27T20:13:34+00:00",
+  "evaluation_run_ids": [
+    "bench-sim-balanced-9f82842371ab-s7",
+    "bench-sim-cheap-9f82842371ab-s7",
+    "bench-sim-flagship-9f82842371ab-s7"
+  ],
+  "evidence_class": "SIMULATED",
+  "feature_schema_id": "55c0ff818fe5360e",
+  "feature_schema_version": "routing-features.v1",
+  "files": [
+    "eligibility_constraints.json",
+    "evaluation.json",
+    "feature_schema.json",
+    "manifest.json",
+    "provenance.json",
+    "routing_policy.json"
+  ],
+  "minimum_karmi_version": "0.1.0",
+  "model_registry": [
+    {
+      "action": "sim/balanced",
+      "model": "balanced",
+      "model_version": "sim-1",
+      "provider": "sim"
+    },
+    {
+      "action": "sim/cheap",
+      "model": "cheap",
+      "model_version": "sim-1",
+      "provider": "sim"
+    },
+    {
+      "action": "sim/flagship",
+      "model": "flagship",
+      "model_version": "sim-1",
+      "provider": "sim"
+    }
+  ],
+  "parakh_status": "EXPORTED",
+  "policy_candidate_id": "pol-affaf69c692915b0f203",
+  "policy_schema_version": "linucb.v1",
+  "previous_compatible_version": null,
+  "recommended_karmi_mode": "shadow",
+  "schema": "PolicyBundleV1",
+  "schema_version": "1.0.0",
+  "signing_key_id": "4b75f0efc9692703"
+}

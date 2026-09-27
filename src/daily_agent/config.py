@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     production_period_budget_micro: int | None = Field(default=None, ge=1)
     global_daily_budget_micro: int = Field(default=100_000, ge=1)
     data_dir: Path = Path("data")
+    # Hex Ed25519 public keys whose PolicyBundleV1 signatures Karmi accepts. Empty: none.
+    parakh_trusted_public_keys: list[str] = Field(default_factory=list)
 
     @property
     def is_development(self) -> bool:

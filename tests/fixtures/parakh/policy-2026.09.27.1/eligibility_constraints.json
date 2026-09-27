@@ -1,0 +1,56 @@
+{
+  "authority": "karmi",
+  "model_registry": [
+    {
+      "estimated_input_cost_per_token": 8e-07,
+      "estimated_output_cost_per_token": 3.2e-06,
+      "max_context_tokens": 128000,
+      "model": "balanced",
+      "model_version": "sim-1",
+      "provider": "sim",
+      "supports_structured_output": true,
+      "supports_tools": true
+    },
+    {
+      "estimated_input_cost_per_token": 1e-07,
+      "estimated_output_cost_per_token": 4e-07,
+      "max_context_tokens": 32000,
+      "model": "cheap",
+      "model_version": "sim-1",
+      "provider": "sim",
+      "supports_structured_output": true,
+      "supports_tools": false
+    },
+    {
+      "estimated_input_cost_per_token": 5e-06,
+      "estimated_output_cost_per_token": 2e-05,
+      "max_context_tokens": 200000,
+      "model": "flagship",
+      "model_version": "sim-1",
+      "provider": "sim",
+      "supports_structured_output": true,
+      "supports_tools": true
+    }
+  ],
+  "note": "Descriptive only: eligibility observed in training telemetry. Karmi's eligibility engine is authoritative and must filter candidates before this policy scores them.",
+  "observed_eligible_actions_by_tier": {
+    "ananta": [
+      "sim/balanced",
+      "sim/cheap"
+    ],
+    "part": [
+      "sim/balanced",
+      "sim/cheap",
+      "sim/flagship"
+    ],
+    "trika": [
+      "sim/balanced",
+      "sim/cheap",
+      "sim/flagship"
+    ],
+    "yanta": [
+      "sim/balanced",
+      "sim/cheap"
+    ]
+  }
+}

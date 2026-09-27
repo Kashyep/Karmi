@@ -1,0 +1,11 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    "eligibility_constraints.json": "764f7724f80e34eea565ffd05d28381d4f32b36d9eb43278ec14ca4898fcf027",
+    "evaluation.json": "8547ea077fe992e090ff2a0c2392c3d6e6a6b20b3c89ec8e4deca18033ae3fcf",
+    "feature_schema.json": "1f097d04bfccb9e274009f032cf998091386ff9e1633e0b9daea9185bc3ea690",
+    "manifest.json": "d15a0260a71afae3ae623a0485860f0e6dbd523df4c197a581867727dae7e729",
+    "provenance.json": "b12ccb11821120347bc56336ccda731221fdb93f3bd9b26f02271edc44215f3d",
+    "routing_policy.json": "39af9b4757f2ab5bd14e83944088abf16da2479935246808b3f33d9b4c24d52f"
+  }
+}

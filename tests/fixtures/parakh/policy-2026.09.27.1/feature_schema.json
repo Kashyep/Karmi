@@ -1,0 +1,225 @@
+{
+  "dimension": 34,
+  "feature_schema_version": "routing-features.v1",
+  "features": [
+    {
+      "name": "bias",
+      "transform": "constant",
+      "value": 1.0
+    },
+    {
+      "name": "tier=ananta",
+      "source": "tier",
+      "transform": "equals",
+      "value": "ananta"
+    },
+    {
+      "name": "tier=yanta",
+      "source": "tier",
+      "transform": "equals",
+      "value": "yanta"
+    },
+    {
+      "name": "tier=trika",
+      "source": "tier",
+      "transform": "equals",
+      "value": "trika"
+    },
+    {
+      "name": "tier=part",
+      "source": "tier",
+      "transform": "equals",
+      "value": "part"
+    },
+    {
+      "name": "tier=other",
+      "source": "tier",
+      "transform": "not_in",
+      "values": [
+        "ananta",
+        "yanta",
+        "trika",
+        "part"
+      ]
+    },
+    {
+      "name": "task_domain=ambiguity",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "ambiguity"
+    },
+    {
+      "name": "task_domain=automation",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "automation"
+    },
+    {
+      "name": "task_domain=calendar",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "calendar"
+    },
+    {
+      "name": "task_domain=communication",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "communication"
+    },
+    {
+      "name": "task_domain=conversation_memory",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "conversation_memory"
+    },
+    {
+      "name": "task_domain=document_extraction",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "document_extraction"
+    },
+    {
+      "name": "task_domain=expenses",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "expenses"
+    },
+    {
+      "name": "task_domain=multilingual",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "multilingual"
+    },
+    {
+      "name": "task_domain=privacy",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "privacy"
+    },
+    {
+      "name": "task_domain=shopping",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "shopping"
+    },
+    {
+      "name": "task_domain=source_reasoning",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "source_reasoning"
+    },
+    {
+      "name": "task_domain=support",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "support"
+    },
+    {
+      "name": "task_domain=tabular_analysis",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "tabular_analysis"
+    },
+    {
+      "name": "task_domain=task_planning",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "task_planning"
+    },
+    {
+      "name": "task_domain=travel",
+      "source": "task_domain",
+      "transform": "equals",
+      "value": "travel"
+    },
+    {
+      "name": "task_domain=other",
+      "source": "task_domain",
+      "transform": "not_in",
+      "values": [
+        "ambiguity",
+        "automation",
+        "calendar",
+        "communication",
+        "conversation_memory",
+        "document_extraction",
+        "expenses",
+        "multilingual",
+        "privacy",
+        "shopping",
+        "source_reasoning",
+        "support",
+        "tabular_analysis",
+        "task_planning",
+        "travel"
+      ]
+    },
+    {
+      "name": "log_input_tokens",
+      "scale": 200000,
+      "source": "estimated_input_tokens",
+      "transform": "log1p_scaled"
+    },
+    {
+      "name": "context_utilization",
+      "source": "context_utilization_ratio",
+      "transform": "clip01"
+    },
+    {
+      "cap": 10,
+      "name": "tool_count",
+      "source": "tool_count",
+      "transform": "capped_ratio"
+    },
+    {
+      "name": "requires_structured_output",
+      "source": "requires_structured_output",
+      "transform": "bool"
+    },
+    {
+      "name": "requires_tools",
+      "source": "requires_tools",
+      "transform": "bool"
+    },
+    {
+      "name": "requires_memory",
+      "source": "requires_memory",
+      "transform": "bool"
+    },
+    {
+      "name": "requires_external_data",
+      "source": "requires_external_data",
+      "transform": "bool"
+    },
+    {
+      "cap": 50,
+      "name": "conversation_depth",
+      "source": "conversation_depth",
+      "transform": "capped_ratio"
+    },
+    {
+      "cap": 5,
+      "name": "retry_number",
+      "source": "retry_number",
+      "transform": "capped_ratio"
+    },
+    {
+      "name": "previous_tool_failure",
+      "source": "previous_tool_failure",
+      "transform": "bool"
+    },
+    {
+      "name": "has_latency_slo",
+      "source": "latency_slo_ms",
+      "transform": "present"
+    },
+    {
+      "cap": 30000,
+      "name": "latency_slo",
+      "source": "latency_slo_ms",
+      "transform": "capped_ratio"
+    }
+  ],
+  "missing_value_policy": "optional sources absent or null -> 0.0; required sources absent -> reject context",
+  "schema_id": "55c0ff818fe5360e"
+}

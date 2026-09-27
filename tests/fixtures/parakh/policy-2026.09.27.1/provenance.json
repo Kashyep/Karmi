@@ -1,0 +1,73 @@
+{
+  "algorithm": "linucb",
+  "benchmark_versions": {
+    "core": {
+      "sha256": "9f82842371ab949a1018c5625875b1830d625d95c7b7380d5e35a172f8df230e",
+      "version": "0.1.0"
+    }
+  },
+  "code_version": "linucb.v1",
+  "evaluation_run_ids": [
+    "bench-sim-balanced-9f82842371ab-s7",
+    "bench-sim-cheap-9f82842371ab-s7",
+    "bench-sim-flagship-9f82842371ab-s7"
+  ],
+  "feature_schema": {
+    "schema_id": "55c0ff818fe5360e",
+    "version": "routing-features.v1"
+  },
+  "git_branch": "main",
+  "git_dirty": false,
+  "grader_versions": {
+    "exact_json": "1.0",
+    "rubric": "1.0"
+  },
+  "harness_candidate_id": null,
+  "human_review_run_ids": [],
+  "hyperparameters": {
+    "alpha": 0.0,
+    "epsilon": 0.05,
+    "importance_weighting": false,
+    "lambda_": 1.0
+  },
+  "parakh_git_commit": "41674dd6b19d088dc10e8c67709c4f7a2e13902c",
+  "parakh_version": "0.1.0",
+  "provider_model_versions": [
+    {
+      "action": "sim/balanced",
+      "model_version": "sim-1"
+    },
+    {
+      "action": "sim/cheap",
+      "model_version": "sim-1"
+    },
+    {
+      "action": "sim/flagship",
+      "model_version": "sim-1"
+    }
+  ],
+  "python_version": "3.14.7",
+  "random_seeds": {
+    "dataset_split": 37,
+    "training": 37
+  },
+  "reward_schema": {
+    "config_hashes": [
+      "22eb122f91315b79d5f0dae567a24e857ed139922a73cedac0e0879936fac8f5"
+    ],
+    "version": "reward.v1"
+  },
+  "telemetry_dataset": {
+    "checksum": "39fc98787a16158fc274463dc59d90224428bf9cf7fc5a8fa0a84983c789a9fe",
+    "dataset_id": "ds-39fc98787a16158fc274",
+    "schema_version": "router-dataset.v1",
+    "source": {
+      "import_ids": [
+        "imp-1bd46e027c81de3b08c22139"
+      ],
+      "reward_config_hash": "22eb122f91315b79d5f0dae567a24e857ed139922a73cedac0e0879936fac8f5"
+    }
+  },
+  "training_id": "train-1afe1c00f92c82f90103",
+  "verification_report_id": "ver-00d5a434b8213a359c54"
+}
