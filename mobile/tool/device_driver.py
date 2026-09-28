@@ -489,7 +489,8 @@ def drive(karmi: Path, output: Path, serial: str, apk_sha256: str | None, candid
         if probe.connect_ex(("127.0.0.1", PORT)) == 0:
             raise Blocked(f"127.0.0.1:{PORT} is in use; stop the local Karmi server before the device run")
     device = Device(serial, shots)
-    since = device.adb("shell", "date", "+%m-%d %H:%M:%S.000").stdout.strip()
+    # Epoch seconds: no spaces to survive adb's device-shell command line.
+    since = device.adb("shell", "date", "+%s").stdout.strip() + ".000"
     workdir = Path(tempfile.mkdtemp(prefix="karmi-device-"))
     backend = Backend(karmi, workdir, output / "backend-access.log")
     journey = Journey()
