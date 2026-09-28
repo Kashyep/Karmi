@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from redis import Redis
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -40,6 +41,10 @@ def test_migration_redis_and_atomic_platform_budget() -> None:
     database_url, redis_url = integration_urls()
     os.environ["DAILY_AGENT_DATABASE_URL"] = database_url
     alembic = Config("alembic.ini")
+    command.upgrade(alembic, "head")
+    # Every downgrade above the guarded base must execute on PostgreSQL, the production dialect.
+    first = list(ScriptDirectory.from_config(alembic).walk_revisions())[-1].revision
+    command.downgrade(alembic, first)
     command.upgrade(alembic, "head")
     command.check(alembic)
     engine = create_engine(database_url, pool_pre_ping=True)

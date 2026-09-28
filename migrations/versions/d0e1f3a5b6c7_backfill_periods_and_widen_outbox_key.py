@@ -108,9 +108,11 @@ def downgrade() -> None:
             "logical_key", type_=sa.String(160), existing_type=sa.String(255)
         )
     now = datetime.now(UTC)
+    # op.execute() takes no bind parameters; bind them on the text clause.
     op.execute(
-        sa.text("DELETE FROM usage_periods WHERE period_key = :k"),
-        {"k": now.strftime("%Y-%m")},
+        sa.text("DELETE FROM usage_periods WHERE period_key = :k").bindparams(
+            k=now.strftime("%Y-%m")
+        )
     )
     op.execute(
         sa.text("UPDATE budget_reservations SET usage_period_id = NULL")
