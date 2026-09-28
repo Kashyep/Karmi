@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Inspect an Android debug APK and record manual phone-flow evidence; never claim UI success from adb."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+PACKAGE = "ai.karmi.app"
+STEPS = (
+    "launch", "initial_screen", "configuration", "backend_reachable", "authentication",
+    "primary_user_flow", "api_request", "api_error", "logout_expiration", "app_restart",
+    "backend_restart", "offline_handling", "network_recovery",
+)
+
+
+def command(*args: str, timeout: int = 20) -> subprocess.CompletedProcess[str]:
+    try:
+        # Fixed adb/git argv from this module; no shell and no user-controlled executable.
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)  # noqa: S603
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return subprocess.CompletedProcess(args, 127, "", "")
+
+
+def sha(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while block := source.read(1024 * 1024):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def revision() -> str:
+    result = command("git", "-C", str(ROOT), "rev-parse", "HEAD")
+    return result.stdout.strip() if result.returncode == 0 else "unknown"
+
+
+def manual_results(path: Path | None, candidate: str, apk_hash: str | None,
+                   serial: str | None) -> tuple[str, list[dict[str, str]]]:
+    defaults = [{"id": step, "status": "NOT_RUN", "observation": ""} for step in STEPS]
+    if path is None:
+        return "BLOCKED", defaults
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "BLOCKED", defaults
+    if not isinstance(data, dict) or data.get("karmi_sha") != candidate or not apk_hash or data.get("apk_sha256") != apk_hash or data.get("serial") != serial:
+        return "BLOCKED", defaults
+    if not isinstance(data.get("reviewer"), str) or not data["reviewer"].strip():
+        return "BLOCKED", defaults
+    given = data.get("steps")
+    if not isinstance(given, list) or len(given) != len(STEPS):
+        return "BLOCKED", defaults
+    results: list[dict[str, str]] = []
+    for expected, entry in zip(STEPS, given, strict=True):
+        if not isinstance(entry, dict) or entry.get("id") != expected:
+            return "BLOCKED", defaults
+        status = entry.get("status")
+        observation = entry.get("observation")
+        timestamp = entry.get("observed_at")
+        if status not in {"PASS", "FAIL", "BLOCKED", "NOT_RUN"} or not isinstance(observation, str) or not isinstance(timestamp, str) or not timestamp.strip():
+            return "BLOCKED", defaults
+        if status in {"PASS", "FAIL"} and not observation.strip():
+            return "BLOCKED", defaults
+        if re.search(r"(?i)(authorization\s*[:=]|bearer\s+\S+|(?:token|password|secret|api[_ -]?key|cookie)\s*[:=]|private.key)", observation):
+            return "BLOCKED", defaults
+        results.append({"id": expected, "status": status, "observation": observation[:500],
+                        "observed_at": timestamp})
+    state = "FAIL" if any(step["status"] == "FAIL" for step in results) else (
+        "PASS" if all(step["status"] == "PASS" for step in results) else "BLOCKED")
+    return state, results
+
+
+def probe(output: Path, apk: Path, steps: Path | None) -> dict[str, object]:
+    output.mkdir(parents=True, exist_ok=True, mode=0o700)
+    output.chmod(0o700)
+    candidate = revision()
+    checks: dict[str, dict[str, str]] = {}
+    def record(name: str, status: str, detail: str) -> None:
+        checks[name] = {"status": status, "detail": detail}
+    tree = command("git", "-C", str(ROOT), "status", "--porcelain")
+    clean = tree.returncode == 0 and not tree.stdout.strip()
+    record("source_provenance", "PASS" if clean and re.fullmatch(r"[0-9a-f]{40}", candidate) else "BLOCKED",
+           "committed clean Karmi candidate" if clean else "uncommitted changes cannot be attributed to installed APK")
+
+    devices = command("adb", "devices", "-l")
+    connected = [line for line in devices.stdout.splitlines()[1:] if line.strip()]
+    authorized = [line.split()[0] for line in connected
+                  if len(line.split()) >= 3 and line.split()[1] == "device" and "usb:" in line]
+    serial = authorized[0] if devices.returncode == 0 and len(connected) == 1 and len(authorized) == 1 else None
+    record("usb_device", "PASS" if serial else "BLOCKED", "single USB-authorized Android device" if serial else "exactly one USB-authorized device required")
+    installed_hash: str | None = None
+    apk_hash = sha(apk) if apk.is_file() else None
+    record("local_apk", "PASS" if apk_hash else "BLOCKED", "local debug APK hashed" if apk_hash else "build current Flutter candidate APK first")
+    if serial:
+        mapping = command("adb", "-s", serial, "reverse", "tcp:8000", "tcp:8000")
+        reverse = command("adb", "-s", serial, "reverse", "--list")
+        found = mapping.returncode == 0 and "tcp:8000 tcp:8000" in reverse.stdout
+        record("usb_reverse", "PASS" if found else "FAIL", "loopback reverse verified" if found else "adb reverse unavailable")
+        package = command("adb", "-s", serial, "shell", "pm", "path", PACKAGE)
+        remote = next((line.split("package:", 1)[1].strip() for line in package.stdout.splitlines()
+                       if line.startswith("package:") and line.endswith("/base.apk")), None)
+        if remote and apk_hash:
+            with tempfile.TemporaryDirectory(prefix="readiness-apk-") as temp:
+                pulled = Path(temp) / "installed.apk"
+                result = command("adb", "-s", serial, "pull", remote, str(pulled), timeout=60)
+                installed_hash = sha(pulled) if result.returncode == 0 and pulled.is_file() else None
+            matched = installed_hash == apk_hash
+            record("installed_candidate", "PASS" if matched else "BLOCKED",
+                   "installed APK bytes match candidate build" if matched else "installed APK differs from candidate or cannot be read")
+        else:
+            record("installed_candidate", "BLOCKED", "package not installed or local candidate APK absent")
+        if remote:
+            launch = command("adb", "-s", serial, "shell", "am", "start", "-W", "-n", f"{PACKAGE}/.MainActivity")
+            pid = command("adb", "-s", serial, "shell", "pidof", PACKAGE)
+            running = launch.returncode == 0 and pid.returncode == 0 and pid.stdout.strip().isdigit()
+            record("process_launch", "PASS" if running else "FAIL",
+                   "Android process started; visual and interaction steps remain manual" if running else "app launch/process failed")
+    else:
+        for name in ("usb_reverse", "installed_candidate", "process_launch"):
+            record(name, "BLOCKED", "requires authorized device")
+    try:
+        tick = time.monotonic()
+        with urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=3) as response:
+            payload = json.loads(response.read(4096))
+            ready = (response.status == 200 and payload.get("status") == "ready"
+                     and payload.get("database") == "ok" and payload.get("live_models") is False
+                     and payload.get("paid_checkout") is False and payload.get("whatsapp") == "policy_disabled")
+        record("backend_ready", "PASS" if ready else "FAIL",
+               f"local /ready {'returned ready' if ready else 'unexpected response'} in {round((time.monotonic() - tick) * 1000)} ms")
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        record("backend_ready", "BLOCKED", "local backend unavailable or invalid /ready response")
+    state, observed = manual_results(steps, candidate, apk_hash if installed_hash == apk_hash else None, serial)
+    record("manual_journeys", state, "candidate-matched human observations" if state == "PASS" else "13 candidate-matched observed steps required")
+    result = {"schema_version": 1, "mode": "synthetic-development", "captured_at": datetime.now(UTC).isoformat(),
+              "karmi_sha": candidate, "apk_sha256": apk_hash, "installed_apk_sha256": installed_hash,
+              "serial": serial, "checks": checks, "steps": observed,
+              "warning": "process/PID and endpoint checks cannot prove visual rendering or real authentication"}
+    (output / "evidence.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--apk", type=Path, default=ROOT / "mobile/build/app/outputs/flutter-apk/app-debug.apk")
+    parser.add_argument("--steps", type=Path, help="13 observed steps with reviewer and matching commit/APK/serial")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--smoke", action="store_true")
+    modes.add_argument("--extended", action="store_true")
+    args = parser.parse_args()
+    result = probe(args.output, args.apk, args.steps)
+    checks = result["checks"]
+    assert isinstance(checks, dict)
+    statuses = [check["status"] for check in checks.values()]
+    state = "FAIL" if "FAIL" in statuses else "BLOCKED" if "BLOCKED" in statuses else "PASS"
+    print(f"Android evidence: {args.output / 'evidence.json'}; {state}")
+    return {"PASS": 0, "FAIL": 1, "BLOCKED": 2}[state]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
