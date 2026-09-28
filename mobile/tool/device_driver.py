@@ -138,13 +138,17 @@ class Device:
                            stdout=sink, timeout=30, check=False)
         return target.name
 
-    def pid(self) -> str | None:
-        result = self.adb("shell", "pidof", PACKAGE)
-        value = result.stdout.strip()
-        if result.returncode == 0 and value.isdigit():
-            self.pids.add(value)
-            return value
-        return None
+    def pid(self, timeout: float = 8) -> str | None:
+        """Newest app pid; polls briefly because the process can lag the activity report."""
+        deadline = time.monotonic() + timeout
+        while True:
+            values = self.adb("shell", "pidof", PACKAGE).stdout.split()
+            if values and all(value.isdigit() for value in values):
+                self.pids.update(values)
+                return max(values, key=int)
+            if time.monotonic() > deadline:
+                return None
+            time.sleep(0.3)
 
     def launch(self) -> int:
         result = self.adb("shell", "am", "start", "-W", "-n", LAUNCHER)
