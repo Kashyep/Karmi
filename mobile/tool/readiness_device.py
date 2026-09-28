@@ -102,6 +102,7 @@ def navigation(steps: Path | None) -> tuple[str, str]:
         "PASS" if len(statuses) == len(tour) and set(statuses.values()) == {"PASS"} else "BLOCKED")
     return state, ", ".join(f"{name}: {status}" for name, status in statuses.items())
 
+
 def build_and_install(serial: str, apk: Path) -> dict[str, str]:
     """Build the debug APK from the committed tree and install it, so the device runs this candidate."""
     tree = command("git", "-C", str(ROOT), "status", "--porcelain")
@@ -237,7 +238,7 @@ def main() -> int:
     checks = result["checks"]
     assert isinstance(checks, dict)
     statuses = [check["status"] for check in checks.values()]
-    state = "FAIL" if "FAIL" in statuses else "BLOCKED" if "BLOCKED" in statuses else "PASS"
+    state = "FAIL" if "FAIL" in statuses else "PASS" if set(statuses) == {"PASS"} else "BLOCKED"
     print(f"Android evidence: {args.output / 'evidence.json'}; {state}")
     return {"PASS": 0, "FAIL": 1, "BLOCKED": 2}[state]
 
