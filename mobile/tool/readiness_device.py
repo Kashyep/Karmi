@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import re
@@ -80,7 +81,30 @@ def manual_results(path: Path | None, candidate: str, apk_hash: str | None,
     return state, results
 
 
-def probe(output: Path, apk: Path, steps: Path | None) -> dict[str, object]:
+def usb_serial() -> str | None:
+    devices = command("adb", "devices", "-l")
+    connected = [line for line in devices.stdout.splitlines()[1:] if line.strip()]
+    authorized = [line.split()[0] for line in connected
+                  if len(line.split()) >= 3 and line.split()[1] == "device" and "usb:" in line]
+    return authorized[0] if devices.returncode == 0 and len(connected) == 1 and len(authorized) == 1 else None
+
+
+def navigation(steps: Path | None) -> tuple[str, str]:
+    """mobile-e2e tab tour recorded by the driver alongside the 13 steps."""
+    try:
+        tour = json.loads(steps.read_text(encoding="utf-8")).get("extended_navigation") if steps else None
+    except (OSError, ValueError, AttributeError):
+        tour = None
+    if not isinstance(tour, dict) or not tour:
+        return "BLOCKED", "no extended navigation observations"
+    statuses = {name: entry.get("status") for name, entry in tour.items() if isinstance(entry, dict)}
+    state = "FAIL" if "FAIL" in statuses.values() else (
+        "PASS" if len(statuses) == len(tour) and set(statuses.values()) == {"PASS"} else "BLOCKED")
+    return state, ", ".join(f"{name}: {status}" for name, status in statuses.items())
+
+
+def probe(output: Path, apk: Path, steps: Path | None, *, extended: bool = False,
+          blocked_reason: str | None = None) -> dict[str, object]:
     output.mkdir(parents=True, exist_ok=True, mode=0o700)
     output.chmod(0o700)
     candidate = revision()
@@ -92,11 +116,7 @@ def probe(output: Path, apk: Path, steps: Path | None) -> dict[str, object]:
     record("source_provenance", "PASS" if clean and re.fullmatch(r"[0-9a-f]{40}", candidate) else "BLOCKED",
            "committed clean Karmi candidate" if clean else "uncommitted changes cannot be attributed to installed APK")
 
-    devices = command("adb", "devices", "-l")
-    connected = [line for line in devices.stdout.splitlines()[1:] if line.strip()]
-    authorized = [line.split()[0] for line in connected
-                  if len(line.split()) >= 3 and line.split()[1] == "device" and "usb:" in line]
-    serial = authorized[0] if devices.returncode == 0 and len(connected) == 1 and len(authorized) == 1 else None
+    serial = usb_serial()
     record("usb_device", "PASS" if serial else "BLOCKED", "single USB-authorized Android device" if serial else "exactly one USB-authorized device required")
     installed_hash: str | None = None
     apk_hash = sha(apk) if apk.is_file() else None
@@ -124,7 +144,7 @@ def probe(output: Path, apk: Path, steps: Path | None) -> dict[str, object]:
             pid = command("adb", "-s", serial, "shell", "pidof", PACKAGE)
             running = launch.returncode == 0 and pid.returncode == 0 and pid.stdout.strip().isdigit()
             record("process_launch", "PASS" if running else "FAIL",
-                   "Android process started; visual and interaction steps remain manual" if running else "app launch/process failed")
+                   "Android process started" if running else "app launch/process failed")
     else:
         for name in ("usb_reverse", "installed_candidate", "process_launch"):
             record(name, "BLOCKED", "requires authorized device")
@@ -140,13 +160,21 @@ def probe(output: Path, apk: Path, steps: Path | None) -> dict[str, object]:
     except (urllib.error.URLError, TimeoutError, ValueError):
         record("backend_ready", "BLOCKED", "local backend unavailable or invalid /ready response")
     state, observed = manual_results(steps, candidate, apk_hash if installed_hash == apk_hash else None, serial)
-    record("manual_journeys", state, "candidate-matched human observations" if state == "PASS" else "13 candidate-matched observed steps required")
-    result = {"schema_version": 1, "mode": "synthetic-development", "captured_at": datetime.now(UTC).isoformat(),
-              "karmi_sha": candidate, "apk_sha256": apk_hash, "installed_apk_sha256": installed_hash,
-              "serial": serial, "checks": checks, "steps": observed,
-              "warning": "process/PID and endpoint checks cannot prove visual rendering or real authentication"}
-    (output / "evidence.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-    return result
+    record("journeys", state, "13 candidate-matched observed steps" if state == "PASS" else
+           blocked_reason or "13 candidate-matched observed steps required")
+    if extended:
+        record("extended_navigation", *navigation(steps))
+    method = "none"
+    with contextlib.suppress(OSError, ValueError, AttributeError):
+        method = str(json.loads(steps.read_text(encoding="utf-8")).get("method", "manual")) if steps else "none"
+    evidence: dict[str, object] = {
+        "schema_version": 1, "mode": "synthetic-development", "captured_at": datetime.now(UTC).isoformat(),
+        "karmi_sha": candidate, "apk_sha256": apk_hash, "installed_apk_sha256": installed_hash,
+        "serial": serial, "checks": checks, "steps": observed, "observation_method": method,
+        "warning": "step results are only as strong as their observation method; debug build, "
+                   "development sign-in and a synthetic backend do not prove production identity"}
+    (output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
+    return evidence
 
 
 def main() -> int:
@@ -154,11 +182,30 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--apk", type=Path, default=ROOT / "mobile/build/app/outputs/flutter-apk/app-debug.apk")
     parser.add_argument("--steps", type=Path, help="13 observed steps with reviewer and matching commit/APK/serial")
+    parser.add_argument("--drive", action="store_true",
+                        help="run the automated 13-step journey (device_driver.py) and validate its evidence")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--smoke", action="store_true")
     modes.add_argument("--extended", action="store_true")
     args = parser.parse_args()
-    result = probe(args.output, args.apk, args.steps)
+    if args.drive and args.steps:
+        parser.error("--drive produces its own steps; do not combine with --steps")
+    result: dict[str, object] = {}
+    serial = usb_serial() if args.drive else None
+    if serial:
+        import device_driver  # sibling module; imported lazily so manual validation needs no driver
+
+        def validate(steps: Path) -> None:
+            # Runs while the driver's backend is still serving so /ready is observed live.
+            result.update(probe(args.output, args.apk, steps, extended=args.extended))
+        try:
+            device_driver.drive(ROOT, args.output / "driver", serial, sha(args.apk) if args.apk.is_file() else None,
+                                revision(), args.extended, validate)
+        except device_driver.Blocked as blocked:
+            result = probe(args.output, args.apk, None, extended=args.extended, blocked_reason=str(blocked))
+    else:
+        reason = "automated journey needs exactly one USB-authorized device" if args.drive else None
+        result = probe(args.output, args.apk, args.steps, extended=args.extended, blocked_reason=reason)
     checks = result["checks"]
     assert isinstance(checks, dict)
     statuses = [check["status"] for check in checks.values()]
