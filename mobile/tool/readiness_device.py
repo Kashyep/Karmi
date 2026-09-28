@@ -24,10 +24,10 @@ STEPS = (
 )
 
 
-def command(*args: str, timeout: int = 20) -> subprocess.CompletedProcess[str]:
+def command(*args: str, timeout: int = 20, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     try:
-        # Fixed adb/git argv from this module; no shell and no user-controlled executable.
-        return subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)  # noqa: S603
+        # Fixed adb/git/flutter argv from this module; no shell and no user-controlled executable.
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False, cwd=cwd)  # noqa: S603
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return subprocess.CompletedProcess(args, 127, "", "")
 
@@ -102,13 +102,31 @@ def navigation(steps: Path | None) -> tuple[str, str]:
         "PASS" if len(statuses) == len(tour) and set(statuses.values()) == {"PASS"} else "BLOCKED")
     return state, ", ".join(f"{name}: {status}" for name, status in statuses.items())
 
+def build_and_install(serial: str, apk: Path) -> dict[str, str]:
+    """Build the debug APK from the committed tree and install it, so the device runs this candidate."""
+    tree = command("git", "-C", str(ROOT), "status", "--porcelain")
+    if tree.returncode != 0 or tree.stdout.strip():
+        return {"status": "BLOCKED", "detail": "uncommitted Karmi changes; a build would not match any commit"}
+    if command("flutter", "--version", timeout=120).returncode != 0:
+        return {"status": "BLOCKED", "detail": "flutter not available on PATH"}
+    built = command("flutter", "build", "apk", "--debug", "--dart-define=API_BASE_URL=http://127.0.0.1:8000",
+                    "--dart-define=KARMI_DEV_AUTH=true", cwd=ROOT / "mobile", timeout=1200)
+    if built.returncode != 0 or not apk.is_file():
+        return {"status": "FAIL", "detail": f"flutter build apk failed: {(built.stderr or built.stdout)[-300:]}"}
+    installed = command("adb", "-s", serial, "install", "-r", "-t", str(apk), timeout=300)
+    if installed.returncode != 0 or "Success" not in installed.stdout:
+        return {"status": "BLOCKED", "detail": "adb install refused (on a signature mismatch uninstall the old "
+                                               "app only with the device owner's approval)"}
+    return {"status": "PASS", "detail": f"built from {revision()[:12]} and installed ({sha(apk)[:12]})"}
+
 
 def probe(output: Path, apk: Path, steps: Path | None, *, extended: bool = False,
-          blocked_reason: str | None = None) -> dict[str, object]:
+          blocked_reason: str | None = None,
+          extra_checks: dict[str, dict[str, str]] | None = None) -> dict[str, object]:
     output.mkdir(parents=True, exist_ok=True, mode=0o700)
     output.chmod(0o700)
     candidate = revision()
-    checks: dict[str, dict[str, str]] = {}
+    checks: dict[str, dict[str, str]] = dict(extra_checks or {})
     def record(name: str, status: str, detail: str) -> None:
         checks[name] = {"status": status, "detail": detail}
     tree = command("git", "-C", str(ROOT), "status", "--porcelain")
@@ -183,7 +201,9 @@ def main() -> int:
     parser.add_argument("--apk", type=Path, default=ROOT / "mobile/build/app/outputs/flutter-apk/app-debug.apk")
     parser.add_argument("--steps", type=Path, help="13 observed steps with reviewer and matching commit/APK/serial")
     parser.add_argument("--drive", action="store_true",
-                        help="run the automated 13-step journey (device_driver.py) and validate its evidence")
+                        help="build and install the candidate debug APK, run the automated 13-step journey "
+                             "(device_driver.py) and validate its evidence")
+    parser.add_argument("--no-build", action="store_true", help="with --drive: use the existing local APK")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--smoke", action="store_true")
     modes.add_argument("--extended", action="store_true")
@@ -195,14 +215,22 @@ def main() -> int:
     if serial:
         import device_driver  # sibling module; imported lazily so manual validation needs no driver
 
+        build = {"status": "NOT_RUN", "detail": "--no-build: existing local APK used"}
+        if not args.no_build:
+            build = build_and_install(serial, args.apk)
+        extra = {"candidate_build_install": build}
+
         def validate(steps: Path) -> None:
             # Runs while the driver's backend is still serving so /ready is observed live.
-            result.update(probe(args.output, args.apk, steps, extended=args.extended))
+            result.update(probe(args.output, args.apk, steps, extended=args.extended, extra_checks=extra))
         try:
+            if build["status"] not in ("PASS", "NOT_RUN"):
+                raise device_driver.Blocked(f"candidate build/install {build['status']}: {build['detail']}")
             device_driver.drive(ROOT, args.output / "driver", serial, sha(args.apk) if args.apk.is_file() else None,
                                 revision(), args.extended, validate)
         except device_driver.Blocked as blocked:
-            result = probe(args.output, args.apk, None, extended=args.extended, blocked_reason=str(blocked))
+            result = probe(args.output, args.apk, None, extended=args.extended, blocked_reason=str(blocked),
+                           extra_checks=extra)
     else:
         reason = "automated journey needs exactly one USB-authorized device" if args.drive else None
         result = probe(args.output, args.apk, args.steps, extended=args.extended, blocked_reason=reason)
