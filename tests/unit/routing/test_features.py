@@ -207,7 +207,7 @@ def test_golden_feature_vectors_identical_fixtures() -> None:
     assert named["latency_slo_tight"] == 1.0  # 1800 <= 2000
 
 
-@pytest.mark.parametrize("tier_idx,tier_name", enumerate(TIERS))
+@pytest.mark.parametrize("tier_idx,tier_name", list(enumerate(TIERS)))
 def test_feature_vector_all_tiers_and_ranges(tier_idx: int, tier_name: str) -> None:
     ctx = build_routing_context(
         request_id="req-range",
