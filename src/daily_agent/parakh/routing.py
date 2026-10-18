@@ -43,8 +43,13 @@ PROMPT_VERSION = "karmi-prompts-v1"
 
 LOCAL_ACTION = "karmi/fake-economy"
 LIVE_ACTION = "typesafe/system-one"
-ROUTE_ACTIONS = {"fake-economy": LOCAL_ACTION, "typesafe-system-one": LIVE_ACTION}
-KNOWN_ACTIONS = (LOCAL_ACTION, LIVE_ACTION)
+OPENCODE_ACTION = "opencode/free-chat-completions"
+ROUTE_ACTIONS = {
+    "fake-economy": LOCAL_ACTION,
+    "typesafe-system-one": LIVE_ACTION,
+    "opencode-free": OPENCODE_ACTION,
+}
+KNOWN_ACTIONS = (LOCAL_ACTION, LIVE_ACTION, OPENCODE_ACTION)
 
 # Karmi plan ids -> the TelemetryBatchV1 tier vocabulary Parakh's feature schema one-hots.
 # Karmi spells the premium plan "parth"; the contract spells it "part". Unknown plans fail
@@ -86,7 +91,12 @@ def task_domain(text: str, intent: str | None) -> str:
 
 def eligible_actions(settings: Settings) -> list[str]:
     """Actions this Karmi process can actually execute for a request."""
-    return sorted([LOCAL_ACTION, LIVE_ACTION] if settings.live_models_enabled else [LOCAL_ACTION])
+    eligible = [LOCAL_ACTION]
+    if settings.live_models_enabled:
+        eligible.append(LIVE_ACTION)
+    if settings.opencode_enabled:
+        eligible.append(OPENCODE_ACTION)
+    return sorted(eligible)
 
 
 def model_registry() -> list[dict[str, Any]]:
@@ -105,6 +115,12 @@ def model_registry() -> list[dict[str, Any]]:
             "supports_structured_output": True,
             "estimated_input_cost_per_token": TYPESAFE_INPUT_MICRO_PER_1K / 1000 / 1_000_000,
             "estimated_output_cost_per_token": TYPESAFE_OUTPUT_MICRO_PER_1K / 1000 / 1_000_000,
+        },
+        {
+            "provider": "opencode", "model": "free-chat-completions", "model_version": None,
+            "max_context_tokens": KARMI_MAX_INPUT_TOKENS, "supports_tools": False,
+            "supports_structured_output": False,
+            "estimated_input_cost_per_token": 0.0, "estimated_output_cost_per_token": 0.0,
         },
     ]
 

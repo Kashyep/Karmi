@@ -6,6 +6,9 @@ from typing import Annotated, Any
 
 import typer
 
+from daily_agent.config import get_settings
+from daily_agent.opencode import FREE_MODELS
+
 from .core import (
     LabStore,
     candidate_record,
@@ -20,6 +23,7 @@ from .core import (
     validate_cases,
     write_jsonl,
 )
+from .opencode_runner import EvaluationPlanError, run_opencode_candidates
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 suite_app = typer.Typer(no_args_is_help=True)
@@ -151,6 +155,51 @@ def run_fake(
             store.add_grade(attempt["attempt_id"], grade_attempt(case_map[attempt["case_id"]], attempt["response"]))
     typer.echo(json.dumps({"attempts": len(attempts), "coverage": coverage_metrics(cases, attempts)}, sort_keys=True))
     store.close()
+
+
+@app.command("run-opencode")
+def run_opencode(
+    suite: Annotated[Path, typer.Option("--suite", exists=True, readable=True)],
+    out_dir: Annotated[Path, typer.Option("--out-dir")],
+    max_requests: Annotated[int, typer.Option("--max-requests", min=1)],
+    split: Annotated[str, typer.Option("--split")] = "all",
+    model: Annotated[list[str] | None, typer.Option("--model")] = None,
+    allow_free_provider_requests: Annotated[
+        bool, typer.Option("--allow-free-provider-requests")
+    ] = False,
+) -> None:
+    """Run synthetic cases against explicitly allowlisted free OpenCode models."""
+    if not allow_free_provider_requests:
+        raise typer.BadParameter("live calls require --allow-free-provider-requests")
+    settings = get_settings()
+    if not settings.opencode_api_key:
+        raise typer.BadParameter("save a key with scripts/setup_opencode.py before running")
+    model_ids = model or [candidate.model_id for candidate in FREE_MODELS]
+    if out_dir.exists():
+        raise typer.BadParameter("output directory already exists; choose a new run directory")
+    cases = read_jsonl(suite)
+    try:
+        manifest, attempts = run_opencode_candidates(
+            cases=cases,
+            model_ids=model_ids,
+            split=split,
+            max_requests=max_requests,
+            api_key=settings.opencode_api_key,
+        )
+    except EvaluationPlanError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    out_dir.mkdir(parents=True, mode=0o700)
+    (out_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    write_jsonl(out_dir / "attempts.jsonl", attempts)
+    typer.echo(
+        f"run={manifest['run_id']} planned={manifest['planned_requests']} "
+        f"completed={sum(row['status'] == 'completed' for row in attempts)} "
+        f"failed={sum(row['status'] == 'failed' for row in attempts)} "
+        f"outputs={out_dir}"
+    )
 
 
 @app.command("db-report")
