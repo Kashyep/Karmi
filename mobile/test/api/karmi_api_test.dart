@@ -17,6 +17,37 @@ void main() {
   });
 
   group('sendMessage', () {
+    test('loads a fresh bearer token for each authenticated request', () async {
+      final tokens = ['clerk-token-1', 'clerk-token-2'];
+      backend.on('GET', '/v1/notes', (_) => jsonResponse([]));
+      api.token = 'stale-development-token';
+      api.tokenProvider = () async => tokens.removeAt(0);
+
+      await api.listNotes();
+      await api.listNotes();
+
+      expect(
+        backend.requests.map((request) => request.headers['Authorization']),
+        ['Bearer clerk-token-1', 'Bearer clerk-token-2'],
+      );
+    });
+
+    test(
+      'does not fall back to a cached token when provider returns null',
+      () async {
+        backend.on('GET', '/v1/notes', (_) => jsonResponse([]));
+        api.token = 'stale-development-token';
+        api.tokenProvider = () async => null;
+
+        await api.listNotes();
+
+        expect(
+          backend.requests.single.headers,
+          isNot(contains('Authorization')),
+        );
+      },
+    );
+
     test('200 parses MessageView and sends bearer + idempotency key', () async {
       backend.on(
         'POST',

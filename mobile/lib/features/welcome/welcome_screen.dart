@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../api/karmi_api.dart';
+import '../../auth/clerk_sign_in_card.dart';
 import '../../auth/session.dart';
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_theme.dart';
 import '../../widgets/feedback.dart';
 
-/// Welcome / development sign-in (T4.4). Uses `POST /dev/token` only;
-/// production auth is out of scope (ADR-0002 Q3).
+/// Welcome and sign-in surface. Production builds use Clerk when configured;
+/// the synthetic `/dev/token` button remains available for local development.
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({
     super.key,
@@ -98,7 +99,19 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                   const SizedBox(height: 16),
                 ],
-                if (!widget.devAuthEnabled)
+                if (widget.session.hasClerk &&
+                    widget.session.clerkAuth?.isNotAvailable == true)
+                  const ErrorBanner(
+                    icon: Icons.cloud_off,
+                    tone: ErrorTone.info,
+                    title: 'Connecting to sign-in',
+                    message:
+                        'Check your internet connection. Sign-in will appear '
+                        'when Clerk is reachable.',
+                  )
+                else if (widget.session.hasClerk)
+                  const ClerkSignInCard()
+                else if (!widget.devAuthEnabled)
                   const ErrorBanner(
                     icon: Icons.info_outline,
                     tone: ErrorTone.info,

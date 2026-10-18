@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -16,13 +17,21 @@ Future<void> main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final api = KarmiApi();
-  final session = KarmiSession(api: api, prefs: prefs);
+  const publishableKey = String.fromEnvironment('CLERK_PUBLISHABLE_KEY');
+  final clerkAuth = publishableKey.isEmpty
+      ? null
+      : await ClerkAuthState.create(
+          config: ClerkAuthConfig(publishableKey: publishableKey),
+        );
+  final session = KarmiSession(api: api, prefs: prefs, clerkAuth: clerkAuth);
 
-  runApp(
-    KarmiApp(
-      settings: KarmiSettings(prefs),
-      session: session,
-      armory: ArmoryController(api: api, prefs: prefs),
-    ),
+  Widget app = KarmiApp(
+    settings: KarmiSettings(prefs),
+    session: session,
+    armory: ArmoryController(api: api, prefs: prefs),
   );
+  if (clerkAuth case final auth?) {
+    app = ClerkAuth(authState: auth, child: app);
+  }
+  runApp(app);
 }

@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:clerk_flutter/clerk_flutter.dart';
 
 import '../api/karmi_api.dart';
 
-/// `--dart-define=KARMI_DEV_AUTH=false` hides development sign-in. Defaults on
-/// outside release mode. Production auth is out of scope (ADR-0002 Q3).
+/// `--dart-define=KARMI_DEV_AUTH=false` hides the local development sign-in.
+/// Defaults on outside release mode.
 const bool kDevAuthEnabled = bool.fromEnvironment(
   'KARMI_DEV_AUTH',
   defaultValue: !kReleaseMode,
@@ -12,14 +15,27 @@ const bool kDevAuthEnabled = bool.fromEnvironment(
 
 enum SessionEnd { none, signedOut, expired }
 
-/// Holds the development bearer token issued by `POST /dev/token`.
-///
-/// Stored in SharedPreferences because it is a synthetic dev credential; a
-/// production token would need platform secure storage.
+/// Adapts Clerk's persisted session (production) and `/dev/token` (local dev)
+/// to the app's signed-in state. Clerk tokens are requested per API call and
+/// are never copied into SharedPreferences.
 class KarmiSession extends ChangeNotifier {
-  KarmiSession({required this.api, required SharedPreferences prefs})
-    : _prefs = prefs {
-    api.token = _prefs.getString(_key);
+  KarmiSession({
+    required this.api,
+    required SharedPreferences prefs,
+    this.clerkAuth,
+  }) : _prefs = prefs {
+    final auth = clerkAuth;
+    if (auth != null) {
+      // Never let a leftover synthetic token authenticate a Clerk-configured
+      // build, including when Clerk currently has no active session.
+      api.token = null;
+      unawaited(_prefs.remove(_key));
+      api.tokenProvider = _clerkToken;
+      auth.addListener(_onClerkChange);
+      _wasClerkSignedIn = auth.isSignedIn;
+    } else {
+      api.token = _prefs.getString(_key);
+    }
     api.onUnauthorized = expire;
   }
 
@@ -27,12 +43,31 @@ class KarmiSession extends ChangeNotifier {
 
   final KarmiApi api;
   final SharedPreferences _prefs;
+  final ClerkAuthState? clerkAuth;
   SessionEnd _lastEnd = SessionEnd.none;
+  bool _wasClerkSignedIn = false;
 
-  bool get isSignedIn => api.token != null;
+  bool get isSignedIn => api.token != null || clerkAuth?.isSignedIn == true;
+
+  bool get hasClerk => clerkAuth != null;
 
   /// Why the previous session ended, for the Welcome screen copy.
   SessionEnd get lastEnd => _lastEnd;
+
+  Future<String?> _clerkToken() async {
+    final auth = clerkAuth;
+    if (auth == null || !auth.isSignedIn) return null;
+    return (await auth.sessionToken()).jwt;
+  }
+
+  void _onClerkChange() {
+    final signedIn = clerkAuth?.isSignedIn == true;
+    if (_wasClerkSignedIn && !signedIn) {
+      _lastEnd = SessionEnd.signedOut;
+    }
+    _wasClerkSignedIn = signedIn;
+    notifyListeners();
+  }
 
   /// Throws [KarmiApiException] on failure; the token is unchanged then.
   Future<void> signInWithDevToken() async {
@@ -55,5 +90,14 @@ class KarmiSession extends ChangeNotifier {
     _lastEnd = reason;
     notifyListeners();
     await _prefs.remove(_key);
+    if (clerkAuth?.isSignedIn == true) {
+      await clerkAuth!.signOut();
+    }
+  }
+
+  @override
+  void dispose() {
+    clerkAuth?.removeListener(_onClerkChange);
+    super.dispose();
   }
 }

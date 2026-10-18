@@ -19,6 +19,7 @@ class KarmiApi {
     http.Client? client,
     this.timeout = const Duration(seconds: 30),
     this.token,
+    this.tokenProvider,
   }) : _client = client ?? http.Client();
 
   /// `--dart-define=API_BASE_URL=...`; defaults to the Android emulator's host loopback.
@@ -33,6 +34,10 @@ class KarmiApi {
 
   /// Bearer token for `/v1/*`. Managed by `KarmiSession`.
   String? token;
+
+  /// Called for every request so providers can return the latest short-lived
+  /// session token instead of relying on a cached bearer string.
+  Future<String?> Function()? tokenProvider;
 
   /// Called before an [UnauthorizedException] is thrown, so the session can end.
   void Function()? onUnauthorized;
@@ -130,8 +135,12 @@ class KarmiApi {
   }) async {
     final request = http.Request(method, Uri.parse('$baseUrl$path'));
     request.headers['Accept'] = 'application/json';
-    if (auth && token != null) {
-      request.headers['Authorization'] = 'Bearer $token';
+    if (auth) {
+      final provider = tokenProvider;
+      final bearer = provider == null ? token : await provider();
+      if (bearer != null) {
+        request.headers['Authorization'] = 'Bearer $bearer';
+      }
     }
     if (json != null) {
       request.headers['Content-Type'] = 'application/json';
