@@ -129,13 +129,20 @@ saved public PEM. The first successful API request creates the local customer an
 subscription. Confirm the journey only after the backend is running and `/ready` succeeds. The
 mobile install itself does not prove API-to-Neon connectivity or a production release.
 
-## OpenCode Zen AI provider
+## Model gateway (free OpenRouter / OpenCode Zen models)
 
-An OpenCode generation adapter exists in `src/daily_agent/opencode.py`. It is **off by default**
-(`DAILY_AGENT_OPENCODE_ENABLED=false`). `get_settings()` loads `.env.opencode`, but enabling it needs
-all of: `DAILY_AGENT_OPENCODE_ENABLED=true`, the API key, `DAILY_AGENT_OPENCODE_MODEL_ID` set to a
-model in `PRIVATE_DATA_MODEL_IDS`, and, in production, a finite `DAILY_AGENT_PRODUCTION_PERIOD_BUDGET_MICRO`.
-A saved key alone will not enable AI responses. With OpenCode disabled, chat uses deterministic demo text.
+Live chat replies go through `src/daily_agent/gateway/`. It is **off by default**: enable a provider
+with `DAILY_AGENT_OPENROUTER_ENABLED=true` (key in the ignored `.env.openrouter` as
+`OPENROUTER_API_KEY=...`) and/or `DAILY_AGENT_OPENCODE_ENABLED=true` (key in `.env.opencode`), and, in
+production, a finite `DAILY_AGENT_PRODUCTION_PERIOD_BUDGET_MICRO`. Models come from a reviewed
+`model-registry.v1` file (`DAILY_AGENT_MODEL_REGISTRY_PATH`; the packaged seed covers the OpenCode free
+models only). Only zero-price models load. Notes are attached only to drafting requests that point at
+the user's notes, and only to models whose registry entry has `no_training` terms. A saved key alone
+will not enable AI responses. With every provider off, or `DAILY_AGENT_GATEWAY_KILL_SWITCH=true`,
+chat uses deterministic demo text and makes no network call. OpenRouter's free models are
+rate-limited (20 requests/minute; 50/day without credits, 1000/day with at least $10 credits), so
+per-tier daily request and token quotas, per-model cooldowns and a per-provider circuit breaker
+apply; breaker/cooldown state is per process.
 
 The offline ModelLab suite validates and scores imported results. `model_lab run-opencode` is the only
 ModelLab path that calls the provider. It makes live calls only with `--allow-free-provider-requests`,

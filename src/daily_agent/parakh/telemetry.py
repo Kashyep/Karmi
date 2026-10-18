@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from daily_agent import __version__
+from daily_agent.gateway.registry import ModelRegistry
 from daily_agent.models import RoutingDecision, RoutingRecord, Run, RunStatus
 from daily_agent.parakh.routing import FEATURE_SCHEMA_VERSION, model_registry
 
@@ -127,7 +128,13 @@ def _run(record: RoutingRecord, run: Run, decisions: list[RoutingDecision]) -> d
     }
 
 
-def build_telemetry_batch(session: Session, *, start: datetime, end: datetime) -> dict[str, Any]:
+def build_telemetry_batch(
+    session: Session,
+    *,
+    start: datetime,
+    end: datetime,
+    registry: ModelRegistry | None = None,
+) -> dict[str, Any]:
     """TelemetryBatchV1 for runs whose routing record completed in ``[start, end)``."""
     if end <= start:
         raise ValueError("window end must be after its start")
@@ -160,6 +167,6 @@ def build_telemetry_batch(session: Session, *, start: datetime, end: datetime) -
         "producer": {"repo": PRODUCER_REPO, "version": __version__},
         "feature_schema_version": FEATURE_SCHEMA_VERSION,
         "window": window,
-        "model_registry": model_registry(),
+        "model_registry": model_registry(registry),
         "runs": exported,
     }

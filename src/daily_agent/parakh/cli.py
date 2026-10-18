@@ -15,6 +15,7 @@ import typer
 
 from daily_agent.config import get_settings
 from daily_agent.db import SessionLocal, get_engine
+from daily_agent.gateway.registry import load_registry
 from daily_agent.parakh import receiver
 from daily_agent.parakh.bundle import BundleRejected
 from daily_agent.parakh.telemetry import build_telemetry_batch
@@ -44,7 +45,12 @@ def export_telemetry(
 ) -> None:
     """Write sanitized routing evidence for ``[start, end)`` as TelemetryBatchV1."""
     with SessionLocal(bind=get_engine()) as session:
-        batch = build_telemetry_batch(session, start=_timestamp(start), end=_timestamp(end))
+        batch = build_telemetry_batch(
+            session,
+            start=_timestamp(start),
+            end=_timestamp(end),
+            registry=load_registry(get_settings().model_registry_path),
+        )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(batch, sort_keys=True) + "\n", encoding="utf-8")
     decisions = [d for run in batch["runs"] for d in run["decisions"]]

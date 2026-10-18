@@ -107,6 +107,10 @@ class UsageWindow(Base):
     spend_limit_micro: Mapped[int] = mapped_column(BigInteger)
     reserved_micro: Mapped[int] = mapped_column(BigInteger, default=0)
     settled_micro: Mapped[int] = mapped_column(BigInteger, default=0)
+    # Daily token quota: estimated tokens held at admission, then settled to measured usage.
+    token_limit: Mapped[int] = mapped_column(BigInteger, default=0)
+    tokens_reserved: Mapped[int] = mapped_column(BigInteger, default=0)
+    tokens_settled: Mapped[int] = mapped_column(BigInteger, default=0)
     reset_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -153,6 +157,7 @@ class BudgetReservation(Base):
     stage: Mapped[str] = mapped_column(String(32))
     reserved_micro: Mapped[int] = mapped_column(BigInteger)
     actual_micro: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reserved_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
     status: Mapped[str] = mapped_column(String(20), default=ReservationStatus.RESERVED)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 import certifi
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -46,7 +46,9 @@ def clerk_verification_config_valid(issuer: str | None, key_b64: str | None) -> 
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DAILY_AGENT_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="DAILY_AGENT_", env_file=".env", extra="ignore", populate_by_name=True
+    )
 
     environment: str = "development"
     database_url: str = "sqlite+pysqlite:///./data/development.db"
@@ -65,7 +67,21 @@ class Settings(BaseSettings):
     live_models_enabled: bool = False
     opencode_enabled: bool = False
     opencode_api_key: str | None = Field(default=None, repr=False)
-    opencode_model_id: str | None = None
+    openrouter_enabled: bool = False
+    # Also accepts the bare OPENROUTER_API_KEY used by the ignored ``.env.openrouter`` file.
+    openrouter_api_key: str | None = Field(
+        default=None,
+        repr=False,
+        validation_alias=AliasChoices("DAILY_AGENT_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"),
+    )
+    # Emergency stop for every live model call; replies fall back to the deterministic demo.
+    gateway_kill_switch: bool = False
+    # Reviewed model-registry.v1 JSON; ``None`` loads the packaged seed registry.
+    model_registry_path: Path | None = None
+    gateway_timeout_seconds: float = Field(default=20.0, gt=0, le=60)
+    gateway_breaker_failure_threshold: int = Field(default=5, ge=1, le=100)
+    gateway_breaker_open_seconds: float = Field(default=60.0, gt=0)
+    gateway_model_cooldown_seconds: float = Field(default=60.0, gt=0)
     paid_checkout_enabled: bool = False
     whatsapp_enabled: bool = False
     production_period_budget_micro: int | None = Field(default=None, ge=1)
@@ -131,15 +147,16 @@ class Settings(BaseSettings):
                 raise ValueError("live models require an approved finite period budget")
         if self.whatsapp_enabled:
             raise ValueError("WhatsApp is policy-disabled for the current India-first release")
-        if self.opencode_enabled:
-            from daily_agent.opencode import PRIVATE_DATA_MODEL_IDS
-
-            if not self.opencode_api_key:
-                raise ValueError("OpenCode is enabled but its API key is unset")
-            if self.opencode_model_id not in PRIVATE_DATA_MODEL_IDS:
-                raise ValueError("OpenCode runtime model must have verified private-data terms")
-            if not self.is_development and self.production_period_budget_micro is None:
-                raise ValueError("OpenCode requires an approved finite period budget")
+        if self.opencode_enabled and not self.opencode_api_key:
+            raise ValueError("OpenCode is enabled but its API key is unset")
+        if self.openrouter_enabled and not self.openrouter_api_key:
+            raise ValueError("OpenRouter is enabled but its API key is unset")
+        if (
+            (self.opencode_enabled or self.openrouter_enabled)
+            and not self.is_development
+            and self.production_period_budget_micro is None
+        ):
+            raise ValueError("live model providers require an approved finite period budget")
         return self
 
 
@@ -147,7 +164,9 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     # Clerk's local dashboard values live separately from the main app config;
     # only the runtime loader opts into reading that private file.
-    settings = Settings(_env_file=(".env", ".env.clerk", ".env.opencode"))  # type: ignore[call-arg]
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=(".env", ".env.clerk", ".env.opencode", ".env.openrouter")
+    )
     # Only local SQLite-backed environments need a writable data directory; creating it
     # unconditionally breaks production containers with read-only filesystems.
     if settings.database_url.startswith("sqlite"):

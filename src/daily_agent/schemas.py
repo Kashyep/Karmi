@@ -60,6 +60,8 @@ class UsageView(BaseModel):
     plan_label: str
     everyday_used: int
     everyday_limit: int
+    tokens_used: int = 0
+    tokens_limit: int = 0
     reserved_micro: int
     settled_micro: int
     spend_limit_micro: int

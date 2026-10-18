@@ -26,7 +26,7 @@ from daily_agent import __version__
 from daily_agent.config import Settings
 from daily_agent.models import PolicyBundleEvent, PolicyBundleRecord
 from daily_agent.parakh.bundle import BundleRejected, LoadedPolicy, load_bundle
-from daily_agent.parakh.routing import FEATURE_SCHEMA_VERSION, KNOWN_ACTIONS
+from daily_agent.parakh.routing import FEATURE_SCHEMA_VERSION, known_actions
 
 RECEIVED, STAGED, SHADOW, RETIRED = "received", "staged", "shadow", "retired"
 TRANSITIONS: dict[str, frozenset[str]] = {
@@ -63,7 +63,7 @@ def verify_bundle(path: Path, settings: Settings) -> LoadedPolicy:
         path,
         trusted_public_keys=settings.parakh_trusted_public_keys,
         karmi_version=__version__,
-        known_actions=KNOWN_ACTIONS,
+        known_actions=known_actions(settings),
         expected_feature_schema_version=FEATURE_SCHEMA_VERSION,
     )
 

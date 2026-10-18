@@ -132,3 +132,54 @@ def test_concurrent_workers_deliver_each_row_exactly_once() -> None:
     assert len(ours) == 20 and len(set(ours)) == 20
     assert sum(counts) >= 20
     engine.dispose()
+
+
+def test_daily_token_quota_is_atomic_under_concurrent_admission() -> None:
+    database_url, _redis_url = integration_urls()
+    engine = create_engine(database_url, pool_pre_ping=True)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    settings = Settings(
+        environment="test",
+        database_url=database_url,
+        auth_secret="integration-fixture-secret",  # noqa: S106
+        webhook_secret="integration-webhook-secret",  # noqa: S106
+        global_daily_budget_micro=1_000_000,
+    )
+    with factory() as session:
+        account, _user, _token = create_identity(session, settings, name="TokenRace")
+        window = ensure_usage_window(session, account.id, settings)
+        window.token_limit = 5_000  # exactly five 1_000-token holds fit
+        platform = session.get(PlatformBudget, window.window_key)
+        assert platform is not None
+        platform.spend_limit_micro = 1_000_000  # an earlier test may have filled today's row
+        session.commit()
+        window_id = window.id
+
+    def attempt(index: int) -> bool:
+        with factory() as session:
+            try:
+                reserve_budget(
+                    session,
+                    settings=settings,
+                    account_id=account.id,
+                    logical_request_id=f"token-race-{index:02d}",
+                    stage="execution",
+                    amount_micro=10,
+                    tokens=1_000,
+                )
+                session.commit()
+                return True
+            except BudgetDenied:
+                session.rollback()
+                return False
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(attempt, range(12)))
+
+    assert sum(results) == 5
+    with factory() as session:
+        window = session.get(UsageWindow, window_id)
+        assert window is not None
+        assert window.tokens_reserved == 5_000
+        assert window.everyday_used == 5
+    engine.dispose()

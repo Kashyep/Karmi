@@ -14,13 +14,14 @@ from sqlalchemy.orm import Session
 
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_session
+from daily_agent.gateway import Gateway, build_gateway
 from daily_agent.models import (
     Account,
     BillingEvent,
     BudgetReservation,
-    CostLedger,
     Note,
     Reminder,
+    RoutingRecord,
     Run,
     Subscription,
     Task,
@@ -28,7 +29,7 @@ from daily_agent.models import (
     UsageWindow,
     User,
 )
-from daily_agent.parakh.routing import RunTiming, record_routing_evidence
+from daily_agent.parakh.routing import RunTiming, record_routing_evidence, route_for_action
 from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.schemas import (
     ARMORY_TIERS,
@@ -62,8 +63,9 @@ from daily_agent.services import (
     current_period_key,
     current_window_key,
     estimate_request_cost_micro,
-    fake_generate,
+    generate_reply,
     measured_cost_micro,
+    measured_tokens,
     persist_completed_run,
     plan_policy,
     policy_for,
@@ -89,6 +91,14 @@ def create_app() -> FastAPI:
         yield
 
     app = FastAPI(title="Daily Agent", version="0.1.0", lifespan=lifespan)
+
+    def gateway_dependency(settings: Settings = Depends(get_settings)) -> Gateway:
+        # One gateway per app so circuit-breaker and cooldown state survive across requests.
+        gateway: Gateway | None = getattr(app.state, "gateway", None)
+        if gateway is None:
+            gateway = build_gateway(settings)
+            app.state.gateway = gateway
+        return gateway
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -191,6 +201,8 @@ def create_app() -> FastAPI:
             plan_label=policy.display_name,
             everyday_used=window.everyday_used if window else 0,
             everyday_limit=policy.everyday_limit,
+            tokens_used=(window.tokens_reserved + window.tokens_settled) if window else 0,
+            tokens_limit=policy.daily_token_limit,
             reserved_micro=period.reserved_micro if period else 0,
             settled_micro=period.settled_micro if period else 0,
             spend_limit_micro=period.spend_limit_micro if period else policy.period_cost_cap_micro,
@@ -420,6 +432,7 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
         settings: Settings = Depends(get_settings),
+        gateway: Gateway = Depends(gateway_dependency),
     ) -> MessageView:
         request_hash = hashlib.sha256(body.text.encode("utf-8")).hexdigest()
         existing = session.scalar(
@@ -436,10 +449,16 @@ def create_app() -> FastAPI:
                 status=existing.status,
                 outcome=Outcome(existing.outcome or "DEFERRED"),
                 response=existing.response_text or "",
-                route=_route_for(session, principal.account_id, body.idempotency_key),
+                route=_route_for(session, existing.id),
             )
         _subscription, policy = policy_for(session, principal.account_id)
         amount = estimate_request_cost_micro(policy, settings)
+        # Token quota applies to live generation only; the demo path never spends tokens.
+        token_hold = (
+            max(1, len(body.text.encode("utf-8")) // 4) + policy.output_tokens
+            if gateway.live
+            else 0
+        )
         try:
             reservation = reserve_budget(
                 session,
@@ -448,6 +467,7 @@ def create_app() -> FastAPI:
                 logical_request_id=body.idempotency_key,
                 stage="execution",
                 amount_micro=amount,
+                tokens=token_hold,
             )
         except BudgetDenied as exc:
             session.rollback()
@@ -475,11 +495,12 @@ def create_app() -> FastAPI:
                 query_text=body.text,
                 settings=settings,
             )
-            result = fake_generate(
+            result = generate_reply(
                 body.text,
                 context,
                 settings=settings,
-                max_output_tokens=policy.output_tokens,
+                plan=policy,
+                gateway=gateway,
             )
             timing = RunTiming(
                 started_at=started_at,
@@ -511,15 +532,21 @@ def create_app() -> FastAPI:
                 context=context,
                 result=result,
                 timing=timing,
+                gateway=gateway,
             )
             provider_calls = [*context.provider_calls, *result.provider_calls]
-            settle_budget(
-                session,
-                reservation,
-                attempt_id=f"{run.id}:1",
-                actual_micro=measured_cost_micro(provider_calls),
-                calls=provider_calls,
-            )
+            if result.release_reservation:
+                # Every model attempt failed: nothing usable was produced, so nothing is charged.
+                release_budget(session, reservation)
+            else:
+                settle_budget(
+                    session,
+                    reservation,
+                    attempt_id=f"{run.id}:1",
+                    actual_micro=measured_cost_micro(provider_calls),
+                    actual_tokens=measured_tokens(provider_calls),
+                    calls=provider_calls,
+                )
             session.commit()
         except IntegrityError:
             session.rollback()
@@ -540,7 +567,7 @@ def create_app() -> FastAPI:
                 status=recovered.status,
                 outcome=Outcome(recovered.outcome or "DEFERRED"),
                 response=recovered.response_text or "",
-                route=_route_for(session, principal.account_id, body.idempotency_key),
+                route=_route_for(session, recovered.id),
             )
         except Exception:
             session.rollback()
@@ -701,25 +728,12 @@ def _apply_intent(
         )
 
 
-def _route_for(session: Session, account_id: str, logical_request_id: str) -> str:
-    """Recover the route taken for an earlier run via its cost ledger rows."""
-    reservation = session.scalar(
-        select(BudgetReservation).where(
-            BudgetReservation.account_id == account_id,
-            BudgetReservation.logical_request_id == logical_request_id,
-            BudgetReservation.stage == "execution",
-        )
+def _route_for(session: Session, run_id: str) -> str:
+    """Recover the route an earlier run executed from its routing record."""
+    executed = session.scalar(
+        select(RoutingRecord.executed_action).where(RoutingRecord.run_id == run_id)
     )
-    if reservation is None:
-        return "fake-economy"
-    provider = session.scalar(
-        select(CostLedger.provider)
-        .where(CostLedger.reservation_id == reservation.id)
-        .limit(1)
-    )
-    return {"typesafe": "typesafe-system-one", "opencode": "opencode-free"}.get(
-        provider or "", "fake-economy"
-    )
+    return route_for_action(executed) if executed else "fake-economy"
 
 
 app = create_app()

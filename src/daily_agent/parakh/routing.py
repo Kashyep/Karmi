@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 
 from daily_agent import __version__
 from daily_agent.config import Settings
+from daily_agent.gateway import Gateway
+from daily_agent.gateway.registry import ModelRegistry, load_registry
 from daily_agent.models import RoutingDecision, RoutingRecord
 from daily_agent.plans import PlanPolicy
 from daily_agent.providers import TYPESAFE_INPUT_MICRO_PER_1K, TYPESAFE_OUTPUT_MICRO_PER_1K
@@ -43,13 +45,12 @@ PROMPT_VERSION = "karmi-prompts-v1"
 
 LOCAL_ACTION = "karmi/fake-economy"
 LIVE_ACTION = "typesafe/system-one"
-OPENCODE_ACTION = "opencode/free-chat-completions"
 ROUTE_ACTIONS = {
     "fake-economy": LOCAL_ACTION,
     "typesafe-system-one": LIVE_ACTION,
-    "opencode-free": OPENCODE_ACTION,
 }
-KNOWN_ACTIONS = (LOCAL_ACTION, LIVE_ACTION, OPENCODE_ACTION)
+# Actions that exist regardless of configuration. Gateway models are added from the registry.
+KNOWN_ACTIONS = (LOCAL_ACTION, LIVE_ACTION)
 
 # Karmi plan ids -> the TelemetryBatchV1 tier vocabulary Parakh's feature schema one-hots.
 # Karmi spells the premium plan "parth"; the contract spells it "part". Unknown plans fail
@@ -89,20 +90,46 @@ def task_domain(text: str, intent: str | None) -> str:
     return "communication"
 
 
-def eligible_actions(settings: Settings) -> list[str]:
+def action_for_route(route: str) -> str:
+    """Executed action for a generation route: legacy route names or a gateway ``provider/model``."""
+    if route in ROUTE_ACTIONS:
+        return ROUTE_ACTIONS[route]
+    if "/" in route:
+        return route
+    raise KeyError(f"route {route!r} has no routing action")
+
+
+def route_for_action(action: str) -> str:
+    """Inverse of ``action_for_route`` for client-visible route labels."""
+    for route, known in ROUTE_ACTIONS.items():
+        if known == action:
+            return route
+    return action
+
+
+def known_actions(settings: Settings) -> tuple[str, ...]:
+    """Every action a Parakh bundle may reference: static routes plus all registry models."""
+    registry = load_registry(settings.model_registry_path)
+    return (*KNOWN_ACTIONS, *sorted(m.action for m in registry.models))
+
+
+def eligible_actions(
+    settings: Settings, plan: PlanPolicy | None = None, gateway: Gateway | None = None
+) -> list[str]:
     """Actions this Karmi process can actually execute for a request."""
     eligible = [LOCAL_ACTION]
     if settings.live_models_enabled:
         eligible.append(LIVE_ACTION)
-    if settings.opencode_enabled:
-        eligible.append(OPENCODE_ACTION)
+    if gateway is not None and gateway.live and plan is not None:
+        eligible.extend(gateway.eligible_actions(plan))
     return sorted(eligible)
 
 
-def model_registry() -> list[dict[str, Any]]:
+def model_registry(registry: ModelRegistry | None = None) -> list[dict[str, Any]]:
     """TelemetryBatchV1 model registry. Costs are Karmi's synthetic micro-unit rate card / 1e6;
-    Karmi has no approved currency, so exported costs carry ISO 4217 test currency ``XTS``."""
-    return [
+    Karmi has no approved currency, so exported costs carry ISO 4217 test currency ``XTS``.
+    Gateway models come from the reviewed registry (all zero-price while Karmi is free-only)."""
+    entries: list[dict[str, Any]] = [
         {
             "provider": "karmi", "model": "fake-economy", "model_version": "local-deterministic",
             "max_context_tokens": KARMI_MAX_INPUT_TOKENS, "supports_tools": False,
@@ -116,13 +143,15 @@ def model_registry() -> list[dict[str, Any]]:
             "estimated_input_cost_per_token": TYPESAFE_INPUT_MICRO_PER_1K / 1000 / 1_000_000,
             "estimated_output_cost_per_token": TYPESAFE_OUTPUT_MICRO_PER_1K / 1000 / 1_000_000,
         },
-        {
-            "provider": "opencode", "model": "free-chat-completions", "model_version": None,
-            "max_context_tokens": KARMI_MAX_INPUT_TOKENS, "supports_tools": False,
-            "supports_structured_output": False,
-            "estimated_input_cost_per_token": 0.0, "estimated_output_cost_per_token": 0.0,
-        },
     ]
+    for model in (registry if registry is not None else load_registry()).models:
+        entries.append({
+            "provider": model.provider, "model": model.model_id, "model_version": None,
+            "max_context_tokens": model.context_length, "supports_tools": False,
+            "supports_structured_output": model.supports_structured_output,
+            "estimated_input_cost_per_token": 0.0, "estimated_output_cost_per_token": 0.0,
+        })
+    return entries
 
 
 def routing_context(
@@ -184,14 +213,15 @@ def record_routing_evidence(
     context: ContextManifest,
     result: GenerationResult,
     timing: RunTiming,
+    gateway: Gateway | None = None,
 ) -> dict[str, Any]:
     """Persist the run's routing record, its live decision and (if any) a shadow decision.
 
     Runs inside the request transaction. Returns the routing context for callers/tests.
     """
     ctx = routing_context(plan=plan, text=text, context=context, intent=result.intent)
-    eligible = eligible_actions(settings)
-    executed = ROUTE_ACTIONS[result.route]
+    eligible = eligible_actions(settings, plan, gateway)
+    executed = action_for_route(result.route)
     session.add(
         RoutingRecord(
             run_id=run_id,
