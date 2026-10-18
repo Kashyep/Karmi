@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     gateway_breaker_failure_threshold: int = Field(default=5, ge=1, le=100)
     gateway_breaker_open_seconds: float = Field(default=60.0, gt=0)
     gateway_model_cooldown_seconds: float = Field(default=60.0, gt=0)
+    # Per-user cap on message/feedback/regenerate calls (in-process; see daily_agent.ratelimit).
+    rate_limit_per_minute: int = Field(default=30, ge=1, le=10_000)
     paid_checkout_enabled: bool = False
     whatsapp_enabled: bool = False
     production_period_budget_micro: int | None = Field(default=None, ge=1)

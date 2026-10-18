@@ -56,3 +56,13 @@ def test_readiness_rejects_non_pem_clerk_key() -> None:
         "clerk_jwt_public_key_b64": "ZmFrZS1rZXk=",
     }
     assert outcome(values, "production_auth") == "FAIL"
+
+
+def test_gateway_cutover_check_needs_provider_key_registry_and_kill_switch_off() -> None:
+    configured = {"openrouter_enabled": "true", "openrouter_api_key": "k" * 40,
+                  "model_registry_path": "/etc/karmi/model_registry.json"}
+    assert outcome(configured, "synthetic_provider_disabled") == "PASS"
+    assert outcome({**configured, "gateway_kill_switch": "true"}, "synthetic_provider_disabled") == "FAIL"
+    assert outcome({**configured, "model_registry_path": ""}, "synthetic_provider_disabled") == "FAIL"
+    assert outcome({**configured, "openrouter_api_key": ""}, "synthetic_provider_disabled") == "FAIL"
+    assert outcome({"opencode_enabled": "true"}, "synthetic_provider_disabled") == "FAIL"

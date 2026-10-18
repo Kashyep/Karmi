@@ -188,3 +188,29 @@ def test_export_carries_sanitized_rating_and_retry_feedback(
     assert child["feedback"] == []
     text = json.dumps(batch)
     assert "roll number" not in text and "4821" not in text
+
+
+def test_per_user_rate_limit_returns_429_with_retry_after(test_context: dict[str, object]) -> None:
+    settings = test_context["settings"]
+    assert isinstance(settings, Settings)
+    settings.rate_limit_per_minute = 3
+    busy = _login(test_context, "Busy")
+    calm = _login(test_context, "Calm")
+    client = _client(test_context)
+
+    statuses = [
+        client.post(
+            "/v1/messages",
+            json={"text": TEXT, "idempotency_key": f"rate-limit-{i:04d}"},
+            headers=busy,
+        )
+        for i in range(5)
+    ]
+
+    assert [r.status_code for r in statuses] == [200, 200, 200, 429, 429]
+    assert int(statuses[3].headers["retry-after"]) >= 1
+    assert statuses[3].json()["detail"]["code"] == "RATE_LIMITED"
+    other = client.post(
+        "/v1/messages", json={"text": TEXT, "idempotency_key": "calm-0001"}, headers=calm
+    )
+    assert other.status_code == 200, "the limit is per user"

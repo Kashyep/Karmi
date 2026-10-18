@@ -67,8 +67,15 @@ def inspect(values: dict[str, str]) -> list[dict[str, str]]:
     add("no_live_charge", values.get("paid_checkout_enabled", "false").lower() == "false" and
         values.get("live_models_enabled", "false").lower() == "false",
         "no unapproved live provider/payment traffic")
-    add("synthetic_provider_disabled", False,
-        "Karmi's current message handler falls back to fake_generate; no production cutover exists")
+    live_provider = any(
+        values.get(f"{name}_enabled", "false").lower() == "true" and bool(values.get(f"{name}_api_key"))
+        for name in ("openrouter", "opencode")
+    )
+    add("synthetic_provider_disabled", live_provider and
+        values.get("gateway_kill_switch", "false").lower() == "false" and
+        bool(values.get("model_registry_path")),
+        "gateway has an enabled keyed provider, an explicit reviewed model registry, and the "
+        "kill switch off (otherwise replies fall back to the deterministic demo)")
     add("production_auth", clerk_verification_config_valid(
             values.get("clerk_issuer"), values.get("clerk_jwt_public_key_b64")),
         "Clerk issuer and JWT verification key are configured (values never emitted)")

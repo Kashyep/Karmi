@@ -32,6 +32,7 @@ from daily_agent.models import (
 )
 from daily_agent.parakh.routing import RunTiming, record_routing_evidence, route_for_action
 from daily_agent.plans import SYNTHETIC_POLICIES
+from daily_agent.ratelimit import SlidingWindowLimiter, install_log_redaction
 from daily_agent.schemas import (
     ARMORY_TIERS,
     ActiveThemeUpdate,
@@ -87,6 +88,7 @@ from daily_agent.web import build_manifest, render_shell
 
 
 def create_app() -> FastAPI:
+    install_log_redaction()
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         settings = get_settings()
@@ -103,6 +105,23 @@ def create_app() -> FastAPI:
             gateway = build_gateway(settings)
             app.state.gateway = gateway
         return gateway
+
+    def limited_principal(
+        principal: Principal = Depends(require_principal),
+        settings: Settings = Depends(get_settings),
+    ) -> Principal:
+        limiter: SlidingWindowLimiter | None = getattr(app.state, "limiter", None)
+        if limiter is None:
+            limiter = SlidingWindowLimiter(limit=settings.rate_limit_per_minute)
+            app.state.limiter = limiter
+        retry_after = limiter.check(principal.user_id)
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={"code": "RATE_LIMITED", "message": "too many requests; slow down"},
+                headers={"Retry-After": str(retry_after)},
+            )
+        return principal
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -598,7 +617,7 @@ def create_app() -> FastAPI:
     @app.post("/v1/messages", response_model=MessageView)
     def send_message(
         body: MessageCreate,
-        principal: Principal = Depends(require_principal),
+        principal: Principal = Depends(limited_principal),
         session: Session = Depends(get_session),
         settings: Settings = Depends(get_settings),
         gateway: Gateway = Depends(gateway_dependency),
@@ -621,7 +640,7 @@ def create_app() -> FastAPI:
     def rate_reply(
         run_id: str,
         body: FeedbackCreate,
-        principal: Principal = Depends(require_principal),
+        principal: Principal = Depends(limited_principal),
         session: Session = Depends(get_session),
     ) -> FeedbackView:
         """Idempotent upsert: repeating a rating is a no-op, a new rating replaces the old one."""
@@ -660,7 +679,7 @@ def create_app() -> FastAPI:
     def regenerate_reply(
         run_id: str,
         body: RegenerateCreate,
-        principal: Principal = Depends(require_principal),
+        principal: Principal = Depends(limited_principal),
         session: Session = Depends(get_session),
         settings: Settings = Depends(get_settings),
         gateway: Gateway = Depends(gateway_dependency),
