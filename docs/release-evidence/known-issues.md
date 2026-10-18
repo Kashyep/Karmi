@@ -1,24 +1,29 @@
-# Known issues and open items (as of this branch)
+# Known issues and open items (v0.1.0-beta.1)
 
-- No live model has been called. The OpenRouter key (`.env.openrouter`) and the owner-approved
-  request cap do not exist, so the free-model catalog snapshot, scores, shortlist and the real
-  `model-registry.v1` are NOT produced. Karmi ships a packaged **seed** registry (OpenCode free
-  models, classes and 32k context are unreviewed estimates). Replace it with the Parakh registry.
-- Parakh's `pilot run` only accepts exactly 36 train-split cases at concurrency 1 and does not use the
-  new OpenRouter adapter. Running the 49-case student set needs a reviewed change (see
-  `Parakh/docs/live_pilots/OPENROUTER_PILOT.md`).
-- Plan quotas (requests/day, tokens/day) are provisional. The "Revenue_model" document was not found
-  in either repo; prices (0/149/399/899 INR) come from the work order. The "Deep Task" billing unit is
-  not implemented.
-- Circuit breaker, model cooldowns and the per-user rate limit are per process; run one replica.
-- OpenRouter free tier: 20 requests/min, 50/day without credits. Tester capacity is bounded by this.
-- Docker is not installed on the dev machine. Integration tests ran against a disposable local
-  PostgreSQL 18 and Valkey on the compose ports, not through `docker compose`.
-- Clerk email-code sign-in on a physical phone is not verified (no phone connected).
-- The release APK is built against a placeholder backend URL and signed with the debug key until the
-  hosting and signing decisions are made.
-- Notes are attached to a model prompt only for explicit "draft ... using my notes" requests and only to
-  models with `no_training` terms; prompts themselves still go to third-party model providers.
-- Regenerate requires the client to resend the original prompt (the server stores only its hash).
-- Typesafe live scoring (`DAILY_AGENT_LIVE_MODELS_ENABLED`) is a paid provider path and stays off.
-- Pre-existing: legacy `tests/model_lab` and `model_lab run-opencode` still exist in Karmi next to Parakh.
+- **Only a capped probe was run, not the full pilot.** OpenRouter's free tier allows 50 requests/day and
+  20/min per key (the key is not funded). 15 free chat models were found (`catalog` snapshot 2026-10-19,
+  19 free ids incl. 4 non-chat). The probe used about 41 of the 50 daily requests: maths + Hindi on all
+  models, code on the 7 that answered. Results: 7 models answered; 4 timed out at 90 s
+  (xing4.0-29b, nemotron-3.5-super-vl, dots-3-note-preview, laguna-s-2.1); the two Gemma 4 models returned
+  HTTP 429 from the upstream provider; both inkling models return 403 ("agentic harnesses only").
+  Scores are 1 case per task type, 1 repeat, all provisional; the cases are too easy to rank models.
+  Classes are size-based labels. The full 49-case, 3-repeat pilot needs a funded key (1000/day) or several days.
+- Parakh's `pilot run` still only accepts exactly 36 train cases at concurrency 1 and does not use the new
+  adapter; the probe used a standalone capped script (`Parakh/scripts/openrouter_probe.py`) instead.
+- Every OpenRouter model has data terms `unknown`, so **notes are never sent to them**. The only models with
+  `no_training` terms are three OpenCode models, which need an OpenCode key that does not exist. "Draft using
+  my notes" therefore returns the "couldn't reach the AI service" message in this beta.
+- **No hosted backend.** Nothing was deployed (no cloud login). The APK is built with a placeholder server
+  address; set the real one under Welcome > Server address, or rebuild. See `ops/deploy/README.md`.
+- **Sign-in not verified on a device.** The Pixel 9a was connected earlier in the session but dropped off
+  adb before the APK could be installed; Clerk's emailed code also needs a human. Run the checklist in
+  `docs/release-evidence/device-checklist.md`.
+- APK is signed with the Android **debug** key (no release keystore decision yet).
+- Access codes (one per paid tier) are shared secrets: anyone with a code gets that tier. Codes only ever
+  upgrade; there is no revoke list except replacing `data/access_codes.json` and redeploying.
+- Plan quotas and the seed OpenCode registry entries are provisional estimates. Prices (0/149/399/899 INR)
+  are labels only; checkout is disabled; "Deep Task" is not implemented.
+- Circuit breaker, cooldowns, per-user rate limit and access-code guess throttle are per process: one replica.
+- Regenerate needs the client to resend the original prompt (the server keeps only its hash).
+- The in-app notice is a placeholder and needs legal review (minors, DPDP Act 2023). Invite adults only.
+- Integration tests ran under rootless podman (Postgres 17, Redis 8, host networking), not Docker.

@@ -70,3 +70,20 @@ single-call; the unknown-cost settlement expectation was intentionally replaced 
 OpenRouter key in `.env.openrouter`; approved request cap; Docker (to re-run integration the official way);
 Android phone with Clerk email-code enabled; hosting choice and approval; signing key decision; tester list;
 legal review of the notice; final approval to push, tag and publish.
+
+## Update 2026-10-19 (owner supplied key, phone, publish approval)
+
+- **Key**: `.env.openrouter` uses the variable `OPEN_ROUTER_KEY`; both loaders now accept it (file mode set to 600).
+  `GET /key`: free tier, 50 requests/day. A full pilot is impossible at that limit, so a capped probe was run
+  (details and results in `known-issues.md`; raw rows in `Parakh/docs/live_pilots/runs/probe-2026-10-19.json`,
+  provisional registry in `Parakh/docs/live_pilots/registry/`, catalog in `.../catalog/`).
+- **Registry**: 7 OpenRouter models + the OpenCode seed are packaged; one live request through the real gateway
+  (ananta plan) returned a correct reply from `liquid/lfm-2.5-2.6b:free`, cost 0.
+- **Access codes**: `POST /v1/access-code`, hashes only in the repo, 5 guesses/min per user, never downgrades;
+  Flutter UI in Plans and in Settings. Plain codes are in `~/karmi-backups/access-codes.txt` (not in git).
+- **Podman**: `tasks.py test-integration` now falls back to rootless podman when Docker is absent; run: 3 passed.
+- Final gates: lint, typecheck, test-unit (164), test-e2e (52), test-smoke, test-integration (3, podman) exit 0;
+  Parakh 247 passed + `make test-release` exit 0; flutter analyze clean, flutter test all passed after
+  regenerating plans/settings/welcome goldens.
+- Release APK `mobile/build/app/outputs/flutter-apk/app-release.apk`, sha256
+  `ee94f426d269c9116de18e573dcca73c8ac754090a7d8e577a8833f349dabb95` (debug-signed, placeholder server).
