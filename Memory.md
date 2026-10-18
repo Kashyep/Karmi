@@ -1,5 +1,21 @@
 # Daily Agent implementation memory
 
+## MVP + tester-release branch `mvp-gateway` (2026-10-19) — verified state only
+
+- Branch `mvp-gateway` (from `readiness-harness` working tree; pre-work patch saved to
+  `~/karmi-backups/`). Nothing pushed, tagged or published.
+- Implemented and verified (commands in `docs/release-evidence/mvp-tester-release-2026-10-19.md`):
+  gateway (`src/daily_agent/gateway/`: registry, OpenRouter + OpenCode adapters, rules router,
+  breaker/cooldown, kill switch), tier model classes + daily request/token quotas, feedback +
+  regenerate routes, sanitized feedback in TelemetryBatchV1, per-user rate limit, log redaction,
+  Flutter feedback UI + tester notice.
+- NOT done / blocked on owner: OpenRouter key and request cap (no live scoring, registry is a
+  seed), Docker (integration ran on local PostgreSQL 18 + Valkey instead), Android phone + Clerk
+  email-code check, hosting + signing choices, tester list, legal review, push/tag/publish.
+- Parakh branch `openrouter-student-set` holds the OpenRouter adapter, catalog snapshot, registry
+  builder and the 49-case student set; its `pilot run` cannot yet run that set (see known-issues).
+
+
 ## Current Karmi readiness work (2026-10-10)
 
 - Working checkout: `/home/rosso/Projects/Karmi`, branch `readiness-harness`, baseline `0c3d11e`;
