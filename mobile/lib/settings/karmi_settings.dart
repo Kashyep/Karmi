@@ -8,17 +8,23 @@ class KarmiSettings extends ChangeNotifier {
       _themeMode = ThemeMode.values.firstWhere(
         (m) => m.name == _prefs.getString(_keyThemeMode),
         orElse: () => ThemeMode.system,
-      );
-
+      ),
+      _acknowledgedNoticeVersion =
+          _prefs.getInt(_keyTesterNoticeVersion) ?? 0;
   static const _keyReduceTransparency = 'reduce_transparency';
   static const _keyThemeMode = 'theme_mode';
 
+  static const _keyTesterNoticeVersion = 'acknowledged_tester_notice_version';
   final SharedPreferences _prefs;
   bool _reduceTransparency;
   ThemeMode _themeMode;
+  int _acknowledgedNoticeVersion;
 
   bool get reduceTransparency => _reduceTransparency;
   ThemeMode get themeMode => _themeMode;
+  int get acknowledgedNoticeVersion => _acknowledgedNoticeVersion;
+  bool isTesterNoticeAcknowledged(int version) =>
+      _acknowledgedNoticeVersion >= version;
 
   Future<void> setReduceTransparency(bool value) async {
     _reduceTransparency = value;
@@ -30,5 +36,11 @@ class KarmiSettings extends ChangeNotifier {
     _themeMode = mode;
     notifyListeners();
     await _prefs.setString(_keyThemeMode, mode.name);
+  }
+
+  Future<void> acknowledgeTesterNotice(int version) async {
+    _acknowledgedNoticeVersion = version;
+    notifyListeners();
+    await _prefs.setInt(_keyTesterNoticeVersion, version);
   }
 }

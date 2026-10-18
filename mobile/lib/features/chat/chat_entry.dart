@@ -31,7 +31,35 @@ final class UserEntry extends ChatEntry {
 
 /// A server reply (`MessageView`).
 final class ReplyEntry extends ChatEntry {
-  const ReplyEntry({required String id, required this.message}) : super(id);
+  const ReplyEntry({
+    required String id,
+    required this.message,
+    this.feedbackRating,
+    this.feedbackReason,
+    this.isFeedbackInFlight = false,
+    this.isRegenerating = false,
+  }) : super(id);
 
   final MessageView message;
+  final FeedbackRating? feedbackRating;
+  final String? feedbackReason;
+  final bool isFeedbackInFlight;
+  final bool isRegenerating;
+
+  ReplyEntry copyWith({
+    String? id,
+    MessageView? message,
+    FeedbackRating? feedbackRating,
+    String? feedbackReason,
+    bool clearReason = false,
+    bool? isFeedbackInFlight,
+    bool? isRegenerating,
+  }) => ReplyEntry(
+    id: id ?? this.id,
+    message: message ?? this.message,
+    feedbackRating: feedbackRating ?? this.feedbackRating,
+    feedbackReason: clearReason ? null : (feedbackReason ?? this.feedbackReason),
+    isFeedbackInFlight: isFeedbackInFlight ?? this.isFeedbackInFlight,
+    isRegenerating: isRegenerating ?? this.isRegenerating,
+  );
 }

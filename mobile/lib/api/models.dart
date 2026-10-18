@@ -25,6 +25,57 @@ enum Outcome {
   }
 }
 
+enum FeedbackRating {
+  up('up'),
+  down('down');
+
+  const FeedbackRating(this.wireName);
+  final String wireName;
+
+  static FeedbackRating? fromWire(Object? value) {
+    for (final r in values) {
+      if (r.wireName == value) return r;
+    }
+    return null;
+  }
+}
+
+enum FeedbackReason {
+  wrong('wrong', 'Wrong'),
+  unclear('unclear', 'Unclear'),
+  tooSlow('too_slow', 'Too slow'),
+  other('other', 'Other');
+
+  const FeedbackReason(this.wireName, this.label);
+  final String wireName;
+  final String label;
+
+  static FeedbackReason? fromWire(Object? value) {
+    for (final r in values) {
+      if (r.wireName == value) return r;
+    }
+    return null;
+  }
+}
+
+class RunFeedbackView {
+  const RunFeedbackView({
+    required this.runId,
+    required this.rating,
+    this.reason,
+  });
+
+  factory RunFeedbackView.fromJson(Map<String, dynamic> json) => RunFeedbackView(
+    runId: json['run_id'] as String,
+    rating: FeedbackRating.fromWire(json['rating']) ?? FeedbackRating.up,
+    reason: json['reason'] as String?,
+  );
+
+  final String runId;
+  final FeedbackRating rating;
+  final String? reason;
+}
+
 class MessageView {
   const MessageView({
     required this.runId,
@@ -32,6 +83,7 @@ class MessageView {
     required this.outcome,
     required this.response,
     this.route,
+    this.previousRunId,
   });
 
   factory MessageView.fromJson(Map<String, dynamic> json) => MessageView(
@@ -40,6 +92,7 @@ class MessageView {
     outcome: Outcome.fromWire(json['outcome']),
     response: json['response'] as String,
     route: json['route'] as String?,
+    previousRunId: json['previous_run_id'] as String?,
   );
 
   final String runId;
@@ -47,6 +100,7 @@ class MessageView {
   final Outcome outcome;
   final String response;
   final String? route;
+  final String? previousRunId;
 }
 
 class UsageView {

@@ -53,8 +53,30 @@ class FakeBackend {
 
   http.Client get client => MockClient((request) async {
     requests.add(request);
-    final handler = routes['${request.method} ${request.url.path}'];
-    if (handler == null) return http.Response('unrouted', 599);
+    final path = request.url.path;
+    var handler = routes['${request.method} $path'];
+    if (handler == null && request.method == 'POST') {
+      if (path.startsWith('/v1/runs/') && path.endsWith('/feedback')) {
+        final segments = request.url.pathSegments;
+        final runId = segments.length >= 3 ? segments[2] : 'run-1';
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        return jsonResponse({
+          'run_id': runId,
+          'rating': body['rating'],
+          'reason': body['reason'],
+        });
+      }
+      if (path.startsWith('/v1/runs/') && path.endsWith('/regenerate')) {
+        final segments = request.url.pathSegments;
+        final runId = segments.length >= 3 ? segments[2] : 'run-1';
+        return jsonResponse({
+          ...messageJson('ACCEPT', response: 'Regenerated reply'),
+          'run_id': 'run-regen',
+          'previous_run_id': runId,
+        });
+      }
+    }
+    if (handler == null) return http.Response('unrouted: ${request.method} $path', 599);
     return handler(request);
   });
 

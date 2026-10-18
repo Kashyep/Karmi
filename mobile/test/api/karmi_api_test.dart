@@ -95,6 +95,14 @@ void main() {
       final json = messageJson('ACCEPT')..['route'] = null;
       expect(MessageView.fromJson(json).route, isNull);
     });
+    test('previous_run_id is parsed if present, null otherwise', () {
+      final jsonWithPrev = messageJson('ACCEPT')
+        ..['previous_run_id'] = 'run-prev-123';
+      expect(MessageView.fromJson(jsonWithPrev).previousRunId, 'run-prev-123');
+
+      final jsonWithoutPrev = messageJson('ACCEPT');
+      expect(MessageView.fromJson(jsonWithoutPrev).previousRunId, isNull);
+    });
 
     test('401 throws Unauthorized and notifies the session', () async {
       var notified = 0;
@@ -333,6 +341,91 @@ void main() {
       expect(usage.everydayUsed, 5);
       expect(usage.resetAt, DateTime.utc(2026, 9, 27));
       expect(usage.synthetic, isTrue);
+    });
+  });
+
+  group('feedback and regenerate', () {
+    test('sendFeedback sends rating and reason; parses RunFeedbackView', () async {
+      backend.on(
+        'POST',
+        '/v1/runs/run-101/feedback',
+        (req) {
+          final body = jsonDecode(req.body) as Map<String, dynamic>;
+          return jsonResponse({
+            'run_id': 'run-101',
+            'rating': body['rating'],
+            'reason': body['reason'],
+          });
+        },
+      );
+
+      final res = await api.sendFeedback(
+        'run-101',
+        rating: FeedbackRating.down,
+        reason: 'too_slow',
+      );
+      expect(res.runId, 'run-101');
+      expect(res.rating, FeedbackRating.down);
+      expect(res.reason, 'too_slow');
+
+      final req = backend.requests.single;
+      expect(req.headers['Authorization'], 'Bearer test-token');
+      expect(jsonDecode(req.body), {
+        'rating': 'down',
+        'reason': 'too_slow',
+      });
+    });
+
+    test('sendFeedback without reason omits reason field', () async {
+      backend.on(
+        'POST',
+        '/v1/runs/run-102/feedback',
+        (_) => jsonResponse({'run_id': 'run-102', 'rating': 'up'}),
+      );
+
+      final res = await api.sendFeedback('run-102', rating: FeedbackRating.up);
+      expect(res.runId, 'run-102');
+      expect(res.rating, FeedbackRating.up);
+      expect(res.reason, isNull);
+
+      final req = backend.requests.single;
+      expect(jsonDecode(req.body), {'rating': 'up'});
+    });
+
+    test('regenerateRun sends idempotency_key and reason; parses MessageView with previous_run_id', () async {
+      backend.on(
+        'POST',
+        '/v1/runs/run-200/regenerate',
+        (_) => jsonResponse({
+          ...messageJson('ACCEPT', response: 'Better response'),
+          'run_id': 'run-201',
+          'previous_run_id': 'run-200',
+        }),
+      );
+
+      final view = await api.regenerateRun(
+        'run-200',
+        text: 'original prompt',
+        idempotencyKey: 'regen-key-1',
+        reason: 'wrong',
+      );
+      expect(view.runId, 'run-201');
+      expect(view.previousRunId, 'run-200');
+      expect(view.response, 'Better response');
+
+      final req = backend.requests.single;
+      expect(jsonDecode(req.body), {
+        'text': 'original prompt',
+        'idempotency_key': 'regen-key-1',
+        'reason': 'wrong',
+      });
+    });
+
+    test('FeedbackRating wire parsing', () {
+      expect(FeedbackRating.fromWire('up'), FeedbackRating.up);
+      expect(FeedbackRating.fromWire('down'), FeedbackRating.down);
+      expect(FeedbackRating.fromWire('invalid'), isNull);
+      expect(FeedbackRating.fromWire(null), isNull);
     });
   });
 }

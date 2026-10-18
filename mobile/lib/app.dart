@@ -4,6 +4,8 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'armory/armory_controller.dart';
 import 'auth/session.dart';
 import 'features/welcome/welcome_screen.dart';
+import 'features/welcome/tester_notice.dart';
+import 'features/welcome/tester_notice_screen.dart';
 import 'settings/karmi_settings.dart';
 import 'shell/karmi_shell.dart';
 import 'theme/karmi_glass.dart';
@@ -103,18 +105,24 @@ class _KarmiAppState extends State<KarmiApp> {
             themeMode: widget.settings.themeMode,
             themeAnimationDuration: Duration.zero,
             builder: karmiAccessibilityBuilder(widget.settings),
-            home: _signedIn
-                ? KarmiShell(
-                    key: const ValueKey('shell'),
-                    api: widget.session.api,
-                    settings: widget.settings,
-                    session: widget.session,
-                    armory: widget.armory,
+            home: !widget.settings.isTesterNoticeAcknowledged(kTesterNoticeVersion)
+                ? TesterNoticeScreen(
+                    key: const ValueKey('tester_notice'),
+                    onAcknowledge: () => widget.settings
+                        .acknowledgeTesterNotice(kTesterNoticeVersion),
                   )
-                : WelcomeScreen(
-                    key: const ValueKey('welcome'),
-                    session: widget.session,
-                  ),
+                : _signedIn
+                    ? KarmiShell(
+                        key: const ValueKey('shell'),
+                        api: widget.session.api,
+                        settings: widget.settings,
+                        session: widget.session,
+                        armory: widget.armory,
+                      )
+                    : WelcomeScreen(
+                        key: const ValueKey('welcome'),
+                        session: widget.session,
+                      ),
           ),
         );
       },

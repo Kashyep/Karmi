@@ -8,6 +8,7 @@ import 'package:karmi_app/armory/app_icon.dart';
 import 'package:karmi_app/armory/armory_controller.dart';
 import 'package:karmi_app/auth/session.dart';
 import 'package:karmi_app/settings/karmi_settings.dart';
+import 'package:karmi_app/features/welcome/tester_notice.dart';
 import 'package:karmi_app/theme/karmi_glass.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
@@ -61,6 +62,7 @@ Future<KarmiSettings> _settings(Env env) async {
   SharedPreferences.setMockInitialValues({
     'reduce_transparency': env.reduceTransparency,
     'theme_mode': env.brightness == Brightness.dark ? 'dark' : 'light',
+    'acknowledged_tester_notice_version': kTesterNoticeVersion,
   });
   return KarmiSettings(await SharedPreferences.getInstance());
 }
@@ -156,6 +158,7 @@ Future<AppHandle> pumpApp(
   SharedPreferences.setMockInitialValues({
     'reduce_transparency': env.reduceTransparency,
     'theme_mode': env.brightness == Brightness.dark ? 'dark' : 'light',
+    'acknowledged_tester_notice_version': kTesterNoticeVersion,
     if (signedIn) 'dev_session_token': 'test-token',
   });
   final prefs = await SharedPreferences.getInstance();

@@ -71,6 +71,56 @@ class KarmiApi {
     return MessageView.fromJson(body as Map<String, dynamic>);
   }
 
+  /// `POST /v1/runs/{run_id}/feedback`. Idempotent upsert per account+run.
+  Future<RunFeedbackView> sendFeedback(
+    String runId, {
+    required FeedbackRating rating,
+    String? reason,
+  }) async {
+    final body = await _send(
+      'POST',
+      '/v1/runs/${Uri.encodeComponent(runId)}/feedback',
+      json: {
+        'rating': rating.wireName,
+        if (reason != null) 'reason': reason,
+      },
+    );
+    return RunFeedbackView.fromJson(body as Map<String, dynamic>);
+  }
+
+  /// `POST /v1/runs/{run_id}/regenerate`. Re-runs the model for [runId] and
+  /// returns a new [MessageView] linking back via [MessageView.previousRunId].
+  Future<MessageView> regenerateRun(
+    String runId, {
+    required String text,
+    required String idempotencyKey,
+    String? reason,
+  }) async {
+    final body = await _send(
+      'POST',
+      '/v1/runs/${Uri.encodeComponent(runId)}/regenerate',
+      json: {
+        'text': text,
+        'idempotency_key': idempotencyKey,
+        if (reason != null) 'reason': reason,
+      },
+    );
+    return MessageView.fromJson(body as Map<String, dynamic>);
+  }
+
+  /// Alias for [regenerateRun].
+  Future<MessageView> regenerateMessage(
+    String runId, {
+    required String text,
+    required String idempotencyKey,
+    String? reason,
+  }) => regenerateRun(
+    runId,
+    text: text,
+    idempotencyKey: idempotencyKey,
+    reason: reason,
+  );
+
   Future<UsageView> getUsage() async => UsageView.fromJson(
     await _send('GET', '/v1/usage') as Map<String, dynamic>,
   );

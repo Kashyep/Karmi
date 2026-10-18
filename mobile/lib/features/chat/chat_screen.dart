@@ -28,6 +28,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scroll = ScrollController();
   int _nextId = 0;
   UserEntry? _pending;
+  _ActionError? _actionError;
 
   @override
   void dispose() {
@@ -36,6 +37,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _send(String text) {
+    _actionError = null;
     final entry = UserEntry(
       id: 'u${_nextId++}',
       text: text,
@@ -79,6 +81,127 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() => _pending = null);
     }
     _scrollToEnd();
+  }
+
+  void _updateReply(ReplyEntry oldEntry, ReplyEntry newEntry) {
+    final index = _entries.indexOf(oldEntry);
+    if (index != -1) {
+      _entries[index] = newEntry;
+    }
+  }
+
+  Future<void> _onFeedback(ReplyEntry reply, FeedbackRating rating) async {
+    final updated = reply.copyWith(
+      feedbackRating: rating,
+      clearReason: rating == FeedbackRating.up,
+      isFeedbackInFlight: true,
+    );
+    setState(() {
+      _updateReply(reply, updated);
+      _actionError = null;
+    });
+    try {
+      await widget.api.sendFeedback(
+        reply.message.runId,
+        rating: rating,
+        reason: updated.feedbackReason,
+      );
+    } on KarmiApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _actionError = _ActionError(
+          title: "Couldn't send feedback",
+          message: error is NetworkException
+              ? "Karmi couldn't reach the server. Check your connection and retry."
+              : 'Something went wrong on the server while sending feedback.',
+          retry: () => _onFeedback(updated, rating),
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _updateReply(updated, updated.copyWith(isFeedbackInFlight: false)));
+      }
+    }
+  }
+
+  Future<void> _onSelectReason(ReplyEntry reply, String reason) async {
+    final updated = reply.copyWith(
+      feedbackReason: reason,
+      isFeedbackInFlight: true,
+    );
+    setState(() {
+      _updateReply(reply, updated);
+      _actionError = null;
+    });
+    try {
+      await widget.api.sendFeedback(
+        reply.message.runId,
+        rating: updated.feedbackRating ?? FeedbackRating.down,
+        reason: reason,
+      );
+    } on KarmiApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _actionError = _ActionError(
+          title: "Couldn't send feedback",
+          message: error is NetworkException
+              ? "Karmi couldn't reach the server. Check your connection and retry."
+              : 'Something went wrong on the server while sending feedback.',
+          retry: () => _onSelectReason(updated, reason),
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _updateReply(updated, updated.copyWith(isFeedbackInFlight: false)));
+      }
+    }
+  }
+
+  Future<void> _onRegenerate(ReplyEntry reply) async {
+    final replyIndex = _entries.indexWhere((e) => e.id == reply.id);
+    final prompt = replyIndex <= 0
+        ? null
+        : _entries
+              .take(replyIndex)
+              .whereType<UserEntry>()
+              .lastOrNull;
+    if (prompt == null) return;
+    final updated = reply.copyWith(isRegenerating: true);
+    setState(() {
+      _updateReply(reply, updated);
+      _actionError = null;
+    });
+    try {
+      final newReply = await widget.api.regenerateRun(
+        reply.message.runId,
+        text: prompt.text,
+        idempotencyKey: KarmiApi.newIdempotencyKey(),
+        reason: reply.feedbackReason,
+      );
+      if (!mounted) return;
+      setState(() {
+        final replacement = ReplyEntry(
+          id: 'r${_nextId++}',
+          message: newReply,
+        );
+        _updateReply(updated, replacement);
+      });
+    } on KarmiApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _actionError = _ActionError(
+          title: "Couldn't regenerate reply",
+          message: error is NetworkException
+              ? "Karmi couldn't reach the server. Check your connection and retry."
+              : 'Something went wrong on the server while regenerating the reply.',
+          retry: () => _onRegenerate(updated),
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _updateReply(updated, updated.copyWith(isRegenerating: false)));
+      }
+    }
   }
 
   void _scrollToEnd() {
@@ -139,6 +262,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       announce: index == lastReply,
                       onReviewDetails: () =>
                           showTaskConfirmationSheet(context, r.message),
+                      onFeedback: (rating) => _onFeedback(r, rating),
+                      onSelectReason: (reason) => _onSelectReason(r, reason),
+                      onRegenerate: () => _onRegenerate(r),
                     ),
                   },
                 ),
@@ -159,6 +285,17 @@ class _ChatScreenState extends State<ChatScreen> {
                   key: ValueKey('chat-banner-${failed.id}-${failed.state}'),
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
                   child: _banner(failed),
+                )
+              : _actionError != null
+              ? Padding(
+                  key: const ValueKey('chat-action-error'),
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                  child: ErrorBanner(
+                    title: _actionError!.title,
+                    message: _actionError!.message,
+                    actionLabel: 'Retry',
+                    onAction: _actionError!.retry,
+                  ),
                 )
               : const SizedBox.shrink(key: ValueKey('chat-idle')),
         ),
@@ -217,6 +354,18 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     };
   }
+}
+
+class _ActionError {
+  const _ActionError({
+    required this.title,
+    required this.message,
+    this.retry,
+  });
+
+  final String title;
+  final String message;
+  final VoidCallback? retry;
 }
 
 String _formatReset(BuildContext context, DateTime resetAt) {

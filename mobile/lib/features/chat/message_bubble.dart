@@ -14,13 +14,19 @@ class MessageBubble extends StatelessWidget {
   const MessageBubble.user({super.key, required UserEntry this.entry})
     : reply = null,
       announce = false,
-      onReviewDetails = null;
+      onReviewDetails = null,
+      onFeedback = null,
+      onSelectReason = null,
+      onRegenerate = null;
 
   const MessageBubble.reply({
     super.key,
     required ReplyEntry this.reply,
     this.announce = false,
     this.onReviewDetails,
+    this.onFeedback,
+    this.onSelectReason,
+    this.onRegenerate,
   }) : entry = null;
 
   final UserEntry? entry;
@@ -32,6 +38,9 @@ class MessageBubble extends StatelessWidget {
   /// Shown for `ASK_USER` replies; opens the task confirmation sheet.
   final VoidCallback? onReviewDetails;
 
+  final ValueChanged<FeedbackRating>? onFeedback;
+  final ValueChanged<String>? onSelectReason;
+  final VoidCallback? onRegenerate;
   @override
   Widget build(BuildContext context) {
     final colors = KarmiColors.of(context);
@@ -74,6 +83,13 @@ class MessageBubble extends StatelessWidget {
                         label: const Text('Review details'),
                       ),
                     ],
+                    const SizedBox(height: 4),
+                    _ReplyActions(
+                      reply: reply!,
+                      onFeedback: onFeedback,
+                      onSelectReason: onSelectReason,
+                      onRegenerate: onRegenerate,
+                    ),
                   ],
                 ),
         );
@@ -91,6 +107,95 @@ class MessageBubble extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _ReplyActions extends StatelessWidget {
+  const _ReplyActions({
+    required this.reply,
+    this.onFeedback,
+    this.onSelectReason,
+    this.onRegenerate,
+  });
+
+  final ReplyEntry reply;
+  final ValueChanged<FeedbackRating>? onFeedback;
+  final ValueChanged<String>? onSelectReason;
+  final VoidCallback? onRegenerate;
+
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = KarmiColors.of(context);
+    final isBusy = reply.isFeedbackInFlight || reply.isRegenerating;
+    final isDown = reply.feedbackRating == FeedbackRating.down;
+    final isUp = reply.feedbackRating == FeedbackRating.up;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              iconSize: 20,
+              tooltip: 'Thumbs up',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: Icon(isUp ? Icons.thumb_up : Icons.thumb_up_outlined),
+              color: isUp ? colors.primaryText : colors.mutedForeground,
+              isSelected: isUp,
+              onPressed: isBusy || onFeedback == null
+                  ? null
+                  : () => onFeedback!(FeedbackRating.up),
+            ),
+            IconButton(
+              iconSize: 20,
+              tooltip: 'Thumbs down',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: Icon(isDown ? Icons.thumb_down : Icons.thumb_down_outlined),
+              color: isDown ? colors.primaryText : colors.mutedForeground,
+              isSelected: isDown,
+              onPressed: isBusy || onFeedback == null
+                  ? null
+                  : () => onFeedback!(FeedbackRating.down),
+            ),
+            IconButton(
+              iconSize: 20,
+              tooltip: 'Regenerate response',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: reply.isRegenerating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              color: colors.mutedForeground,
+              onPressed: isBusy || onRegenerate == null ? null : onRegenerate,
+            ),
+          ],
+        ),
+        if (isDown) ...[
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final reason in FeedbackReason.values)
+                ChoiceChip(
+                  label: Text(reason.label),
+                  selected: reply.feedbackReason == reason.wireName,
+                  onSelected: isBusy || onSelectReason == null
+                      ? null
+                      : (_) => onSelectReason!(reason.wireName),
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
