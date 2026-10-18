@@ -14,6 +14,17 @@ def build_engine(settings: Settings) -> Engine:
     connect_args: dict[str, object] = {}
     if settings.database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
+    if settings.database_url.startswith("postgresql"):
+        connect_args["connect_timeout"] = settings.database_connect_timeout
+        return create_engine(
+            settings.database_url,
+            connect_args=connect_args,
+            pool_pre_ping=True,
+            pool_size=settings.database_pool_size,
+            max_overflow=settings.database_max_overflow,
+            pool_timeout=settings.database_pool_timeout,
+            hide_parameters=True,
+        )
     engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
     if settings.database_url.startswith("sqlite"):
 
@@ -51,5 +62,8 @@ def get_session() -> Generator[Session, None, None]:
 def create_schema(target_engine: Engine | None = None) -> None:
     from daily_agent import models  # noqa: F401
 
-    Base.metadata.create_all(target_engine or get_engine())
+    engine = target_engine or get_engine()
+    if engine.dialect.name != "sqlite":
+        raise ValueError("automatic schema creation is SQLite-only; review and apply Alembic migrations")
+    Base.metadata.create_all(engine)
 

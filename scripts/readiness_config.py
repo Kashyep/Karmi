@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from daily_agent.config import Settings
+from daily_agent.config import Settings, clerk_verification_config_valid
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -69,8 +69,9 @@ def inspect(values: dict[str, str]) -> list[dict[str, str]]:
         "no unapproved live provider/payment traffic")
     add("synthetic_provider_disabled", False,
         "Karmi's current message handler falls back to fake_generate; no production cutover exists")
-    add("production_auth", False,
-        "only development HMAC tokens are implemented; no verified production identity provider")
+    add("production_auth", clerk_verification_config_valid(
+            values.get("clerk_issuer"), values.get("clerk_jwt_public_key_b64")),
+        "Clerk issuer and JWT verification key are configured (values never emitted)")
     add("shadow_not_active", values.get("active_policy_mode", "static").lower() not in ("shadow", "synthetic"),
         "shadow policy cannot serve active production traffic")
     add("telemetry_live_observed", None, "requires deployed routing/usage traces with retention review")

@@ -151,7 +151,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     if not get_settings().is_development:
         raise SystemExit("delivery worker only has a test adapter; refusing to run outside development/test")
-    create_schema()  # same dev bootstrap the API runs; production uses Alembic
+    if get_settings().database_url.startswith("sqlite"):
+        create_schema()  # local SQLite bootstrap only; PostgreSQL uses reviewed Alembic
     SessionLocal.configure(bind=get_engine())
     logger.info("delivery worker started (poll=%ss lease=%ss)", POLL_SECONDS, LEASE_SECONDS)
     try:

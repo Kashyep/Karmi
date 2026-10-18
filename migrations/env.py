@@ -16,7 +16,7 @@ if config.config_file_name:
 # have been imported earlier in this process with a different DAILY_AGENT_DATABASE_URL
 # (e.g. the disposable integration database), and migrating the stale URL would
 # apply migrations to the wrong database.
-config.set_main_option("sqlalchemy.url", Settings().database_url)
+config.set_main_option("sqlalchemy.url", Settings().migration_url.replace("%", "%%"))
 target_metadata = Base.metadata
 
 

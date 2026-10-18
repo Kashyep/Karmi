@@ -1,7 +1,10 @@
+import base64
 from collections.abc import Generator
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -11,6 +14,16 @@ from daily_agent.config import Settings, get_settings
 from daily_agent.db import Base, get_session
 from daily_agent.models import Account, Subscription, User
 from daily_agent.security import issue_development_token
+
+
+@pytest.fixture
+def clerk_public_key_b64() -> str:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_pem = private_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    return base64.b64encode(public_pem).decode("ascii")
 
 
 @pytest.fixture
@@ -57,4 +70,3 @@ def create_identity(
     session.commit()
     token = issue_development_token(user, settings)
     return account, user, token
-

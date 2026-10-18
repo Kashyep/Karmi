@@ -147,7 +147,9 @@ def test_admin_endpoints_are_role_scoped_and_redacted(test_context: dict[str, ob
     assert all(row["response"] == "redacted" for row in runs.json())
 
 
-def test_billing_sandbox_is_not_routed_in_production(test_context: dict[str, object]) -> None:
+def test_billing_sandbox_is_not_routed_in_production(
+    test_context: dict[str, object], clerk_public_key_b64: str
+) -> None:
     client = test_context["client"]
     factory = test_context["factory"]
     test_settings = test_context["settings"]
@@ -161,6 +163,8 @@ def test_billing_sandbox_is_not_routed_in_production(test_context: dict[str, obj
         allow_development_auth=False,
         auth_secret="a9f2c7e8b4d61093a5c8e2f7d1b40699",  # noqa: S106
         webhook_secret="7d3b9f1a6c2048e5b7d0a2c4f9e18365",  # noqa: S106
+        clerk_issuer="https://example.clerk.accounts.dev",
+        clerk_jwt_public_key_b64=clerk_public_key_b64,
     )
     client.app.dependency_overrides[get_settings] = lambda: production_settings  # type: ignore[union-attr]
     raw = json.dumps(

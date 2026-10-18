@@ -84,7 +84,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         settings = get_settings()
-        if settings.is_development:
+        if settings.is_development and settings.database_url.startswith("sqlite"):
             create_schema()
         yield
 
@@ -475,7 +475,12 @@ def create_app() -> FastAPI:
                 query_text=body.text,
                 settings=settings,
             )
-            result = fake_generate(body.text, context, settings=settings)
+            result = fake_generate(
+                body.text,
+                context,
+                settings=settings,
+                max_output_tokens=policy.output_tokens,
+            )
             timing = RunTiming(
                 started_at=started_at,
                 completed_at=datetime.now(UTC),
@@ -712,7 +717,9 @@ def _route_for(session: Session, account_id: str, logical_request_id: str) -> st
         .where(CostLedger.reservation_id == reservation.id)
         .limit(1)
     )
-    return "typesafe-system-one" if provider == "typesafe" else "fake-economy"
+    return {"typesafe": "typesafe-system-one", "opencode": "opencode-free"}.get(
+        provider or "", "fake-economy"
+    )
 
 
 app = create_app()

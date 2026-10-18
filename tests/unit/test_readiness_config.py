@@ -36,11 +36,23 @@ def test_candidate_secret_values_are_not_reported(tmp_path) -> None:
     assert outcome(parse_env(config), "webhook_secret") == "FAIL"
 
 
-def test_secure_shaped_settings_still_cannot_pass_missing_product_capabilities() -> None:
+def test_secure_shaped_settings_still_cannot_pass_missing_product_capabilities(
+    clerk_public_key_b64: str,
+) -> None:
     values = {"environment": "production", "database_url": "postgresql+psycopg://user@db.local/app",
               "allow_development_auth": "false", "auth_secret": "z" * 40,
               "webhook_secret": "y" * 40, "production_period_budget_micro": "12345",
+              "clerk_issuer": "https://example.clerk.accounts.dev",
+              "clerk_jwt_public_key_b64": clerk_public_key_b64,
               "global_daily_budget_micro": "54321", "public_base_url": "https://example.invalid"}
     assert outcome(values, "settings_validator") == "PASS"
     assert outcome(values, "synthetic_provider_disabled") == "FAIL"
+    assert outcome(values, "production_auth") == "PASS"
+
+
+def test_readiness_rejects_non_pem_clerk_key() -> None:
+    values = {
+        "clerk_issuer": "https://example.clerk.accounts.dev",
+        "clerk_jwt_public_key_b64": "ZmFrZS1rZXk=",
+    }
     assert outcome(values, "production_auth") == "FAIL"
