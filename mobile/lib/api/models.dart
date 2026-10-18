@@ -65,11 +65,12 @@ class RunFeedbackView {
     this.reason,
   });
 
-  factory RunFeedbackView.fromJson(Map<String, dynamic> json) => RunFeedbackView(
-    runId: json['run_id'] as String,
-    rating: FeedbackRating.fromWire(json['rating']) ?? FeedbackRating.up,
-    reason: json['reason'] as String?,
-  );
+  factory RunFeedbackView.fromJson(Map<String, dynamic> json) =>
+      RunFeedbackView(
+        runId: json['run_id'] as String,
+        rating: FeedbackRating.fromWire(json['rating']) ?? FeedbackRating.up,
+        reason: json['reason'] as String?,
+      );
 
   final String runId;
   final FeedbackRating rating;
@@ -201,4 +202,24 @@ class ArmoryView {
 
   final KarmiTier unlockedTier;
   final KarmiTier activeTheme;
+}
+
+/// Result of redeeming a beta access code (`POST /v1/access-code`).
+class AccessCodeResult {
+  const AccessCodeResult({
+    required this.planId,
+    required this.planLabel,
+    required this.changed,
+  });
+
+  factory AccessCodeResult.fromJson(Map<String, dynamic> json) =>
+      AccessCodeResult(
+        planId: json['plan_id'] as String,
+        planLabel: json['plan_label'] as String,
+        changed: json['changed'] as bool,
+      );
+
+  final String planId;
+  final String planLabel;
+  final bool changed;
 }

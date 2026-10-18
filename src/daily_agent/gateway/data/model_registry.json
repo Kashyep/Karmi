@@ -1,8 +1,128 @@
 {
   "schema_version": "model-registry.v1",
-  "snapshot_date": "2026-10-10",
+  "snapshot_date": "2026-10-19",
   "provisional": true,
+  "notes": "openrouter entries: Parakh provisional capped probe 2026-10-19 (see Parakh docs/live_pilots/registry). opencode entries: unreviewed seed (classes/context are estimates; need an OpenCode key).",
   "models": [
+    {
+      "model_id": "liquid/lfm-2.5-2.6b:free",
+      "provider": "openrouter",
+      "class": "economy",
+      "prompt_price_usd": "0",
+      "completion_price_usd": "0",
+      "context_length": 65536,
+      "private_data_allowed": false,
+      "data_terms": "unknown",
+      "supports_structured_output": true,
+      "scores": {
+        "code": 1.0,
+        "maths": 1.0,
+        "hindi": 1.0
+      },
+      "score_status": "provisional"
+    },
+    {
+      "model_id": "nvidia/nemotron-3.5-lightning:free",
+      "provider": "openrouter",
+      "class": "economy",
+      "prompt_price_usd": "0",
+      "completion_price_usd": "0",
+      "context_length": 1000000,
+      "private_data_allowed": false,
+      "data_terms": "unknown",
+      "supports_structured_output": false,
+      "scores": {
+        "code": 1.0,
+        "maths": 0.0,
+        "hindi": 1.0
+      },
+      "score_status": "provisional"
+    },
+    {
+      "model_id": "poolside/laguna-xs-2.1:free",
+      "provider": "openrouter",
+      "class": "balanced",
+      "prompt_price_usd": "0",
+      "completion_price_usd": "0",
+      "context_length": 262144,
+      "private_data_allowed": false,
+      "data_terms": "unknown",
+      "supports_structured_output": false,
+      "scores": {
+        "code": 1.0,
+        "maths": 1.0,
+        "hindi": 1.0
+      },
+      "score_status": "provisional"
+    },
+    {
+      "model_id": "cohere/north-mini-code:free",
+      "provider": "openrouter",
+      "class": "balanced",
+      "prompt_price_usd": "0",
+      "completion_price_usd": "0",
+      "context_length": 256000,
+      "private_data_allowed": false,
+      "data_terms": "unknown",
+      "supports_structured_output": false,
+      "scores": {
+        "code": 1.0,
+        "maths": 1.0,
+        "hindi": 1.0
+      },
+      "score_status": "provisional"
+    },
+    {
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "provider": "openrouter",
+      "class": "advanced",
+      "prompt_price_usd": "0",
+      "completion_price_usd": "0",
+      "context_length": 1000000,
+      "private_data_allowed": false,
+      "data_terms": "unknown",
+      "supports_structured_output": false,
+      "scores": {
+        "code": 1.0,
+        "maths": 1.0,
+        "hindi": 1.0
+      },
+      "score_status": "provisional"
+    },
+    {
+      "model_id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "provider": "openrouter",
+      "class": "balanced",
+      "prompt_price_usd": "0",
+      "completion_price_usd": "0",
+      "context_length": 256000,
+      "private_data_allowed": false,
+      "data_terms": "unknown",
+      "supports_structured_output": false,
+      "scores": {
+        "code": 1.0,
+        "maths": 1.0,
+        "hindi": 1.0
+      },
+      "score_status": "provisional"
+    },
+    {
+      "model_id": "nvidia/nemotron-3-super-120b-a12b:free",
+      "provider": "openrouter",
+      "class": "advanced",
+      "prompt_price_usd": "0",
+      "completion_price_usd": "0",
+      "context_length": 262144,
+      "private_data_allowed": false,
+      "data_terms": "unknown",
+      "supports_structured_output": true,
+      "scores": {
+        "code": 1.0,
+        "maths": 1.0,
+        "hindi": 1.0
+      },
+      "score_status": "provisional"
+    },
     {
       "model_id": "big-pickle",
       "provider": "opencode",

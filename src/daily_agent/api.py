@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -12,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_for_code
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_session
 from daily_agent.gateway import Gateway, build_gateway
@@ -35,6 +37,8 @@ from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.ratelimit import SlidingWindowLimiter, install_log_redaction
 from daily_agent.schemas import (
     ARMORY_TIERS,
+    AccessCodeRedeem,
+    AccessCodeView,
     ActiveThemeUpdate,
     ArmoryView,
     FeedbackCreate,
@@ -85,6 +89,8 @@ from daily_agent.services import (
     sync_theme_progression,
 )
 from daily_agent.web import build_manifest, render_shell
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -635,6 +641,43 @@ def create_app() -> FastAPI:
         if run is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="reply not found")
         return run
+
+    @app.post("/v1/access-code", response_model=AccessCodeView)
+    def redeem_access_code(
+        body: AccessCodeRedeem,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+        settings: Settings = Depends(get_settings),
+    ) -> AccessCodeView:
+        """Unlock a higher beta tier with a secret code. Never downgrades; guesses are throttled."""
+        guesses: SlidingWindowLimiter | None = getattr(app.state, "code_limiter", None)
+        if guesses is None:
+            guesses = SlidingWindowLimiter(limit=5)
+            app.state.code_limiter = guesses
+        retry_after = guesses.check(principal.user_id)
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={"code": "RATE_LIMITED", "message": "too many attempts; wait and retry"},
+                headers={"Retry-After": str(retry_after)},
+            )
+        hashes = getattr(app.state, "access_code_hashes", None)
+        if hashes is None:
+            hashes = load_access_code_hashes(settings.access_codes_path)
+            app.state.access_code_hashes = hashes
+        plan_id = plan_for_code(body.code, hashes)
+        if plan_id is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invalid access code")
+        subscription, current = policy_for(session, principal.account_id)
+        changed = PLAN_RANK[plan_id] > PLAN_RANK.get(current.plan_id, 0)
+        if changed:
+            subscription.plan_id = plan_id
+            subscription.policy_version = "beta-access-code-v1"
+            sync_account_progression(session, principal.account_id)
+            session.commit()
+            logger.info("access code upgraded account %s to %s", principal.account_id, plan_id)
+        policy = SYNTHETIC_POLICIES[subscription.plan_id]
+        return AccessCodeView(plan_id=policy.plan_id, plan_label=policy.display_name, changed=changed)
 
     @app.post("/v1/runs/{run_id}/feedback", response_model=FeedbackView)
     def rate_reply(

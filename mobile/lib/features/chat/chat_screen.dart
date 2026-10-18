@@ -119,7 +119,12 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } finally {
       if (mounted) {
-        setState(() => _updateReply(updated, updated.copyWith(isFeedbackInFlight: false)));
+        setState(
+          () => _updateReply(
+            updated,
+            updated.copyWith(isFeedbackInFlight: false),
+          ),
+        );
       }
     }
   }
@@ -152,7 +157,12 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } finally {
       if (mounted) {
-        setState(() => _updateReply(updated, updated.copyWith(isFeedbackInFlight: false)));
+        setState(
+          () => _updateReply(
+            updated,
+            updated.copyWith(isFeedbackInFlight: false),
+          ),
+        );
       }
     }
   }
@@ -161,10 +171,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final replyIndex = _entries.indexWhere((e) => e.id == reply.id);
     final prompt = replyIndex <= 0
         ? null
-        : _entries
-              .take(replyIndex)
-              .whereType<UserEntry>()
-              .lastOrNull;
+        : _entries.take(replyIndex).whereType<UserEntry>().lastOrNull;
     if (prompt == null) return;
     final updated = reply.copyWith(isRegenerating: true);
     setState(() {
@@ -180,10 +187,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       if (!mounted) return;
       setState(() {
-        final replacement = ReplyEntry(
-          id: 'r${_nextId++}',
-          message: newReply,
-        );
+        final replacement = ReplyEntry(id: 'r${_nextId++}', message: newReply);
         _updateReply(updated, replacement);
       });
     } on KarmiApiException catch (error) {
@@ -199,7 +203,9 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } finally {
       if (mounted) {
-        setState(() => _updateReply(updated, updated.copyWith(isRegenerating: false)));
+        setState(
+          () => _updateReply(updated, updated.copyWith(isRegenerating: false)),
+        );
       }
     }
   }
@@ -357,11 +363,7 @@ class _ChatScreenState extends State<ChatScreen> {
 }
 
 class _ActionError {
-  const _ActionError({
-    required this.title,
-    required this.message,
-    this.retry,
-  });
+  const _ActionError({required this.title, required this.message, this.retry});
 
   final String title;
   final String message;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../api/karmi_api.dart';
 import '../../auth/clerk_sign_in_card.dart';
 import '../../auth/session.dart';
+import '../../settings/karmi_settings.dart';
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_theme.dart';
 import '../../widgets/feedback.dart';
@@ -13,10 +14,12 @@ class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({
     super.key,
     required this.session,
+    this.settings,
     this.devAuthEnabled = kDevAuthEnabled,
   });
 
   final KarmiSession session;
+  final KarmiSettings? settings;
   final bool devAuthEnabled;
 
   @override
@@ -26,6 +29,59 @@ class WelcomeScreen extends StatefulWidget {
 class _WelcomeScreenState extends State<WelcomeScreen> {
   bool _loading = false;
   KarmiApiException? _error;
+
+  Future<void> _editServer() async {
+    final settings = widget.settings;
+    if (settings == null) return;
+    final controller = TextEditingController(text: settings.apiBaseUrl ?? '');
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        String? problem;
+        return StatefulBuilder(
+          builder: (context, setLocal) => AlertDialog(
+            title: const Text('Server address'),
+            content: TextField(
+              key: const ValueKey('server-url-field'),
+              controller: controller,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              decoration: InputDecoration(
+                hintText: 'https://…',
+                errorText: problem,
+                helperText: 'Leave empty to use the built-in address.',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const ValueKey('server-url-save'),
+                onPressed: () {
+                  final value = controller.text.trim();
+                  if (value.isNotEmpty && !KarmiSettings.isValidServerUrl(value)) {
+                    setLocal(() => problem = 'Use an https:// address.');
+                    return;
+                  }
+                  Navigator.pop(context, value);
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    if (saved == null) return;
+    await settings.setApiBaseUrl(saved);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Server saved. Restart Karmi to use it.')),
+    );
+  }
 
   Future<void> _signIn() async {
     setState(() {
@@ -129,6 +185,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       _error == null
                           ? 'Continue (development sign-in)'
                           : 'Retry',
+                    ),
+                  ),
+                if (widget.settings != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      key: const ValueKey('server-address-button'),
+                      onPressed: _editServer,
+                      child: const Text('Server address'),
                     ),
                   ),
               ],

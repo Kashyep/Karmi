@@ -16,7 +16,8 @@ Future<void> main() async {
   await LiquidGlassWidgets.initialize();
 
   final prefs = await SharedPreferences.getInstance();
-  final api = KarmiApi();
+  final settings = KarmiSettings(prefs);
+  final api = KarmiApi(baseUrl: settings.apiBaseUrl ?? KarmiApi.defaultBaseUrl);
   const publishableKey = String.fromEnvironment('CLERK_PUBLISHABLE_KEY');
   final clerkAuth = publishableKey.isEmpty
       ? null
@@ -26,7 +27,7 @@ Future<void> main() async {
   final session = KarmiSession(api: api, prefs: prefs, clerkAuth: clerkAuth);
 
   Widget app = KarmiApp(
-    settings: KarmiSettings(prefs),
+    settings: settings,
     session: session,
     armory: ArmoryController(api: api, prefs: prefs),
   );

@@ -58,7 +58,9 @@ final class ReplyEntry extends ChatEntry {
     id: id ?? this.id,
     message: message ?? this.message,
     feedbackRating: feedbackRating ?? this.feedbackRating,
-    feedbackReason: clearReason ? null : (feedbackReason ?? this.feedbackReason),
+    feedbackReason: clearReason
+        ? null
+        : (feedbackReason ?? this.feedbackReason),
     isFeedbackInFlight: isFeedbackInFlight ?? this.isFeedbackInFlight,
     isRegenerating: isRegenerating ?? this.isRegenerating,
   );

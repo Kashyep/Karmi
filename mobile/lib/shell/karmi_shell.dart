@@ -58,8 +58,11 @@ class _KarmiShellState extends State<KarmiShell> {
   void _openPlans() => Navigator.of(context).push(
     KarmiMotion.route<void>(
       context,
-      (_) =>
-          PlanSelectionScreen(currentPlanId: widget.armory.unlockedTier.planId),
+      (_) => PlanSelectionScreen(
+        currentPlanId: widget.armory.unlockedTier.planId,
+        api: widget.api,
+        onPlanChanged: widget.armory.load,
+      ),
     ),
   );
 
@@ -83,6 +86,7 @@ class _KarmiShellState extends State<KarmiShell> {
       session: widget.session,
       armory: widget.armory,
       onOpenArmory: _openArmory,
+      onOpenPlans: _openPlans,
     ),
   ];
 

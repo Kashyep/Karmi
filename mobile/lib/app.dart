@@ -105,24 +105,28 @@ class _KarmiAppState extends State<KarmiApp> {
             themeMode: widget.settings.themeMode,
             themeAnimationDuration: Duration.zero,
             builder: karmiAccessibilityBuilder(widget.settings),
-            home: !widget.settings.isTesterNoticeAcknowledged(kTesterNoticeVersion)
+            home:
+                !widget.settings.isTesterNoticeAcknowledged(
+                  kTesterNoticeVersion,
+                )
                 ? TesterNoticeScreen(
                     key: const ValueKey('tester_notice'),
                     onAcknowledge: () => widget.settings
                         .acknowledgeTesterNotice(kTesterNoticeVersion),
                   )
                 : _signedIn
-                    ? KarmiShell(
-                        key: const ValueKey('shell'),
-                        api: widget.session.api,
-                        settings: widget.settings,
-                        session: widget.session,
-                        armory: widget.armory,
-                      )
-                    : WelcomeScreen(
-                        key: const ValueKey('welcome'),
-                        session: widget.session,
-                      ),
+                ? KarmiShell(
+                    key: const ValueKey('shell'),
+                    api: widget.session.api,
+                    settings: widget.settings,
+                    session: widget.session,
+                    armory: widget.armory,
+                  )
+                : WelcomeScreen(
+                    key: const ValueKey('welcome'),
+                    session: widget.session,
+                    settings: widget.settings,
+                  ),
           ),
         );
       },

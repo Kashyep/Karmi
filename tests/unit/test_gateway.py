@@ -66,9 +66,11 @@ def test_registry_rejects_duplicates_and_wrong_schema() -> None:
 def test_packaged_seed_is_free_and_private_flags_match_the_opencode_allowlist() -> None:
     seed = load_registry()
     assert seed.models
-    private = {m.model_id for m in seed.models if m.private_data_allowed}
+    opencode_models = [m for m in seed.models if m.provider == "opencode"]
+    private = {m.model_id for m in opencode_models if m.private_data_allowed}
     assert private == set(opencode.PRIVATE_DATA_MODEL_IDS)
-    assert all(m.model_id in opencode.FREE_MODEL_BY_ID for m in seed.models)
+    assert all(m.model_id in opencode.FREE_MODEL_BY_ID for m in opencode_models)
+    assert not any(m.private_data_allowed for m in seed.models if m.provider == "openrouter")
 
 
 @pytest.mark.parametrize(
@@ -288,3 +290,10 @@ def test_openrouter_bounds_request_size_before_any_call() -> None:
         instance.complete(too_long, MODEL)
     assert caught.value.kind == ProviderError.REJECTED
     assert calls == []
+
+
+def test_unmeasured_task_scores_fall_back_to_the_mean_of_measured_ones() -> None:
+    model = registry(entry("m", scores={"maths": 1.0, "hindi": 0.5})).models[0]
+    assert model.score("maths") == 1.0
+    assert model.score("code") == 0.75
+    assert registry(entry("n")).models[0].score("code") == 0.0

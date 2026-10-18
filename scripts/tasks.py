@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,19 +32,57 @@ def doctor() -> None:
         raise SystemExit("benchmark seed bank is missing")
 
 
+def _podman_services() -> None:
+    """Start disposable PostgreSQL/Redis with rootless podman (same images and ports as compose)."""
+    run(["podman", "rm", "-f", "daily-agent-test-pg", "daily-agent-test-redis"])
+    run([
+        "podman", "run", "-d", "--name", "daily-agent-test-pg", "--network", "host",
+        "-e", "POSTGRES_DB=daily_agent_test", "-e", "POSTGRES_USER=daily_agent_test",
+        "-e", "POSTGRES_PASSWORD=daily_agent_test", "--tmpfs", "/var/lib/postgresql/data",
+        "--health-cmd", "pg_isready -h 127.0.0.1 -p 55432 -U daily_agent_test -d daily_agent_test",
+        "--health-interval", "2s", "docker.io/library/postgres:17-alpine",
+        "postgres", "-c", "port=55432", "-c", "listen_addresses=127.0.0.1",
+    ])
+    run([
+        "podman", "run", "-d", "--name", "daily-agent-test-redis", "--network", "host",
+        "docker.io/library/redis:8-alpine", "redis-server", "--port", "56379", "--bind", "127.0.0.1",
+        "--save", "", "--appendonly", "no",
+    ])
+    for _ in range(60):  # bounded wait for both services
+        pg = subprocess.run(  # noqa: S603
+            ["podman", "healthcheck", "run", "daily-agent-test-pg"],  # noqa: S607
+            capture_output=True,
+            check=False,
+        )
+        if pg.returncode == 0:
+            return
+        time.sleep(1)
+    raise SystemExit("disposable PostgreSQL did not become healthy")
+
+
 def integration() -> None:
-    if shutil.which("docker") is None:
-        raise SystemExit("Docker is required for disposable PostgreSQL/Redis integration tests")
+    use_docker = shutil.which("docker") is not None
+    if not use_docker and shutil.which("podman") is None:
+        raise SystemExit(
+            "Docker or podman is required for disposable PostgreSQL/Redis integration tests "
+            "(see docs/runbooks/local-development.md)"
+        )
     env = os.environ.copy()
     env["DAILY_AGENT_INTEGRATION_DATABASE_URL"] = (
         "postgresql+psycopg://daily_agent_test:daily_agent_test@127.0.0.1:55432/daily_agent_test"
     )
     env["DAILY_AGENT_INTEGRATION_REDIS_URL"] = "redis://127.0.0.1:56379/15"
-    run(["docker", "compose", "-p", "daily-agent-test", "up", "-d", "--wait", "postgres-test", "redis-test"])
+    if use_docker:
+        run(["docker", "compose", "-p", "daily-agent-test", "up", "-d", "--wait", "postgres-test", "redis-test"])
+    else:
+        _podman_services()
     try:
         run([str(PYTHON), "-m", "pytest", "-m", "integration", "tests/integration"], env=env)
     finally:
-        run(["docker", "compose", "-p", "daily-agent-test", "down", "--volumes"])
+        if use_docker:
+            run(["docker", "compose", "-p", "daily-agent-test", "down", "--volumes"])
+        else:
+            run(["podman", "rm", "-f", "daily-agent-test-pg", "daily-agent-test-redis"])
 
 
 def benchmark_demo() -> None:

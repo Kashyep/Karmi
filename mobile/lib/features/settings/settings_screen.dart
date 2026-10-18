@@ -20,12 +20,14 @@ class SettingsScreen extends StatelessWidget {
     required this.session,
     required this.armory,
     required this.onOpenArmory,
+    this.onOpenPlans,
   });
 
   final KarmiSettings settings;
   final KarmiSession session;
   final ArmoryController armory;
   final VoidCallback onOpenArmory;
+  final VoidCallback? onOpenPlans;
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
@@ -86,6 +88,18 @@ class SettingsScreen extends StatelessWidget {
                     onChanged: settings.setReduceTransparency,
                   ),
                 ),
+                if (onOpenPlans != null) ...[
+                  const Divider(height: 1),
+                  KarmiFocusRing(
+                    child: ListTile(
+                      leading: const Icon(Icons.vpn_key_outlined),
+                      title: const Text('Plans and access code'),
+                      subtitle: const Text('Unlock a beta tier with a code'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: onOpenPlans,
+                    ),
+                  ),
+                ],
                 const Divider(height: 1),
                 KarmiFocusRing(
                   child: ListTile(

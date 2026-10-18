@@ -124,7 +124,6 @@ class _ReplyActions extends StatelessWidget {
   final ValueChanged<String>? onSelectReason;
   final VoidCallback? onRegenerate;
 
-
   @override
   Widget build(BuildContext context) {
     final colors = KarmiColors.of(context);

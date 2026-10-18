@@ -1,0 +1,9 @@
+{
+  "schema": "access-codes.v1",
+  "note": "SHA-256 of the normalized code (upper-case, no dashes) -> plan id. Plain codes are never stored in the repo.",
+  "hashes": {
+    "cf97df7459463e58fadb3a1582d768deffaee70adc8d859b3b2238de6ac9a5e0": "yanta",
+    "72d07e9e511de6fee7719b60cca3cce3a54ed000b500835e2dddea5ff27875e3": "trika",
+    "c164065e179940e4aff012aec721fc0a3f1c20b20aa6438fd825c5eff14e2284": "parth"
+  }
+}

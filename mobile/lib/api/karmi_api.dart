@@ -80,10 +80,7 @@ class KarmiApi {
     final body = await _send(
       'POST',
       '/v1/runs/${Uri.encodeComponent(runId)}/feedback',
-      json: {
-        'rating': rating.wireName,
-        if (reason != null) 'reason': reason,
-      },
+      json: {'rating': rating.wireName, if (reason != null) 'reason': reason},
     );
     return RunFeedbackView.fromJson(body as Map<String, dynamic>);
   }
@@ -120,6 +117,12 @@ class KarmiApi {
     idempotencyKey: idempotencyKey,
     reason: reason,
   );
+
+  /// `POST /v1/access-code`. Unlocks a higher beta tier; 404 means invalid code.
+  Future<AccessCodeResult> redeemAccessCode(String code) async {
+    final body = await _send('POST', '/v1/access-code', json: {'code': code});
+    return AccessCodeResult.fromJson(body as Map<String, dynamic>);
+  }
 
   Future<UsageView> getUsage() async => UsageView.fromJson(
     await _send('GET', '/v1/usage') as Map<String, dynamic>,

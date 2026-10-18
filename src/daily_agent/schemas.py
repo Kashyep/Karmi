@@ -121,3 +121,13 @@ ARMORY_TIERS: tuple[ArmoryTier, ...] = (
     ArmoryTier(id=4, key="parth", label="Parth", plan_id="parth"),
 )
 
+
+
+class AccessCodeRedeem(BaseModel):
+    code: str = Field(min_length=4, max_length=64)
+
+
+class AccessCodeView(BaseModel):
+    plan_id: str
+    plan_label: str
+    changed: bool

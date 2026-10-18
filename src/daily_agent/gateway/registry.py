@@ -42,7 +42,10 @@ class RegistryModel:
         return f"{self.provider}/{self.model_id}"
 
     def score(self, task_type: str) -> float:
-        return self.scores.get(task_type, 0.0)
+        """Measured score for the task type; falls back to the mean of what was measured."""
+        if task_type in self.scores:
+            return self.scores[task_type]
+        return sum(self.scores.values()) / len(self.scores) if self.scores else 0.0
 
 
 @dataclass(frozen=True)

@@ -12,10 +12,19 @@ services:
       DAILY_AGENT_WEBHOOK_SECRET: ${DAILY_AGENT_WEBHOOK_SECRET:?required}
       DAILY_AGENT_ALLOW_DEVELOPMENT_AUTH: "false"
       DAILY_AGENT_LIVE_MODELS_ENABLED: "false"
+      # Free-model gateway (OpenRouter). Key comes from the host secret store / .env, never the image.
+      DAILY_AGENT_OPENROUTER_ENABLED: ${DAILY_AGENT_OPENROUTER_ENABLED:-true}
+      DAILY_AGENT_OPENROUTER_API_KEY: ${DAILY_AGENT_OPENROUTER_API_KEY:?required}
+      DAILY_AGENT_MODEL_REGISTRY_PATH: /registry/model_registry.json
+      DAILY_AGENT_GATEWAY_KILL_SWITCH: ${DAILY_AGENT_GATEWAY_KILL_SWITCH:-false}
+      DAILY_AGENT_CLERK_ISSUER: ${DAILY_AGENT_CLERK_ISSUER:?required}
+      DAILY_AGENT_CLERK_JWT_PUBLIC_KEY_B64: ${DAILY_AGENT_CLERK_JWT_PUBLIC_KEY_B64:?required}
       DAILY_AGENT_PAID_CHECKOUT_ENABLED: "false"
       DAILY_AGENT_WHATSAPP_ENABLED: "false"
       DAILY_AGENT_PRODUCTION_PERIOD_BUDGET_MICRO: ${DAILY_AGENT_PRODUCTION_PERIOD_BUDGET_MICRO:?required}
       DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO: ${DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO:?required}
+    volumes:
+      - ../../src/daily_agent/gateway/data/model_registry.json:/registry/model_registry.json:ro
     ports:
       - "8000:8000"
     healthcheck:

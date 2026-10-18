@@ -72,7 +72,9 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = Field(
         default=None,
         repr=False,
-        validation_alias=AliasChoices("DAILY_AGENT_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"),
+        validation_alias=AliasChoices(
+            "DAILY_AGENT_OPENROUTER_API_KEY", "OPENROUTER_API_KEY", "OPEN_ROUTER_KEY"
+        ),
     )
     # Emergency stop for every live model call; replies fall back to the deterministic demo.
     gateway_kill_switch: bool = False
@@ -86,6 +88,8 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = Field(default=30, ge=1, le=10_000)
     paid_checkout_enabled: bool = False
     whatsapp_enabled: bool = False
+    # Beta access-code hashes (sha256 -> plan id); ``None`` loads the packaged file.
+    access_codes_path: Path | None = None
     production_period_budget_micro: int | None = Field(default=None, ge=1)
     global_daily_budget_micro: int = Field(default=100_000, ge=1)
     data_dir: Path = Path("data")
