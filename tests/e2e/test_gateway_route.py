@@ -8,6 +8,7 @@ import contextlib
 import json
 from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ from daily_agent.models import (
     UsageWindow,
     User,
 )
+from daily_agent.parakh.telemetry import build_telemetry_batch
 from tests.conftest import create_identity
 
 pytestmark = pytest.mark.e2e
@@ -406,3 +408,22 @@ def test_idempotent_replay_keeps_route_and_makes_no_second_call(
     assert second["route"] == first["route"] == "openrouter/vendor/eco-a:free"
     assert second["run_id"] == first["run_id"]
     assert len(harness.seen) == 1
+
+
+def test_export_refuses_runs_that_reference_models_missing_from_the_registry(
+    make_harness: Callable[..., Harness],
+) -> None:
+    harness = make_harness([ECO_A], lambda _r: reply("Stable answer."))
+    _account_id, token = identity(harness)
+    send(harness, token, "gw-export-0001")
+    window = (datetime.now(UTC) - timedelta(days=1), datetime.now(UTC) + timedelta(days=1))
+
+    with harness.factory() as session:
+        full = build_telemetry_batch(
+            session, start=window[0], end=window[1], registry=registry(ECO_A)
+        )
+        assert {(m["provider"], m["model"]) for m in full["model_registry"]} >= {
+            ("openrouter", "vendor/eco-a:free")
+        }
+        with pytest.raises(ValueError, match="absent from the registry"):
+            build_telemetry_batch(session, start=window[0], end=window[1], registry=registry(ECO_B))

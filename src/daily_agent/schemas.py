@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field, StrictInt
 
@@ -53,6 +54,31 @@ class MessageView(BaseModel):
     outcome: Outcome
     response: str
     route: str | None = None
+    previous_run_id: str | None = None
+
+
+FeedbackRating = Literal["up", "down"]
+# Fixed vocabulary: never free text, so exported feedback is sanitized by construction.
+FeedbackReason = Literal["wrong", "unclear", "too_slow", "other"]
+
+
+class FeedbackCreate(BaseModel):
+    rating: FeedbackRating
+    reason: FeedbackReason | None = None
+
+
+class FeedbackView(BaseModel):
+    run_id: str
+    rating: FeedbackRating
+    reason: FeedbackReason | None = None
+
+
+class RegenerateCreate(BaseModel):
+    # The original prompt is not stored server-side; the client resends it and the server
+    # verifies it matches the earlier run before spending anything.
+    text: str = Field(min_length=1, max_length=100_000)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+    reason: FeedbackReason | None = None
 
 
 class UsageView(BaseModel):

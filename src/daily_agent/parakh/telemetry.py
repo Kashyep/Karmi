@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from daily_agent import __version__
 from daily_agent.gateway.registry import ModelRegistry
-from daily_agent.models import RoutingDecision, RoutingRecord, Run, RunStatus
+from daily_agent.models import MessageFeedback, RoutingDecision, RoutingRecord, Run, RunStatus
 from daily_agent.parakh.routing import FEATURE_SCHEMA_VERSION, model_registry
 
 SCHEMA_VERSION = "1.0"
@@ -64,27 +64,79 @@ def _decision(decision: RoutingDecision) -> dict[str, Any]:
     }
 
 
-def _run(record: RoutingRecord, run: Run, decisions: list[RoutingDecision]) -> dict[str, Any]:
-    live = next(d for d in decisions if not d.shadow)
-    attempts = [
+GENERATION_OPERATIONS = ("generate", "generate_failed", "generate_rejected")
+FAILED_OPERATIONS = {"generate_failed": "provider_error", "generate_rejected": "rejected_output"}
+
+
+def _attempts(record: RoutingRecord, live: RoutingDecision, run: Run) -> list[dict[str, Any]]:
+    attempts: list[dict[str, Any]] = []
+    generation_index = 0
+    for index, attempt in enumerate(json.loads(record.attempts)):
+        operation = attempt["operation"]
+        error_type = FAILED_OPERATIONS.get(operation)
+        retry_number = generation_index if operation in GENERATION_OPERATIONS else 0
+        if operation in GENERATION_OPERATIONS:
+            generation_index += 1
+        attempts.append(
+            {
+                "attempt_id": f"{_ref('att', run.id)}-{index}",
+                "decision_id": _ref("dec", live.id),
+                "provider": attempt["provider"],
+                "model": attempt["model"],
+                "operation": operation,
+                "success": error_type is None,
+                "retry_number": retry_number,
+                "input_tokens": attempt["input_tokens"],
+                "output_tokens": attempt["output_tokens"],
+                "estimated_cost": _money(attempt["cost_micro"]),
+                "currency": COST_CURRENCY if attempt["cost_micro"] is not None else None,
+                "cost_measurement": attempt["measurement"],
+                "latency_ms": None,
+                "error_type": error_type,
+            }
+        )
+    return attempts
+
+
+def _feedback(
+    run: Run,
+    ratings: list[MessageFeedback],
+    regenerations: list[tuple[Run, datetime]],
+) -> list[dict[str, Any]]:
+    """Sanitized by construction: ratings and reasons are fixed tokens, never user text."""
+    entries: list[dict[str, Any]] = [
         {
-            "attempt_id": f"{_ref('att', run.id)}-{index}",
-            "decision_id": _ref("dec", live.id),
-            "provider": attempt["provider"],
-            "model": attempt["model"],
-            "operation": attempt["operation"],
-            "success": True,
-            "retry_number": 0,
-            "input_tokens": attempt["input_tokens"],
-            "output_tokens": attempt["output_tokens"],
-            "estimated_cost": _money(attempt["cost_micro"]),
-            "currency": COST_CURRENCY if attempt["cost_micro"] is not None else None,
-            "cost_measurement": attempt["measurement"],
-            "latency_ms": None,
-            "error_type": None,
+            "feedback_id": _ref("fb", row.id),
+            "feedback_type": "rating",
+            "sanitized_corrected_value": row.rating,
+            "correction_kind_hint": row.reason,
+            "same_request": True,
+            "created_at": _iso(row.updated_at),
         }
-        for index, attempt in enumerate(json.loads(record.attempts))
+        for row in ratings
     ]
+    entries.extend(
+        {
+            "feedback_id": _ref("fb", child.id),
+            "feedback_type": "retry",
+            "correction_kind_hint": child.regenerate_reason,
+            "same_request": True,
+            "created_at": _iso(created_at),
+        }
+        for child, created_at in regenerations
+    )
+    return entries
+
+
+def _run(
+    record: RoutingRecord,
+    run: Run,
+    decisions: list[RoutingDecision],
+    ratings: list[MessageFeedback],
+    regenerations: list[tuple[Run, datetime]],
+) -> dict[str, Any]:
+    live = next(d for d in decisions if not d.shadow)
+    attempts = _attempts(record, live, run)
     completed = run.status == RunStatus.COMPLETED
     request_digest = hashlib.sha256(f"{run.account_id}:{run.logical_request_id}".encode())
     return {
@@ -113,9 +165,11 @@ def _run(record: RoutingRecord, run: Run, decisions: list[RoutingDecision]) -> d
             "structured_output_valid": None,
             "tool_success": None,
             "retry_count": 0,
-            "user_retry_signal": None,
+            "user_retry_signal": True if regenerations else None,
             "user_abandon_signal": None,
-            "user_accept_signal": None,
+            "user_accept_signal": (
+                None if not ratings else all(row.rating == "up" for row in ratings)
+            ),
             "user_correction_signal": None,
             "correction_distance": None,
             "final_latency_ms": record.latency_ms,
@@ -124,7 +178,7 @@ def _run(record: RoutingRecord, run: Run, decisions: list[RoutingDecision]) -> d
             "finalized_at": _iso(record.completed_at),
             "critical_failure": None,
         },
-        "feedback": [],
+        "feedback": _feedback(run, ratings, regenerations),
     }
 
 
@@ -154,7 +208,50 @@ def build_telemetry_batch(
         .order_by(RoutingDecision.run_id, RoutingDecision.shadow, RoutingDecision.policy_version)
     ):
         decisions[decision.run_id].append(decision)
-    exported = [_run(record, runs[record.run_id], decisions[record.run_id]) for record in records]
+    ratings: dict[str, list[MessageFeedback]] = {run_id: [] for run_id in run_ids}
+    for feedback_row in session.scalars(
+        select(MessageFeedback)
+        .where(MessageFeedback.run_id.in_(run_ids))
+        .order_by(MessageFeedback.run_id, MessageFeedback.created_at, MessageFeedback.id)
+    ):
+        ratings[feedback_row.run_id].append(feedback_row)
+    regenerations: dict[str, list[tuple[Run, datetime]]] = {run_id: [] for run_id in run_ids}
+    children = session.scalars(
+        select(Run).where(Run.previous_run_id.in_(run_ids)).order_by(Run.previous_run_id, Run.id)
+    ).all()
+    child_records = {
+        row.run_id: row
+        for row in session.scalars(
+            select(RoutingRecord).where(RoutingRecord.run_id.in_([c.id for c in children]))
+        )
+    }
+    for child in children:
+        child_record = child_records.get(child.id)
+        if child.previous_run_id is not None and child_record is not None:
+            regenerations[child.previous_run_id].append((child, child_record.started_at))
+    exported = [
+        _run(
+            record,
+            runs[record.run_id],
+            decisions[record.run_id],
+            ratings[record.run_id],
+            regenerations[record.run_id],
+        )
+        for record in records
+    ]
+    entries = model_registry(registry)
+    known = {(entry["provider"], entry["model"]) for entry in entries}
+    used = {
+        (attempt["provider"], attempt["model"]) for run in exported for attempt in run["attempts"]
+    } | {
+        (decision["selected_provider"], decision["selected_model"])
+        for run in exported
+        for decision in run["decisions"]
+    }
+    if used - known:
+        # Parakh would quarantine these runs; refuse to ship a batch with dangling models.
+        missing = ", ".join(sorted(f"{p}/{m}" for p, m in used - known))
+        raise ValueError(f"runs reference models absent from the registry: {missing}")
     window = {"start": _iso(start), "end": _iso(end)}
     digest = hashlib.sha256(
         json.dumps({"window": window, "runs": exported}, sort_keys=True).encode()
@@ -167,6 +264,6 @@ def build_telemetry_batch(
         "producer": {"repo": PRODUCER_REPO, "version": __version__},
         "feature_schema_version": FEATURE_SCHEMA_VERSION,
         "window": window,
-        "model_registry": model_registry(registry),
+        "model_registry": entries,
         "runs": exported,
     }

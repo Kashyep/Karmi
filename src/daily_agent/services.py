@@ -873,6 +873,8 @@ def persist_completed_run(
     response: str,
     outcome: Outcome,
     request_hash: str | None = None,
+    previous_run_id: str | None = None,
+    regenerate_reason: str | None = None,
 ) -> Run:
     run = Run(
         account_id=account_id,
@@ -882,6 +884,8 @@ def persist_completed_run(
         status=RunStatus.COMPLETED if outcome == Outcome.ACCEPT else RunStatus.DEFERRED,
         outcome=outcome,
         response_text=response,
+        previous_run_id=previous_run_id,
+        regenerate_reason=regenerate_reason,
     )
     session.add(run)
     session.flush()

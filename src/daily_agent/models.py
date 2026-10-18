@@ -244,6 +244,30 @@ class Run(Base):
     outcome: Mapped[str | None] = mapped_column(String(30), nullable=True)
     response_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     generation: Mapped[int] = mapped_column(Integer, default=1)
+    # Set when this run regenerates an earlier reply; ``regenerate_reason`` is a fixed token.
+    previous_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    regenerate_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+
+class MessageFeedback(Base):
+    """One account-scoped rating per reply. Reasons are a fixed vocabulary, never free text."""
+
+    __tablename__ = "message_feedback"
+    __table_args__ = (
+        UniqueConstraint("account_id", "run_id"),
+        CheckConstraint("rating IN ('up', 'down')", name="check_message_feedback_rating"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    rating: Mapped[str] = mapped_column(String(8))
+    reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class OutboxEvent(Base):

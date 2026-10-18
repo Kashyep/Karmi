@@ -19,6 +19,7 @@ from daily_agent.models import (
     Account,
     BillingEvent,
     BudgetReservation,
+    MessageFeedback,
     Note,
     Reminder,
     RoutingRecord,
@@ -35,11 +36,14 @@ from daily_agent.schemas import (
     ARMORY_TIERS,
     ActiveThemeUpdate,
     ArmoryView,
+    FeedbackCreate,
+    FeedbackView,
     MessageCreate,
     MessageView,
     NoteCreate,
     NoteView,
     Outcome,
+    RegenerateCreate,
     ReminderCreate,
     TaskCreate,
     TaskView,
@@ -426,13 +430,16 @@ def create_app() -> FastAPI:
             "delivery": "test_adapter_only",
         }
 
-    @app.post("/v1/messages", response_model=MessageView)
-    def send_message(
+    def execute_message(
         body: MessageCreate,
-        principal: Principal = Depends(require_principal),
-        session: Session = Depends(get_session),
-        settings: Settings = Depends(get_settings),
-        gateway: Gateway = Depends(gateway_dependency),
+        principal: Principal,
+        session: Session,
+        settings: Settings,
+        gateway: Gateway,
+        *,
+        escalate: bool = False,
+        previous_run_id: str | None = None,
+        regenerate_reason: str | None = None,
     ) -> MessageView:
         request_hash = hashlib.sha256(body.text.encode("utf-8")).hexdigest()
         existing = session.scalar(
@@ -450,6 +457,7 @@ def create_app() -> FastAPI:
                 outcome=Outcome(existing.outcome or "DEFERRED"),
                 response=existing.response_text or "",
                 route=_route_for(session, existing.id),
+                previous_run_id=existing.previous_run_id,
             )
         _subscription, policy = policy_for(session, principal.account_id)
         amount = estimate_request_cost_micro(policy, settings)
@@ -501,6 +509,7 @@ def create_app() -> FastAPI:
                 settings=settings,
                 plan=policy,
                 gateway=gateway,
+                escalate=escalate,
             )
             timing = RunTiming(
                 started_at=started_at,
@@ -522,6 +531,8 @@ def create_app() -> FastAPI:
                 response=result.response,
                 outcome=result.outcome,
                 request_hash=request_hash,
+                previous_run_id=previous_run_id,
+                regenerate_reason=regenerate_reason,
             )
             record_routing_evidence(
                 session,
@@ -568,6 +579,7 @@ def create_app() -> FastAPI:
                 outcome=Outcome(recovered.outcome or "DEFERRED"),
                 response=recovered.response_text or "",
                 route=_route_for(session, recovered.id),
+                previous_run_id=recovered.previous_run_id,
             )
         except Exception:
             session.rollback()
@@ -580,6 +592,99 @@ def create_app() -> FastAPI:
             outcome=result.outcome,
             response=result.response,
             route=result.route,
+            previous_run_id=run.previous_run_id,
+        )
+
+    @app.post("/v1/messages", response_model=MessageView)
+    def send_message(
+        body: MessageCreate,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+        settings: Settings = Depends(get_settings),
+        gateway: Gateway = Depends(gateway_dependency),
+    ) -> MessageView:
+        return execute_message(body, principal, session, settings, gateway)
+
+    def own_run(session: Session, principal: Principal, run_id: str) -> Run:
+        run = session.scalar(
+            select(Run).where(
+                Run.id == run_id,
+                Run.account_id == principal.account_id,
+                Run.user_id == principal.user_id,
+            )
+        )
+        if run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="reply not found")
+        return run
+
+    @app.post("/v1/runs/{run_id}/feedback", response_model=FeedbackView)
+    def rate_reply(
+        run_id: str,
+        body: FeedbackCreate,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> FeedbackView:
+        """Idempotent upsert: repeating a rating is a no-op, a new rating replaces the old one."""
+        own_run(session, principal, run_id)
+        reason = body.reason if body.rating == "down" else None
+
+        def upsert() -> None:
+            row = session.scalar(
+                select(MessageFeedback).where(
+                    MessageFeedback.account_id == principal.account_id,
+                    MessageFeedback.run_id == run_id,
+                )
+            )
+            if row is None:
+                session.add(
+                    MessageFeedback(
+                        account_id=principal.account_id,
+                        user_id=principal.user_id,
+                        run_id=run_id,
+                        rating=body.rating,
+                        reason=reason,
+                    )
+                )
+            elif (row.rating, row.reason) != (body.rating, reason):
+                row.rating, row.reason, row.updated_at = body.rating, reason, datetime.now(UTC)
+            session.commit()
+
+        try:
+            upsert()
+        except IntegrityError:
+            session.rollback()  # a concurrent identical request created the row first
+            upsert()
+        return FeedbackView(run_id=run_id, rating=body.rating, reason=reason)
+
+    @app.post("/v1/runs/{run_id}/regenerate", response_model=MessageView)
+    def regenerate_reply(
+        run_id: str,
+        body: RegenerateCreate,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+        settings: Settings = Depends(get_settings),
+        gateway: Gateway = Depends(gateway_dependency),
+    ) -> MessageView:
+        previous = own_run(session, principal, run_id)
+        if body.idempotency_key == previous.logical_request_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="regenerate needs a new idempotency key",
+            )
+        if previous.request_hash != hashlib.sha256(body.text.encode("utf-8")).hexdigest():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="text does not match the original request",
+            )
+        return execute_message(
+            MessageCreate(text=body.text, idempotency_key=body.idempotency_key),
+            principal,
+            session,
+            settings,
+            gateway,
+            escalate=True,
+            previous_run_id=previous.id,
+            regenerate_reason=body.reason,
         )
 
     @app.post("/webhooks/internal-test")
