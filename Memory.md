@@ -1,5 +1,28 @@
 # Daily Agent implementation memory
 
+## Current Karmi readiness work (2026-10-10)
+
+- Working checkout: `/home/rosso/Projects/Karmi`, branch `readiness-harness`, baseline `0c3d11e`;
+  all existing local setup and implementation changes are preserved and remain uncommitted.
+- Clerk login presentation is now Karmi-owned: email-code sign-in/sign-up form using Clerk for
+  verification/session only. Dashboard must enable email-code sign-in/verification. Current SDK
+  remains `clerk_flutter 0.0.18-beta`. No real phone sign-in/API-to-Neon check has been performed.
+- OpenCode readiness audit: no dynamic best-model selection exists. Chat calls `fake_generate` and
+  echoes draft text; optional TypeSafe calls classify/score context only. Parakh routes static and
+  records shadow decisions; it refuses canary/production transitions. ModelLab seed suite (60
+  cases) validates; it has no live runner and does not support evidence-backed model comparisons.
+- Review: `docs/reviews/OPENCODE-AI-001.md`. Current OpenCode Zen docs show free models are
+  temporary; some free endpoints allow prompt use for model improvement or prohibit confidential
+  data. No key was read and no model API request was made.
+- Updated README and Clerk runbook to describe the present UI and AI readiness accurately.
+- Verification: Flutter analyzer PASS, Flutter screen tests PASS (29), seed validation PASS (60),
+  Parakh + ModelLab targeted Python tests PASS (24). Production readiness is still BLOCKED; see
+  `scripts/readiness_config.py`, Phase gates, and review.
+- Next: implement a privacy-filtered OpenCode adapter and candidate-only live evaluation runner only
+  after the operator privately configures a key, selects acceptable free-model data terms, and
+  explicitly approves a bounded test. Then run the model experiment, implement the evidenced route,
+  execute release gates, and request final approval before any GitHub publication.
+
 - Updated UTC: 2026-09-10T14:50:54Z
 - Branch: `main`
 - Baseline commit: `b67c964288e24bf5d3494368766b9c5a7ed25e7f`
@@ -198,3 +221,46 @@
   229/229 each, `flutter analyze` 0 issues, `dart format` 0 changed.
   Regenerated only 8 tier Armory goldens per OS; both golden suites 90/90.
   CI had not run on this fix at the time of local verification.
+
+## Backend setup (2026-10-10)
+
+- Added hidden URL prompts and exclusive owner-only .env creation; auto-generates local auth/webhook secrets. Existing .env preserved; no credentials entered this session.
+- Fixed Alembic percent escaping for encoded URLs. Runbook covers migrations, workers and USB mobile connection.
+- Checks: 20 targeted tests, lint/secret scan, typecheck and disposable fresh migration/HTTP smoke PASS. Independent review: docs/reviews/SETUP-001.md.
+- No production deployment or live generation. Clerk and physical-device setup continued below.
+
+## Neon connection slice (2026-10-10)
+
+- Operator confirmed pooled Neon read-only test: neondb, PostgreSQL 18.6. Agent has no credentials in conversation; private URLs are saved locally.
+- With explicit user authorization, Alembic initially upgraded empty production branch to c5d7e9f1a2b4; 20 tables verified. Later, on 2026-10-10, user explicitly authorized reviewed Clerk migration 1a2b3c4d5e6f. Preflight confirmed expected prior revision, helper applied only that revision, and postflight verified 20 tables, column/unique constraint and target revision. No app deployment or live model call.
+- Added separate direct migration URL, psycopg normalization, Neon verify-full TLS and pool 2/overflow 0/timeouts 15s. Disabled PostgreSQL create_all in API/worker/helper.
+- Added python -m scripts.setup_neon: hidden paired URL prompts, separate ignored owner-only .env.neon, no connection/writes. `.env.neon` is not auto-loaded.
+- 104 local tests, lint/secret scan and typecheck PASS. Independent review docs/reviews/NEON-001.md accepts. Read-only Neon inventory with strict TLS succeeded using Certifi roots; no migrations or application startup against Neon.
+- Changes remain local on readiness-harness; not pushed to main. Preserve prior setup changes. Next: operator saves URLs; read-only inventory; review migration plan before any production write.
+
+## Clerk backend auth slice (2026-10-10)
+
+- Current checkout branch: `readiness-harness`; preserve all earlier uncommitted setup work.
+- Operator saved `.env.clerk`; confirmed owner-only mode and expected variable names without printing values. Runtime settings successfully parsed the Clerk RSA verification key.
+- Added PyJWT RS256 verification, issuer/expiry/iat/session checks, immutable `sub` mapping, customer-only first-login provisioning with Ananta/free subscription, and safe concurrent-provision retry. Existing development HMAC flow remains local-only.
+- Added nullable unique `users.clerk_subject` and reversible migration `1a2b3c4d5e6f`. Fresh disposable SQLite upgrade + `alembic check` PASS. After explicit authorization, Neon advanced from `c5d7e9f1a2b4` to `1a2b3c4d5e6f`; runner verified 20 public tables and the Clerk column/unique constraint.
+- Neon migration helper accepts only empty schema / expected `c5d7e9f1a2b4` / verified current target, pins command to `1a2b3c4d5e6f`, and verifies one-column UNIQUE on `clerk_subject`. Pure preflight tests and independent read-only review pass.
+- 87 unit/ModelLab/web tests and 29 API E2E tests PASS; Ruff/secret scan and strict mypy PASS. Independent read-only review `docs/reviews/CLERK-001.md` ACCEPT_RECOMMENDED for auth and migration helper.
+- Offline public-key verification cannot observe session revocation until JWT expiry. No deployment or live provider activity.
+- Next: operator signs in on device, then we start/test the intended local backend path. Do not start the app against Neon without explicit authorization.
+
+## Flutter Clerk client and USB install (2026-10-10)
+
+- Added `clerk_flutter 0.0.18-beta`; Clerk sessions persist through the SDK, and the API client fetches a fresh token per request. Stale development tokens cannot fall back into Clerk mode. Local `/dev/token` remains for unconfigured builds/tests.
+- Added private-config launcher `mobile/tool/run_android_dev.py`; it reads only the Clerk publishable key from `.env.clerk`. Backend PEM stays out of Flutter. USB URL is `127.0.0.1:8000` via `adb reverse`.
+- Pixel 9a (`5B271XEBF3XDF0`) initially needed USB-debug authorization; after authorization built and installed debug APK successfully. Final installed build has API URL `http://127.0.0.1:8000`; `adb reverse tcp:8000 tcp:8000` is active. Package `ai.karmi.app` was running; Clerk sign-in panel appeared in screenshot, still Development mode. No sign-in/API request was made.
+- Flutter analyze and 231 non-golden tests PASS; targeted screens tests 29/29 PASS. First full suite: 313 passed, 8 Usage-screen Linux goldens failed; all other goldens passed. APK debug build PASS. Full golden differences need review; not refreshed.
+- Next: operator completes Clerk test-account sign-in; then run local backend with development DB and verify `/ready` + one authenticated API request. Keep Neon runtime separate until explicitly authorized.
+
+## Goal paused checkpoint (2026-10-12)
+
+- User explicitly asked to stop and resume later. Goal remains paused; no commit/push/deploy/release.
+- Durable status and ordered remaining work: `docs/PROGRESS-2026-10-12.md`.
+- OpenCode adapter/runtime/harness edits were added immediately before the pause and remain unverified:
+  `src/daily_agent/opencode.py`, `src/model_lab/opencode_runner.py`, changes to config/services/API/router/CLI, and `tests/unit/test_opencode.py`. No tests or lint ran after these edits. Reinspect current diff and verify before relying on them.
+- No OpenCode key was read and no provider request was made. Continue only with synthetic prompts and explicit bounded free-model requests; keep runtime disabled until privacy, evaluation and routing evidence gates pass.
