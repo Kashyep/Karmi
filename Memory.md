@@ -12,6 +12,9 @@
 - NOT done / blocked on owner: OpenRouter key and request cap (no live scoring, registry is a
   seed), Docker (integration ran on local PostgreSQL 18 + Valkey instead), Android phone + Clerk
   email-code check, hosting + signing choices, tester list, legal review, push/tag/publish.
+- 2026-10-19 update: key supplied (free tier, 50 req/day) -> capped probe only (7 models answered), live gateway
+  smoke OK, access codes + server-address UI + podman integration runner added, `v0.1.0-beta.1` prepared. Still
+  NOT verified: device sign-in (phone dropped off adb), hosted backend (none deployed), full pilot.
 - Parakh branch `openrouter-student-set` holds the OpenRouter adapter, catalog snapshot, registry
   builder and the 49-case student set; its `pilot run` cannot yet run that set (see known-issues).
 
