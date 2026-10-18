@@ -18,7 +18,7 @@ real one under Welcome > Server address (or rebuild with `--dart-define=API_BASE
 Hosting steps: `ops/deploy/README.md`.
 
 ## Install
-Download `app-release.apk`, check its SHA-256 against `app-release.apk.sha256`, allow installs from this
+Download `karmi-v0.1.0-beta.1.apk`, check its SHA-256 against `karmi-v0.1.0-beta.1.apk.sha256`, allow installs from this
 source, install. The APK is signed with the Android debug key (no release keystore exists yet), so
 updates must be installed over the same debug-signed build.
 
