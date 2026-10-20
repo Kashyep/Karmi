@@ -87,3 +87,18 @@ legal review of the notice; final approval to push, tag and publish.
   regenerating plans/settings/welcome goldens.
 - Release APK `mobile/build/app/outputs/flutter-apk/app-release.apk`, sha256
   `ee94f426d269c9116de18e573dcca73c8ac754090a7d8e577a8833f349dabb95` (debug-signed, placeholder server).
+
+## Update 2026-10-21: hosted backend and notes removal
+
+- Notes feature removed end to end (ceda6c3, f1dd564, 3707441). Neon migrated 1a2b3c4d5e6f -> 4d5e6f708192
+  (drops `notes`; owner approved the destructive drop).
+- Azure Container Apps `karmi-beta` in `cae-karmi-prod` (eastasia), one replica, image
+  `karmiprod49bem0.azurecr.io/karmi-backend:fe59b82` built locally with podman (ACR Tasks are not allowed on the
+  Azure for Students subscription). First deploy crashed: `httpx` was only a dev dependency; fixed in fe59b82.
+- Live checks against https://karmi-beta.gentlepebble-6595a0fa.eastasia.azurecontainerapps.io:
+  `/health` 200 `{"status":"alive"}`; `/ready` 200 `database: ok`; `/v1/usage` without token 401;
+  `/dev/token` 404; plain http -> 301 to https.
+- `scripts/readiness_config.py --env-file .env.azure.prod`: status BLOCKED, **0 FAIL**. BLOCKED (observation-only,
+  by design): telemetry_live_observed, migrations_restored, rollback_proven, tls_termination, payment_approval.
+- APK rebuilt against the hosted URL: sha256 `0c38dc61ff6420c447bf428e90c869278f41930f08a701bb0d76d25b350a094f`;
+  installed on Pixel 9a (adb `Success`). Device sign-in not yet recorded (phone locked; Clerk code needs the owner).

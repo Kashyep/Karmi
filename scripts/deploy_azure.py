@@ -629,58 +629,43 @@ def deploy() -> int:
         if upd_res.returncode != 0:
             return fail_step("containerapp update", upd_res.returncode)
 
+    # latestReadyRevisionName stays empty for single-revision apps on this platform, so check the
+    # revision running the image we just deployed: Healthy + Running.
     ready = False
     latest_ready_rev = ""
     for _ in range(40):
         time.sleep(15)
-        state_proc = az(
+        rev_proc = az(
             "containerapp",
-            "show",
+            "revision",
+            "list",
             "-g",
             RG,
             "-n",
             APP,
             "--query",
-            "properties.provisioningState",
+            "[].{name:name,image:properties.template.containers[0].image,"
+            "health:properties.healthState,run:properties.runningState}",
             "-o",
-            "tsv",
+            "json",
         )
-        ready_proc = az(
-            "containerapp",
-            "show",
-            "-g",
-            RG,
-            "-n",
-            APP,
-            "--query",
-            "properties.latestReadyRevisionName",
-            "-o",
-            "tsv",
-        )
-        latest_proc = az(
-            "containerapp",
-            "show",
-            "-g",
-            RG,
-            "-n",
-            APP,
-            "--query",
-            "properties.latestRevisionName",
-            "-o",
-            "tsv",
-        )
-        if (
-            state_proc.returncode == 0
-            and ready_proc.returncode == 0
-            and latest_proc.returncode == 0
-        ):
-            prov_state = state_proc.stdout.strip()
-            ready_rev = ready_proc.stdout.strip()
-            latest_rev = latest_proc.stdout.strip()
-            if prov_state == "Succeeded" and ready_rev and ready_rev == latest_rev:
+        if rev_proc.returncode != 0:
+            continue
+        try:
+            revisions = json.loads(rev_proc.stdout or "[]")
+        except json.JSONDecodeError:
+            continue
+        for rev in revisions if isinstance(revisions, list) else []:
+            if (
+                rev.get("image") == image
+                and rev.get("health") == "Healthy"
+                and rev.get("run") == "Running"
+            ):
                 ready = True
-                latest_ready_rev = ready_rev
+                latest_ready_rev = str(rev.get("name"))
                 break
+        if ready:
+            break
 
     if not ready:
         return die("Container app failed to become ready within timeout")

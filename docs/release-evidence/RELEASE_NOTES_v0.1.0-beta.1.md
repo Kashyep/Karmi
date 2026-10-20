@@ -5,6 +5,7 @@ stronger model classes. Replies can be wrong. Prompts go to third-party free-mod
 sensitive personal information. Legal review of the in-app notice is still pending: invite adults only.
 
 ## What is in this build
+- The notes / Memory feature has been removed.
 - Chat with an automatic model router (free OpenRouter models; maths, code and Hindi/Hinglish probed).
 - Thumbs up/down with a reason, and Regenerate (retries on a stronger model).
 - Beta **access codes**: Settings > Plans and access code. A code unlocks Yanta, Trika or Parth.
@@ -12,10 +13,9 @@ sensitive personal information. Legal review of the in-app notice is still pendi
 - First-launch tester notice that must be acknowledged.
 - Server address: Welcome screen > Server address (https only).
 
-## Before it works for you
-The app needs a running Karmi backend. This release is built with a placeholder server address; set the
-real one under Welcome > Server address (or rebuild with `--dart-define=API_BASE_URL=https://...`).
-Hosting steps: `ops/deploy/README.md`.
+## Backend
+The APK talks to the hosted beta backend `https://karmi-beta.gentlepebble-6595a0fa.eastasia.azurecontainerapps.io`
+(Azure Container Apps, East Asia; database on Neon). Welcome > Server address can point it elsewhere.
 
 ## Install
 Download `karmi-v0.1.0-beta.1.apk`, check its SHA-256 against `karmi-v0.1.0-beta.1.apk.sha256`, allow installs from this
