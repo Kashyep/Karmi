@@ -13,6 +13,7 @@ List<String> unsupportedClerkSignUpFields(List<clerk.Field> missing) => missing
         clerk.Field.emailAddress,
         clerk.Field.firstName,
         clerk.Field.lastName,
+        clerk.Field.password,
       }.contains(field),
     )
     .map((field) => field.name)
@@ -35,9 +36,12 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
   final _code = TextEditingController();
   final _firstName = TextEditingController();
   final _lastName = TextEditingController();
+  final _password = TextEditingController();
+  final _confirmPassword = TextEditingController();
   bool _creatingAccount = false;
   bool _awaitingCode = false;
   bool _working = false;
+  bool _initializedFromMidSignUp = false;
   String? _error;
   String? _notice;
 
@@ -46,17 +50,36 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
       ClerkSdkEmailCodeActions(ClerkAuth.of(context, listen: false), context);
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initializedFromMidSignUp) {
+      final actions = _actions(context);
+      if (actions.isMidSignUp) {
+        _initializedFromMidSignUp = true;
+        _creatingAccount = true;
+        final email = actions.signUpEmail;
+        if (email != null && _email.text.isEmpty) {
+          _email.text = email;
+        }
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _email.dispose();
     _code.dispose();
     _firstName.dispose();
     _lastName.dispose();
+    _password.dispose();
+    _confirmPassword.dispose();
     super.dispose();
   }
-
   Future<void> _submit() async {
     final actions = _actions(context);
-    final email = _email.text.trim();
+    final email = _email.text.trim().isNotEmpty
+        ? _email.text.trim()
+        : (actions.signUpEmail ?? '');
     if (email.isEmpty || (_awaitingCode && _code.text.trim().isEmpty)) {
       setState(
         () => _error = _awaitingCode
@@ -72,6 +95,16 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
       );
       return;
     }
+    if (_creatingAccount && !_awaitingCode) {
+      if (_password.text.length < 8) {
+        setState(() => _error = 'Password must be at least 8 characters.');
+        return;
+      }
+      if (_password.text != _confirmPassword.text) {
+        setState(() => _error = 'Passwords do not match.');
+        return;
+      }
+    }
 
     setState(() {
       _working = true;
@@ -86,6 +119,9 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
           _lastName.text.trim().isEmpty ? null : _lastName.text.trim(),
           _awaitingCode ? _code.text.trim() : null,
           _showClerkError,
+          password: _password.text.isEmpty ? null : _password.text,
+          passwordConfirmation:
+              _confirmPassword.text.isEmpty ? null : _confirmPassword.text,
         );
       } else {
         await actions.signIn(
@@ -152,6 +188,8 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
       _creatingAccount = !_creatingAccount;
       _awaitingCode = false;
       _code.clear();
+      _password.clear();
+      _confirmPassword.clear();
       _error = null;
       _notice = null;
     });
@@ -238,8 +276,9 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
                 labelText: 'Email address',
                 prefixIcon: Icon(Icons.mail_outline),
               ),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
+              textInputAction:
+                  _creatingAccount ? TextInputAction.next : TextInputAction.done,
+              onSubmitted: _creatingAccount ? null : (_) => _submit(),
             )
           else
             TextField(
@@ -254,6 +293,31 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _submit(),
             ),
+          if (!_awaitingCode && _creatingAccount) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _password,
+              obscureText: true,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: const InputDecoration(
+                labelText: 'Create a password',
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _confirmPassword,
+              obscureText: true,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: const InputDecoration(
+                labelText: 'Confirm password',
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(

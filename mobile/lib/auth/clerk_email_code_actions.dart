@@ -14,6 +14,8 @@ abstract interface class ClerkEmailCodeActions {
   List<clerk.Field> get signUpMissingFields;
   bool get signInAwaitingCode;
   bool get signUpAwaitingCode;
+  bool get isMidSignUp;
+  String? get signUpEmail;
 
   Future<void> signIn(
     String email,
@@ -25,8 +27,10 @@ abstract interface class ClerkEmailCodeActions {
     String? firstName,
     String? lastName,
     String? code,
-    ClerkFlowErrorHandler onError,
-  );
+    ClerkFlowErrorHandler onError, {
+    String? password,
+    String? passwordConfirmation,
+  });
   Future<void> resendCode(ClerkFlowErrorHandler onError);
   Future<void> reset(ClerkFlowErrorHandler onError);
 }
@@ -62,6 +66,15 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
   bool get signUpAwaitingCode =>
       auth.signUp?.unverified(clerk.Field.emailAddress) == true;
 
+  @override
+  bool get isMidSignUp =>
+      !auth.isSignedIn &&
+      auth.signUp != null &&
+      auth.signUp!.unverified(clerk.Field.emailAddress) == false &&
+      auth.signUp!.missingFields.contains(clerk.Field.password);
+
+  @override
+  String? get signUpEmail => auth.signUp?.emailAddress;
   Future<void> _safely<T>(
     Future<T> Function() operation,
     ClerkFlowErrorHandler onError,
@@ -93,13 +106,17 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     String? firstName,
     String? lastName,
     String? code,
-    ClerkFlowErrorHandler onError,
-  ) => _safely(
+    ClerkFlowErrorHandler onError, {
+    String? password,
+    String? passwordConfirmation,
+  }) => _safely(
     () => auth.attemptSignUp(
       strategy: clerk.Strategy.emailCode,
-      emailAddress: email,
+      emailAddress: email.isNotEmpty ? email : null,
       firstName: firstName,
       lastName: lastName,
+      password: password,
+      passwordConfirmation: passwordConfirmation,
       code: code,
     ),
     onError,

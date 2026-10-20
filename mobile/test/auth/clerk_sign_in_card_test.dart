@@ -39,6 +39,14 @@ void main() {
         find.widgetWithText(TextField, 'Email address'),
         'new@example.com',
       );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Create a password'),
+        'password123',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Confirm password'),
+        'password123',
+      );
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
@@ -111,9 +119,147 @@ void main() {
         clerk.Field.password,
         clerk.Field.phoneNumber,
       ]),
-      ['password', 'phone_number'],
+      ['phone_number'],
     );
   });
+
+  testWidgets('password fields render on Create account with obscureText', (
+    tester,
+  ) async {
+    final actions = FakeClerkEmailCodeActions();
+    await pumpHost(tester, ClerkSignInCard(actions: actions));
+    await tester.tap(find.text('New to Karmi? Create an account'));
+    await tester.pumpAndSettle();
+
+    final passwordFieldFinder = find.widgetWithText(
+      TextField,
+      'Create a password',
+    );
+    final confirmFieldFinder = find.widgetWithText(
+      TextField,
+      'Confirm password',
+    );
+    expect(passwordFieldFinder, findsOneWidget);
+    expect(confirmFieldFinder, findsOneWidget);
+
+    final passwordWidget = tester.widget<TextField>(passwordFieldFinder);
+    final confirmWidget = tester.widget<TextField>(confirmFieldFinder);
+    expect(passwordWidget.obscureText, isTrue);
+    expect(passwordWidget.autofillHints, contains(AutofillHints.newPassword));
+    expect(confirmWidget.obscureText, isTrue);
+    expect(confirmWidget.autofillHints, contains(AutofillHints.newPassword));
+  });
+
+  testWidgets('mismatch and <8 chars block submission with a visible error', (
+    tester,
+  ) async {
+    final actions = FakeClerkEmailCodeActions();
+    await pumpHost(tester, ClerkSignInCard(actions: actions));
+    await tester.tap(find.text('New to Karmi? Create an account'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Email address'),
+      'person@example.com',
+    );
+
+    // Less than 8 chars
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Create a password'),
+      'short',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Confirm password'),
+      'short',
+    );
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(actions.signUpCalls, 0);
+    expect(
+      find.text('Password must be at least 8 characters.'),
+      findsOneWidget,
+    );
+
+    // Mismatch
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Create a password'),
+      'password123',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Confirm password'),
+      'password456',
+    );
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(actions.signUpCalls, 0);
+    expect(find.text('Passwords do not match.'), findsOneWidget);
+  });
+
+  testWidgets(
+    'attemptSignUp receives password and confirmation',
+    (tester) async {
+      final actions = FakeClerkEmailCodeActions();
+      await pumpHost(tester, ClerkSignInCard(actions: actions));
+      await tester.tap(find.text('New to Karmi? Create an account'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Email address'),
+        'user@example.com',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Create a password'),
+        'supersecret123',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Confirm password'),
+        'supersecret123',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(actions.signUpCalls, 1);
+      expect(actions.lastPassword, 'supersecret123');
+      expect(actions.lastPasswordConfirmation, 'supersecret123');
+    },
+  );
+
+  testWidgets(
+    'mid sign-up resume shows password fields and completes sign-up',
+    (tester) async {
+      final actions = FakeClerkEmailCodeActions()
+        ..isMidSignUp = true
+        ..signUpEmail = 'resume@example.com';
+      await pumpHost(tester, ClerkSignInCard(actions: actions));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.widgetWithText(TextField, 'Create a password'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(TextField, 'Confirm password'),
+        findsOneWidget,
+      );
+      expect(find.text('resume@example.com'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Create a password'),
+        'resumepass123',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Confirm password'),
+        'resumepass123',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(actions.signUpCalls, 1);
+      expect(actions.lastPassword, 'resumepass123');
+      expect(actions.lastPasswordConfirmation, 'resumepass123');
+      expect(actions.isSignedIn, isTrue);
+    },
+  );
 }
 
 class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
@@ -125,6 +271,10 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   bool supportsEmailCode = true;
   @override
   bool legalConsentRequired = false;
+  @override
+  bool isMidSignUp = false;
+  @override
+  String? signUpEmail;
   bool requireFirstName = false;
   String? nextError;
   bool _signInAwaitingCode = false;
@@ -133,7 +283,8 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   int signInCalls = 0;
   int signUpCalls = 0;
   int resendCalls = 0;
-
+  String? lastPassword;
+  String? lastPasswordConfirmation;
   @override
   bool get signInAwaitingCode => _signInAwaitingCode;
 
@@ -173,9 +324,13 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
     String? firstName,
     String? lastName,
     String? code,
-    ClerkFlowErrorHandler onError,
-  ) async {
+    ClerkFlowErrorHandler onError, {
+    String? password,
+    String? passwordConfirmation,
+  }) async {
     signUpCalls++;
+    lastPassword = password;
+    lastPasswordConfirmation = passwordConfirmation;
     if (nextError != null) return _error(onError);
     _missing
       ..clear()
@@ -185,6 +340,11 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
             : [],
       );
     if (_missing.isNotEmpty) return;
+    if (isMidSignUp) {
+      isMidSignUp = false;
+      isSignedIn = true;
+      return;
+    }
     if (code == null) {
       _signUpAwaitingCode = true;
     } else {
