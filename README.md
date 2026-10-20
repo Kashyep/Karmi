@@ -60,7 +60,7 @@ checks; it exits nonzero when a required gate is unavailable or fails.
 - Production mode requires PostgreSQL, real authentication configuration and finite approved
   monetary budgets. It rejects the development secret and local auth flow.
 - Provider keys remain server-side. The optional TypeSafe integration only performs structured
-  classification and note relevance scoring; it does not generate the chat reply. Its current
+  classification; it does not generate the chat reply. Its current
   synthetic rate card is not approved for real spend accounting. Do not enable it for production.
 - Parakh model-selection bundles are shadow-only. They record candidate decisions and do not select
   a model for live traffic. ModelLab has a validated 60-case offline seed bank and import/report

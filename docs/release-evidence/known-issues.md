@@ -10,9 +10,6 @@
   Classes are size-based labels. The full 49-case, 3-repeat pilot needs a funded key (1000/day) or several days.
 - Parakh's `pilot run` still only accepts exactly 36 train cases at concurrency 1 and does not use the new
   adapter; the probe used a standalone capped script (`Parakh/scripts/openrouter_probe.py`) instead.
-- Every OpenRouter model has data terms `unknown`, so **notes are never sent to them**. The only models with
-  `no_training` terms are three OpenCode models, which need an OpenCode key that does not exist. "Draft using
-  my notes" therefore returns the "couldn't reach the AI service" message in this beta.
 - **No hosted backend.** Nothing was deployed (no cloud login). The APK is built with a placeholder server
   address; set the real one under Welcome > Server address, or rebuild. See `ops/deploy/README.md`.
 - **Sign-in not verified on a device.** The Pixel 9a was connected earlier in the session but dropped off

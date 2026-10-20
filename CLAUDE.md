@@ -10,7 +10,7 @@ Specification lives in `docs/blueprint/` (PRD, Architecture, Rules, Phases, Tier
 src/daily_agent/
   api.py        HTTP layer: all routes in create_app(); thin handlers
   services.py   business logic: budget reserve/settle/release, idempotent writes,
-                note context, generation, inbox, run/outbox persistence
+                generation, inbox, run/outbox persistence
   gateway/      model gateway: registry (model-registry.v1), adapters, router, health, service
   providers.py  TypeSafe adapter (the only place allowed to import typesafe_sdk)
   models.py     SQLAlchemy models (money columns are BigInteger micro-units)
@@ -29,7 +29,7 @@ tests/          unit/, e2e/ (TestClient + temp SQLite), web/, model_lab/, integr
 ```
 
 Request flow for `POST /v1/messages`: idempotency check → `reserve_budget` → **commit** →
-`build_note_context` + `generate_reply` (classify → route → generate via the gateway) → `_apply_intent` →
+`generate_reply` (classify → route → generate via the gateway) → `_apply_intent` →
 `persist_completed_run` → `record_routing_evidence` (routing record, live decision, optional shadow
 decision) → `settle_budget` → commit. Any failure after reserve → `release_budget`.
 A live duplicate request gets 409 (`ReservationInFlight`). Reservations left RESERVED past
@@ -58,13 +58,12 @@ full gate run with a summarized result.
 ## Engineering rules
 
 - HTTP concerns stay in `api.py`; logic that touches money, idempotency or tenancy goes in `services.py`.
-- Every query on user data is scoped by `account_id` (notes also by `owner_user_id`; tasks are
-  account-shared by design).
+- Every query on user data is scoped by `account_id` (tasks are account-shared by design).
 - Idempotent writes: same key + same payload → replay; different payload → 409 via `_idempotency_conflict()`.
 - New live-model HTTP code goes only in `gateway/adapters.py` (plus `opencode.py` and the TypeSafe
   adapter in `providers.py`), returns `ProviderCall`s, and its cost must flow through reserve →
   settle into `CostLedger`. Live models stay off unless a provider is enabled; free models only until
-  paid models are explicitly approved. Never send notes to a model whose registry entry lacks `no_training` terms.
+  paid models are explicitly approved.
 - Schema change = new Alembic migration + model change in the same commit; never edit an applied migration.
 - Match existing style: ruff (line 100), mypy strict.
 
