@@ -1,6 +1,25 @@
 # Tier entitlements and cost policy
 
-Draft engineering policy • 2026-09-09. Four subscriptions: Ananta (free), Yanta, Trika, Part. Prices, paid allowances, provider lists and production spending ceilings require measured costs and owner approval. No model is selected by subscription name alone.
+Draft engineering policy • 2026-09-09. Four subscriptions: Ananta (free), Yanta, Trika, Parth. Prices, paid allowances, provider lists and production spending ceilings require measured costs and owner approval. No model is selected by subscription name alone.
+
+## Current beta values (2026-10-21)
+
+Source of truth: `src/daily_agent/plans.py`. Prices are the owner's decision of record; request and
+token quotas and cost caps are still provisional development values. Every class is served by free
+models only.
+
+| Plan | Price (₹/month) | Requests/day | Tokens/day | Input / output cap (tokens) | Model classes | Starts at |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ananta | 0 | 20 | 40,000 | 4,000 / 512 | economy | economy |
+| Yanta | 149 | 100 | 300,000 | 8,000 / 1,024 | economy, balanced | economy |
+| Trika | 399 | 250 | 800,000 | 16,000 / 2,048 | economy, balanced, advanced | balanced |
+| Parth | 899 | 500 | 2,000,000 | 32,000 / 4,096 | balanced, advanced | balanced |
+
+Per-plan quotas sit under a shared daily cap on live provider requests across all accounts
+(default 50, matching an unfunded OpenRouter key), with the last 10 kept for paid plans. Each reply
+holds two request slots (one retry) and returns the slot it did not use. Free plans hit the cap
+first, so per-plan request counts above are upper bounds, not promises, while the beta shares one
+key.
 
 ## Two views of the same plan
 
@@ -9,7 +28,7 @@ Draft engineering policy • 2026-09-09. Four subscriptions: Ananta (free), Yant
 | Ananta | Useful everyday assistance with a finite free allowance | Compact working context; economical eligible models; small funded rescue reserve |
 | Yanta | Regular daily work, more continuity, tasks and reminders | Higher usage/context limits; operational tools; broader eligible model pool |
 | Trika | Longer analysis, documents and multi-step workflows | Larger evidence budget; more advanced calls and selective verification |
-| Part | Highest included capacity, advanced workflows and priority | Widest evaluated pool; larger request caps; deeper verification where useful |
+| Parth | Highest included capacity, advanced workflows and priority | Widest evaluated pool; larger request caps; deeper verification where useful |
 
 Access to correct identity handling, private data isolation and truthful action status is shared across all plans. Customers upgrade for useful capacity. Conversion to Yanta is a hypothesis to measure, not an assumption that all free users will pay. Track activation, retention, upgrade conversion, task success and support cost by cohort.
 

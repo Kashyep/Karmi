@@ -1,7 +1,8 @@
 # Hosted test backend: options (owner decision required)
 
-Status: **proposal only. Nothing is deployed.** Prices are approximate list prices from memory
-and MUST be re-checked on each provider's pricing page before a choice is made.
+Status: **historical proposal.** Azure Container Apps was chosen; the `karmi-beta` backend was
+deployed on 2026-10-21 (see `mvp-tester-release-2026-10-19.md` and `docs/runbooks/azure-deployment.md`).
+Prices below are approximate list prices from memory and MUST be re-checked before any change.
 
 Constraints from the code: single FastAPI container (`Dockerfile`, port 8000, TLS terminated by the
 platform, `--proxy-headers`), PostgreSQL (Neon is already provisioned for dev), no Redis dependency

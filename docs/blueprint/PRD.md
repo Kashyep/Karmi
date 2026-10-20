@@ -2,13 +2,39 @@
 
 Status: implementation specification, not evidence of an existing implementation. Owner: product Boss. Core release: v1. Names and prices require product validation; technical limits require benchmark and load-test evidence.
 
+## Current direction (owner decisions as of 2026-10-21)
+
+These decisions override older text in this PRD where they conflict. Everything else remains the
+long-term specification.
+
+- **Channel:** the owned Android app (Flutter) is the first channel, backed by a hosted beta
+  (Azure Container Apps, database on Neon PostgreSQL). WhatsApp stays disabled (section 3 and
+  ADR-0001).
+- **Audience:** a study and productivity assistant for students in India that replies in Hindi,
+  English or a mix. Invite adults only until the in-app notice has legal review (DPDP Act 2023).
+- **Notes and durable memory are removed** (owner decision, 2026-10-20; migration `4d5e6f708192`
+  drops the `notes` table). REQ-CTX-002, the notes part of REQ-ACT-001 and the Recall journey are
+  out of scope until a new decision.
+- **Models:** free models only, through the model gateway (`src/daily_agent/gateway/`: OpenRouter
+  and OpenCode adapters, reviewed `model_registry.json`, rules router). A registry row with a
+  non-zero price fails to load, and a call that reports a cost is refused. Paid models need
+  explicit owner approval.
+- **Prices:** the owner's decision of record is Ananta ₹0, Yanta ₹149, Trika ₹399 and Parth ₹899
+  a month (`plans.py`). Checkout stays disabled; beta access codes unlock the paid plans.
+- **Shared capacity:** every account shares the provider key's daily request limit (50 a day for an
+  unfunded OpenRouter key). `DAILY_AGENT_GATEWAY_DAILY_REQUEST_LIMIT` caps live provider requests
+  per UTC day and `DAILY_AGENT_GATEWAY_PAID_RESERVED_REQUESTS` keeps the last ones for paid plans.
+  When the cap is reached the API returns 429 `BETA_CAPACITY_FULL` with the reset time, before any
+  provider call or allowance charge.
+- **Plan ID:** the top plan is `parth` (display name Parth).
+
 ## 1. Product and customer
 
 Build a WhatsApp-first daily assistant that accepts a natural-language request, retrieves relevant permitted context, chooses an appropriate available model automatically, and completes useful everyday work within a transparent subscription allowance. Users should not need to understand provider names or select a model.
 
 Initial audience: individual adults who want help drafting, understanding supplied material, organizing notes and tasks, and setting reminders. Pilot recruitment should focus on one reachable segment rather than claiming universal product fit. The founding hypothesis is that convenience plus reliable workflow completion creates willingness to pay; it remains unproven until measured.
 
-Subscriptions are not model identities. Canonical launch display names are **Ananta**, **Yanta**, **Trika**, **Part**, following the user's latest wording. Stable internal IDs are `ananta`, `yanta`, `trika`, `part`; free/entry/advanced/premium describe commercial positions only. Changing a display label must not change ownership or billing history. Launch with four plans only. No price, entitlement, conversion rate, accuracy guarantee, or profitable margin is established by this document.
+Subscriptions are not model identities. Canonical launch display names are **Ananta**, **Yanta**, **Trika**, **Parth**, following the user's latest wording. Stable internal IDs are `ananta`, `yanta`, `trika`, `parth`; free/entry/advanced/premium describe commercial positions only. Changing a display label must not change ownership or billing history. Launch with four plans only. No price, entitlement, conversion rate, accuracy guarantee, or profitable margin is established by this document.
 
 ## 2. Release boundaries
 
@@ -71,7 +97,7 @@ If blocked, Core v1 implementation and isolated tests may continue, but WhatsApp
 
 All amounts remain configuration proposals until selected from real cost measurements. Treat `unset` production money limits as deployment-blocking, not unlimited. All plans have baseline permission checks, essential output validation and honest failure handling.
 
-| Entitlement | Ananta / free | Yanta / entry | Trika / advanced | Part / premium |
+| Entitlement | Ananta / free | Yanta / entry | Trika / advanced | Parth / premium |
 |---|---|---|---|---|
 | Commercial role | Finite discovery/pilot allowance | Useful everyday paid plan | Heavier analysis and workflows | Highest supported capacity |
 | Context/input/output | Small finite configured caps | Larger configured caps | Extended configured caps | Largest validated caps |

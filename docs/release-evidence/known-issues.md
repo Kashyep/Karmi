@@ -10,8 +10,14 @@
   Classes are size-based labels. The full 49-case, 3-repeat pilot needs a funded key (1000/day) or several days.
 - Parakh's `pilot run` still only accepts exactly 36 train cases at concurrency 1 and does not use the new
   adapter; the probe used a standalone capped script (`Parakh/scripts/openrouter_probe.py`) instead.
-- **No hosted backend.** Nothing was deployed (no cloud login). The APK is built with a placeholder server
-  address; set the real one under Welcome > Server address, or rebuild. See `ops/deploy/README.md`.
+- **Hosted beta backend (one replica).** Azure Container Apps `karmi-beta` (East Asia) with Neon
+  PostgreSQL, deployed 2026-10-21; see `mvp-tester-release-2026-10-19.md`. The readiness audit is
+  BLOCKED on observation-only checks (TLS, deployed telemetry, restore, rollback, payment).
+- **Shared daily request cap.** All accounts share one free OpenRouter key (50 requests/day). The
+  backend caps live provider requests per UTC day (`DAILY_AGENT_GATEWAY_DAILY_REQUEST_LIMIT`, default
+  50) and keeps the last `DAILY_AGENT_GATEWAY_PAID_RESERVED_REQUESTS` (default 10) for paid plans. Each
+  reply holds two slots and returns the unused one. When full, testers see "Karmi beta is full for
+  today" with the reset time (05:30 IST). Older APKs show a generic "Could not complete" instead.
 - **Sign-in not verified on a device.** The Pixel 9a was connected earlier in the session but dropped off
   adb before the APK could be installed; Clerk's emailed code also needs a human. Run the checklist in
   `docs/release-evidence/device-checklist.md`.
