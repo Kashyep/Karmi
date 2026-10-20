@@ -22,6 +22,11 @@ abstract interface class ClerkEmailCodeActions {
     String? code,
     ClerkFlowErrorHandler onError,
   );
+  Future<void> verifySignInCode(
+    String email,
+    String code,
+    ClerkFlowErrorHandler onError,
+  );
   Future<void> signUp(
     String email,
     String? firstName,
@@ -31,6 +36,10 @@ abstract interface class ClerkEmailCodeActions {
     String? password,
     String? passwordConfirmation,
   });
+  Future<void> verifySignUpCode(
+    String code,
+    ClerkFlowErrorHandler onError,
+  );
   Future<void> resendCode(ClerkFlowErrorHandler onError);
   Future<void> reset(ClerkFlowErrorHandler onError);
 }
@@ -99,6 +108,32 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     ),
     onError,
   );
+  @override
+  Future<void> verifySignInCode(
+    String email,
+    String code,
+    ClerkFlowErrorHandler onError,
+  ) => _safely(
+    () => auth.attemptSignIn(
+      strategy: clerk.Strategy.emailCode,
+      identifier: email,
+      code: code,
+    ),
+    onError,
+  );
+
+  @override
+  Future<void> verifySignUpCode(
+    String code,
+    ClerkFlowErrorHandler onError,
+  ) => _safely(
+    () => auth.attemptSignUp(
+      strategy: clerk.Strategy.emailCode,
+      code: code,
+    ),
+    onError,
+  );
+
 
   @override
   Future<void> signUp(

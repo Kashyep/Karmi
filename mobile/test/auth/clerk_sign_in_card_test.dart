@@ -18,12 +18,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(actions.signInCalls, 1);
     expect(find.text('Check your email'), findsOneWidget);
+    expect(
+      find.text('Use the newest email; earlier codes no longer work.'),
+      findsOneWidget,
+    );
     expect(find.textContaining('person@example.com'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField).last, '123456');
     await tester.tap(find.text('Verify and continue'));
     await tester.pumpAndSettle();
-    expect(actions.signInCalls, 2);
+    expect(actions.verifySignInCalls, 1);
+    expect(actions.lastVerifiedSignInCode, '123456');
     expect(actions.isSignedIn, isTrue);
     expect(find.text('Welcome back'), findsNothing);
   });
@@ -63,14 +68,23 @@ void main() {
       await tester.pumpAndSettle();
       expect(actions.signUpCalls, 2);
       expect(find.text('Check your email'), findsOneWidget);
+      expect(
+        find.text('Use the newest email; earlier codes no longer work.'),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('Resend code'));
       await tester.pumpAndSettle();
       expect(actions.resendCalls, 1);
-      expect(find.text('A new verification code was sent.'), findsOneWidget);
+      expect(
+        find.text('Use the newest email; earlier codes no longer work.'),
+        findsOneWidget,
+      );
       await tester.enterText(find.byType(TextField).last, '123456');
       await tester.tap(find.text('Verify and continue'));
       await tester.pumpAndSettle();
+      expect(actions.verifySignUpCalls, 1);
+      expect(actions.lastVerifiedSignUpCode, '123456');
       expect(actions.isSignedIn, isTrue);
     },
   );
@@ -260,6 +274,149 @@ void main() {
       expect(actions.isSignedIn, isTrue);
     },
   );
+  testWidgets(
+    'code step on sign-up calls verifySignUpCode with code only and never passes password or name',
+    (tester) async {
+      final actions = FakeClerkEmailCodeActions();
+      await pumpHost(tester, ClerkSignInCard(actions: actions));
+      await tester.tap(find.text('New to Karmi? Create an account'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Email address'),
+        'user@example.com',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Create a password'),
+        'secretpassword123',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Confirm password'),
+        'secretpassword123',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(actions.signUpCalls, 1);
+      expect(actions.lastPassword, 'secretpassword123');
+
+      actions.lastPassword = null;
+      actions.lastPasswordConfirmation = null;
+      final signUpCallsBeforeVerify = actions.signUpCalls;
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Verification code'),
+        '654321',
+      );
+      await tester.tap(find.text('Verify and continue'));
+      await tester.pumpAndSettle();
+
+      expect(actions.verifySignUpCalls, 1);
+      expect(actions.lastVerifiedSignUpCode, '654321');
+      expect(actions.signUpCalls, signUpCallsBeforeVerify);
+      expect(actions.lastPassword, isNull);
+      expect(actions.lastPasswordConfirmation, isNull);
+      expect(actions.isSignedIn, isTrue);
+    },
+  );
+
+  testWidgets('a code-step submit never triggers resend or prepare', (
+    tester,
+  ) async {
+    final actions = FakeClerkEmailCodeActions();
+    await pumpHost(tester, ClerkSignInCard(actions: actions));
+    await tester.enterText(find.byType(TextField).first, 'user@example.com');
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
+    expect(actions.signInCalls, 1);
+    expect(actions.resendCalls, 0);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Verification code'),
+      '123456',
+    );
+    await tester.tap(find.text('Verify and continue'));
+    await tester.pumpAndSettle();
+
+    expect(actions.signInCalls, 1);
+    expect(actions.resendCalls, 0);
+    expect(actions.verifySignInCalls, 1);
+  });
+
+  testWidgets(
+    'incorrect-code error keeps the code screen, shows mapped message, and makes no extra send',
+    (tester) async {
+      final actions = FakeClerkEmailCodeActions();
+      await pumpHost(tester, ClerkSignInCard(actions: actions));
+      await tester.enterText(find.byType(TextField).first, 'user@example.com');
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      actions.nextError = 'form_code_incorrect';
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Verification code'),
+        '000000',
+      );
+      await tester.tap(find.text('Verify and continue'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'That code is incorrect or expired. Use the newest email from Clerk, or tap Resend code.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Check your email'), findsOneWidget);
+      expect(
+        find.widgetWithText(TextField, 'Verification code'),
+        findsOneWidget,
+      );
+      expect(actions.signInCalls, 1);
+      expect(actions.resendCalls, 0);
+      expect(actions.isSignedIn, isFalse);
+    },
+  );
+
+  testWidgets('keyboard submit while working is ignored', (tester) async {
+    final actions = FakeClerkEmailCodeActions()..simulateDelay = true;
+    await pumpHost(tester, ClerkSignInCard(actions: actions));
+    await tester.enterText(find.byType(TextField).first, 'user@example.com');
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(actions.signInCalls, 1);
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(actions.signInCalls, 1);
+
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+    'the newest email notice appears after initial send and after resend',
+    (tester) async {
+      final actions = FakeClerkEmailCodeActions();
+      await pumpHost(tester, ClerkSignInCard(actions: actions));
+      await tester.enterText(find.byType(TextField).first, 'user@example.com');
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Use the newest email; earlier codes no longer work.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Resend code'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Use the newest email; earlier codes no longer work.'),
+        findsOneWidget,
+      );
+    },
+  );
+
 }
 
 class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
@@ -281,10 +438,15 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   bool _signUpAwaitingCode = false;
   final List<clerk.Field> _missing = [];
   int signInCalls = 0;
+  int verifySignInCalls = 0;
   int signUpCalls = 0;
+  int verifySignUpCalls = 0;
   int resendCalls = 0;
   String? lastPassword;
   String? lastPasswordConfirmation;
+  String? lastVerifiedSignInCode;
+  String? lastVerifiedSignUpCode;
+  bool simulateDelay = false;
   @override
   bool get signInAwaitingCode => _signInAwaitingCode;
 
@@ -309,6 +471,9 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
     ClerkFlowErrorHandler onError,
   ) async {
     signInCalls++;
+    if (simulateDelay) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
     if (nextError != null) return _error(onError);
     if (code == null) {
       _signInAwaitingCode = true;
@@ -317,6 +482,37 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
       isSignedIn = true;
     }
   }
+  @override
+  Future<void> verifySignInCode(
+    String email,
+    String code,
+    ClerkFlowErrorHandler onError,
+  ) async {
+    verifySignInCalls++;
+    lastVerifiedSignInCode = code;
+    if (simulateDelay) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    if (nextError != null) return _error(onError);
+    _signInAwaitingCode = false;
+    isSignedIn = true;
+  }
+
+  @override
+  Future<void> verifySignUpCode(
+    String code,
+    ClerkFlowErrorHandler onError,
+  ) async {
+    verifySignUpCalls++;
+    lastVerifiedSignUpCode = code;
+    if (simulateDelay) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    if (nextError != null) return _error(onError);
+    _signUpAwaitingCode = false;
+    isSignedIn = true;
+  }
+
 
   @override
   Future<void> signUp(

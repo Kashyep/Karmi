@@ -75,7 +75,21 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
     _confirmPassword.dispose();
     super.dispose();
   }
+  static const _codeNotice =
+      'Use the newest email; earlier codes no longer work.';
+  static const _incorrectCodeMessage =
+      'That code is incorrect or expired. Use the newest email from Clerk, or tap Resend code.';
+
+  bool _isIncorrectOrExpiredCodeError(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('form_code_incorrect') ||
+        text.contains('code_incorrect') ||
+        text.contains('incorrect') ||
+        text.contains('expired');
+  }
+
   Future<void> _submit() async {
+    if (_working) return;
     final actions = _actions(context);
     final email = _email.text.trim().isNotEmpty
         ? _email.text.trim()
@@ -112,12 +126,33 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
       _notice = null;
     });
     try {
+      if (_awaitingCode) {
+        final code = _code.text.trim();
+        if (_creatingAccount) {
+          await actions.verifySignUpCode(code, _showClerkError);
+        } else {
+          await actions.verifySignInCode(email, code, _showClerkError);
+        }
+        if (!mounted) return;
+        if (_error != null) {
+          // Keep the code screen on error, do not reset or send new code.
+          return;
+        }
+        if (!actions.isSignedIn) {
+          setState(() {
+            _error =
+                'This sign-in method is unavailable. Check the Clerk email-code settings.';
+          });
+        }
+        return;
+      }
+
       if (_creatingAccount) {
         await actions.signUp(
           email,
           _firstName.text.trim().isEmpty ? null : _firstName.text.trim(),
           _lastName.text.trim().isEmpty ? null : _lastName.text.trim(),
-          _awaitingCode ? _code.text.trim() : null,
+          null,
           _showClerkError,
           password: _password.text.isEmpty ? null : _password.text,
           passwordConfirmation:
@@ -126,7 +161,7 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
       } else {
         await actions.signIn(
           email,
-          _awaitingCode ? _code.text.trim() : null,
+          null,
           _showClerkError,
         );
       }
@@ -144,7 +179,7 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
         if (_error != null) {
           return;
         } else if (verificationStarted) {
-          _notice = 'Check your inbox for a six-digit verification code.';
+          _notice = _codeNotice;
         } else if (unsupportedFields.isNotEmpty) {
           _error =
               'This Clerk sign-up requires fields Karmi does not support: ${unsupportedFields.join(', ')}.';
@@ -170,7 +205,7 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
     try {
       await actions.resendCode(_showClerkError);
       if (mounted && _error == null) {
-        setState(() => _notice = 'A new verification code was sent.');
+        setState(() => _notice = _codeNotice);
       }
     } finally {
       if (mounted) setState(() => _working = false);
@@ -178,7 +213,15 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
   }
 
   void _showClerkError(Object error) {
-    if (mounted) setState(() => _error = error.toString());
+    if (mounted) {
+      setState(() {
+        if (_isIncorrectOrExpiredCodeError(error)) {
+          _error = _incorrectCodeMessage;
+        } else {
+          _error = error.toString();
+        }
+      });
+    }
   }
 
   Future<void> _changeMode() async {
@@ -278,7 +321,7 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
               ),
               textInputAction:
                   _creatingAccount ? TextInputAction.next : TextInputAction.done,
-              onSubmitted: _creatingAccount ? null : (_) => _submit(),
+              onSubmitted: _creatingAccount || _working ? null : (_) => _submit(),
             )
           else
             TextField(
@@ -291,7 +334,7 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
                 prefixIcon: Icon(Icons.verified_outlined),
               ),
               textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
+              onSubmitted: _working ? null : (_) => _submit(),
             ),
           if (!_awaitingCode && _creatingAccount) ...[
             const SizedBox(height: 12),
@@ -315,7 +358,7 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
                 prefixIcon: Icon(Icons.lock_outline),
               ),
               textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
+              onSubmitted: _working ? null : (_) => _submit(),
             ),
           ],
           if (_error != null) ...[
