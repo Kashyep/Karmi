@@ -34,8 +34,8 @@ REGISTRY_IN_IMAGE = (
 
 def az(*args: str, timeout: int = 900) -> subprocess.CompletedProcess[str]:
     """Run an Azure CLI command with captured output and timeout."""
-    return subprocess.run(  # noqa: S603, S607
-        ["az", *args],
+    return subprocess.run(  # noqa: S603
+        ["az", *args],  # noqa: S607
         capture_output=True,
         text=True,
         check=False,
@@ -306,8 +306,8 @@ def build() -> int:
         if update_res.returncode != 0:
             return die(f"step acr update failed with exit code {update_res.returncode}")
 
-    sha_proc = subprocess.run(  # noqa: S603, S607
-        ["git", "rev-parse", "--short", "HEAD"],
+    sha_proc = subprocess.run(  # noqa: S603
+        ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -317,8 +317,8 @@ def build() -> int:
         return die("git rev-parse failed")
     sha = sha_proc.stdout.strip()
 
-    status_proc = subprocess.run(  # noqa: S603, S607
-        ["git", "status", "--porcelain", "--untracked-files=no"],
+    status_proc = subprocess.run(  # noqa: S603
+        ["git", "status", "--porcelain", "--untracked-files=no"],  # noqa: S607
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -336,8 +336,8 @@ def build() -> int:
 
     # ACR Tasks is not permitted on this subscription: build locally with podman, push to ACR.
     image_ref = f"{acr_name}.azurecr.io/{IMAGE_REPO}:{tag}"
-    build_res = subprocess.run(  # noqa: S603, S607
-        ["podman", "build", "--platform", "linux/amd64", "-f", "Dockerfile", "-t", image_ref, "."],
+    build_res = subprocess.run(  # noqa: S603
+        ["podman", "build", "--platform", "linux/amd64", "-f", "Dockerfile", "-t", image_ref, "."],  # noqa: S607
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -351,8 +351,8 @@ def build() -> int:
     pw_proc = az("acr", "credential", "show", "-n", acr_name, "--query", "passwords[0].value", "-o", "tsv")
     if pw_proc.returncode != 0 or not pw_proc.stdout.strip():
         return fail_step("acr credential show", pw_proc.returncode)
-    login_res = subprocess.run(  # noqa: S603, S607
-        ["podman", "login", f"{acr_name}.azurecr.io", "--username", acr_name, "--password-stdin"],
+    login_res = subprocess.run(  # noqa: S603
+        ["podman", "login", f"{acr_name}.azurecr.io", "--username", acr_name, "--password-stdin"],  # noqa: S607
         input=pw_proc.stdout.strip(),
         capture_output=True,
         text=True,
@@ -361,15 +361,18 @@ def build() -> int:
     )
     if login_res.returncode != 0:
         return fail_step("podman login", login_res.returncode)
-    push_res = subprocess.run(  # noqa: S603, S607
-        ["podman", "push", image_ref],
+    push_res = subprocess.run(  # noqa: S603
+        ["podman", "push", image_ref],  # noqa: S607
         capture_output=True,
         text=True,
         check=False,
         timeout=1800,
     )
-    subprocess.run(  # noqa: S603, S607
-        ["podman", "logout", f"{acr_name}.azurecr.io"], capture_output=True, text=True, check=False
+    subprocess.run(  # noqa: S603
+        ["podman", "logout", f"{acr_name}.azurecr.io"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if push_res.returncode != 0:
         return fail_step("podman push", push_res.returncode)
@@ -780,6 +783,8 @@ def status() -> int:
                 rep_list = json.loads(rep_res.stdout)
             except (json.JSONDecodeError, TypeError):
                 rep_list = None
+            if isinstance(rep_list, list):
+                replicas_count = len(rep_list)
 
     data["replicas"] = replicas_count
     print(json.dumps(data, indent=2))
