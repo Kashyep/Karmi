@@ -73,9 +73,11 @@ class _ChatScreenState extends State<ChatScreen> {
           NetworkException() => SendState.offline,
           InFlightException() => SendState.inFlight,
           LimitReachedException() => SendState.limitReached,
+          BetaCapacityFullException() => SendState.capacityFull,
           _ => SendState.failed,
         };
         if (error is LimitReachedException) entry.resetAt = error.resetAt;
+        if (error is BetaCapacityFullException) entry.resetAt = error.resetAt;
       });
     } finally {
       if (mounted) setState(() => _pending = null);
@@ -351,6 +353,19 @@ class _ChatScreenState extends State<ChatScreen> {
         actionLabel: widget.onOpenPlans == null ? null : 'View plans',
         onAction: widget.onOpenPlans,
       ),
+      SendState.capacityFull => ErrorBanner(
+        icon: Icons.groups,
+        tone: ErrorTone.warning,
+        title: 'Karmi beta is full for today',
+        message: entry.resetAt == null
+            ? "The beta has used today's free AI replies. Your message is "
+                  'kept here; try again tomorrow.'
+            : "The beta has used today's free AI replies. Your message is "
+                  'kept here; try again after '
+                  '${_formatReset(context, entry.resetAt!)}.',
+        actionLabel: 'Retry',
+        onAction: retry,
+      ),
       _ => ErrorBanner(
         title: 'Could not complete',
         message:
@@ -400,6 +415,11 @@ class _UserRow extends StatelessWidget {
       SendState.limitReached => const StatusChip(
         label: 'Allowance reached',
         icon: Icons.data_usage,
+        tone: StatusTone.warning,
+      ),
+      SendState.capacityFull => const StatusChip(
+        label: 'Beta full today',
+        icon: Icons.groups,
         tone: StatusTone.warning,
       ),
       SendState.offline => const StatusChip(

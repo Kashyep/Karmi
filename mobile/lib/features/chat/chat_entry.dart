@@ -1,7 +1,15 @@
 import '../../api/models.dart';
 
 /// Delivery state of a message the user typed.
-enum SendState { sending, sent, failed, offline, inFlight, limitReached }
+enum SendState {
+  sending,
+  sent,
+  failed,
+  offline,
+  inFlight,
+  limitReached,
+  capacityFull,
+}
 
 /// One row in the local, in-memory transcript. There is no history endpoint,
 /// so the transcript is not persisted.
@@ -25,7 +33,7 @@ final class UserEntry extends ChatEntry {
   final String idempotencyKey;
   SendState state;
 
-  /// Allowance reset time from a 429 response, when known.
+  /// Allowance or beta-capacity reset time from a 429 response, when known.
   DateTime? resetAt;
 }
 

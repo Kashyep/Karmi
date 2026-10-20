@@ -172,6 +172,31 @@ void main() {
       },
     );
 
+    test(
+      '429 BETA_CAPACITY_FULL throws BetaCapacityFull with reset time',
+      () async {
+        backend.on(
+          'POST',
+          '/v1/messages',
+          (_) => jsonResponse({
+            'detail': {
+              'code': 'BETA_CAPACITY_FULL',
+              'message': "Karmi's beta has reached today's limit.",
+              'reset_at': '2026-10-22T00:00:00+00:00',
+            },
+          }, 429),
+        );
+        final error = await api
+            .sendMessage('hi', idempotencyKey: 'key-12345678')
+            .then<Object?>((_) => null, onError: (Object e) => e);
+        expect(error, isA<BetaCapacityFullException>());
+        expect(
+          (error! as BetaCapacityFullException).resetAt,
+          DateTime.utc(2026, 10, 22),
+        );
+      },
+    );
+
     test('429 without the allowance code is a ServerException', () async {
       backend.on('POST', '/v1/messages', (_) => jsonResponse({}, 429));
       await expectLater(
