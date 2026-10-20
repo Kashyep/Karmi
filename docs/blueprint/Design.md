@@ -1,5 +1,7 @@
 # Design — Daily AI Agent
 
+> **Current direction (2026-10-21):** Notes and the Memory screen were removed from the app. See the "Current direction" section of `PRD.md`.
+
 Proposed design system v1 • 2026-09-09. This is a usable starting direction; no existing approved visual export was supplied.
 
 ## Product experience

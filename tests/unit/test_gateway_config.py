@@ -41,3 +41,13 @@ def test_production_requires_a_finite_budget_for_live_providers(clerk_public_key
             openrouter_enabled=True,
             openrouter_api_key="sk-or-synthetic",
         )
+
+
+def test_paid_reserve_must_leave_free_requests() -> None:
+    with pytest.raises(ValueError, match="paid reserve must leave"):
+        Settings(**BASE, gateway_daily_request_limit=10, gateway_paid_reserved_requests=10)
+    settings = Settings(**BASE)
+    assert (settings.gateway_daily_request_limit, settings.gateway_paid_reserved_requests) == (
+        50,
+        10,
+    )

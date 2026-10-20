@@ -229,6 +229,11 @@ class KarmiApi {
             resetAt: DateTime.tryParse('${detail['reset_at']}'),
           );
         }
+        if (detail is Map && detail['code'] == 'BETA_CAPACITY_FULL') {
+          return BetaCapacityFullException(
+            resetAt: DateTime.tryParse('${detail['reset_at']}'),
+          );
+        }
         return const ServerException(429);
       default:
         return ServerException(status);

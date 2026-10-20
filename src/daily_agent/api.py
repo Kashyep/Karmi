@@ -4,7 +4,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
@@ -17,6 +17,7 @@ from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_fo
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_session
 from daily_agent.gateway import Gateway, build_gateway
+from daily_agent.gateway.service import MAX_ATTEMPTS
 from daily_agent.models import (
     Account,
     BillingEvent,
@@ -61,13 +62,17 @@ from daily_agent.security import (
 )
 from daily_agent.services import (
     BudgetDenied,
+    GatewayAdmission,
+    GatewayCapacityFull,
     IdempotencyConflict,
     ReservationInFlight,
     accept_internal_event,
+    admit_gateway_requests,
     create_task_idempotent,
     current_period_key,
     current_window_key,
     estimate_request_cost_micro,
+    gateway_requests_made,
     generate_reply,
     measured_cost_micro,
     measured_tokens,
@@ -76,6 +81,7 @@ from daily_agent.services import (
     policy_for,
     release_budget,
     reserve_budget,
+    return_gateway_requests,
     scoped_task_query,
     seed_development_identity,
     settle_budget,
@@ -431,6 +437,25 @@ def create_app() -> FastAPI:
                 amount_micro=amount,
                 tokens=token_hold,
             )
+            # Every live reply may make up to MAX_ATTEMPTS provider requests; unused ones are
+            # handed back after generation.
+            admission: GatewayAdmission | None = (
+                admit_gateway_requests(
+                    session, settings, paid=policy.price_inr > 0, slots=MAX_ATTEMPTS
+                )
+                if gateway.live
+                else None
+            )
+        except GatewayCapacityFull as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "code": "BETA_CAPACITY_FULL",
+                    "message": _capacity_full_message(exc.reset_at),
+                    "reset_at": exc.reset_at.isoformat(),
+                },
+            ) from exc
         except BudgetDenied as exc:
             session.rollback()
             raise HTTPException(
@@ -490,6 +515,8 @@ def create_app() -> FastAPI:
                 gateway=gateway,
             )
             provider_calls = list(result.provider_calls)
+            if admission is not None:
+                return_gateway_requests(session, admission, gateway_requests_made(provider_calls))
             if result.release_reservation:
                 # Every model attempt failed: nothing usable was produced, so nothing is charged.
                 release_budget(session, reservation)
@@ -506,6 +533,10 @@ def create_app() -> FastAPI:
         except IntegrityError:
             session.rollback()
             release_budget(session, reservation)
+            if admission is not None:
+                return_gateway_requests(
+                    session, admission, gateway_requests_made(result.provider_calls)
+                )
             session.commit()
             recovered = session.scalar(
                 select(Run).where(
@@ -528,6 +559,10 @@ def create_app() -> FastAPI:
         except Exception:
             session.rollback()
             release_budget(session, reservation)
+            if admission is not None:
+                return_gateway_requests(
+                    session, admission, gateway_requests_made(result.provider_calls)
+                )
             session.commit()
             raise
         return MessageView(
@@ -782,6 +817,19 @@ def create_app() -> FastAPI:
             media_type="application/manifest+json",
         )
     return app
+
+
+# India Standard Time, for the reset time shown to beta testers.
+IST = timedelta(hours=5, minutes=30)
+
+
+def _capacity_full_message(reset_at: datetime) -> str:
+    ist = (reset_at.astimezone(UTC) + IST).strftime("%H:%M")
+    utc = reset_at.astimezone(UTC).strftime("%H:%M")
+    return (
+        "Karmi's beta has reached today's limit for free AI replies. "
+        f"Try again after {ist} IST ({utc} UTC)."
+    )
 
 
 def _idempotency_conflict() -> HTTPException:

@@ -13,10 +13,12 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from daily_agent.config import Settings
-from daily_agent.models import PlatformBudget, UsageWindow
+from daily_agent.models import GatewayRequestDay, PlatformBudget, UsageWindow
 from daily_agent.schemas import Outcome
 from daily_agent.services import (
     BudgetDenied,
+    GatewayCapacityFull,
+    admit_gateway_requests,
     ensure_usage_window,
     persist_completed_run,
     reserve_budget,
@@ -182,4 +184,46 @@ def test_daily_token_quota_is_atomic_under_concurrent_admission() -> None:
         assert window is not None
         assert window.tokens_reserved == 5_000
         assert window.everyday_used == 5
+    engine.dispose()
+
+
+def test_shared_gateway_request_cap_is_atomic_under_concurrent_admission() -> None:
+    database_url, _redis_url = integration_urls()
+    engine = create_engine(database_url, pool_pre_ping=True)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    settings = Settings(
+        environment="test",
+        database_url=database_url,
+        auth_secret="integration-fixture-secret",  # noqa: S106
+        webhook_secret="integration-webhook-secret",  # noqa: S106
+        gateway_daily_request_limit=12,
+        gateway_paid_reserved_requests=2,
+    )
+    # A fixed past day keeps this test independent of any row made by other tests today.
+    day = datetime(2001, 2, 3, 12, tzinfo=UTC)
+
+    def attempt(_index: int) -> bool:
+        with factory() as session:
+            try:
+                admit_gateway_requests(session, settings, paid=False, slots=2, now=day)
+                session.commit()
+                return True
+            except GatewayCapacityFull:
+                session.rollback()
+                return False
+
+    with factory() as session:
+        stale = session.get(GatewayRequestDay, "2001-02-03")
+        if stale is not None:
+            session.delete(stale)
+            session.commit()
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(attempt, range(12)))
+
+    assert sum(results) == 5, "free plans stop at limit minus the paid reserve: 10 / 2"
+    with factory() as session:
+        row = session.get(GatewayRequestDay, "2001-02-03")
+        assert row is not None
+        assert row.requests_used == 10
     engine.dispose()

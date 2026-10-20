@@ -2,6 +2,8 @@
 
 Status: executable sequence. Core v1 includes phases 0–8. Consumer PWA/voice phases 9–11 are separately gated scope. If WhatsApp eligibility fails, phase 0 explicitly selects whether the owned app becomes the initial channel; do not call a blocked WhatsApp deployment complete.
 
+> **Current direction (2026-10-21):** Notes and durable memory were removed, so manual steps that save or recall a note are out of scope. The owned Android app is the initial channel with a hosted beta. See the "Current direction" section of `PRD.md`.
+
 ## Operating protocol for every phase
 
 Boss assigns bounded tasks and file ownership, Supervisor independently reviews diffs and evidence, specialists implement and perform targeted checks. Boss integrates and makes acceptance/rework decisions with written reasons. Use `Agent_Team.md` or equivalent delivered team guide for model/capability limitations and durable handoffs. All code-changing workers must provide a persistent commit or patch outside disposable worktrees before release. Do not run broad test suites redundantly in each worker.
@@ -34,7 +36,7 @@ Exit: reproducible local path with source-of-truth persistence and no provider c
 
 ## Phase 2 — Identity, subscriptions and finite budgets
 
-Deliver: verified identity/channel linkage, roles, plan policy versions for Ananta/Yanta/Trika/Part, distinct context/output/rate/period budgets, transactional reservations and ledger, billing sandbox integration, exact reset display.
+Deliver: verified identity/channel linkage, roles, plan policy versions for Ananta/Yanta/Trika/Parth, distinct context/output/rate/period budgets, transactional reservations and ledger, billing sandbox integration, exact reset display.
 
 Automatic gate: cross-user access denial; forged tier ignored; duplicate/reordered billing events; parallel budget reservation; reset boundary/timezone; downgrade/cancel policy; unknown actual provider usage; cached/reasoning token double-count prevention; provider-fault customer-unit refund without erased internal cost.
 

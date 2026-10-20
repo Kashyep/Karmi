@@ -58,6 +58,9 @@ jobs:
       - name: Test
         run: flutter test --exclude-tags golden
       - name: Goldens (baselines in test/goldens/linux)
+        # The Usage screen shows the reset time in local time; baselines were rendered in IST.
+        env:
+          TZ: Asia/Kolkata
         run: flutter test --tags golden
       - name: Build Android app bundle
         run: flutter build appbundle --release

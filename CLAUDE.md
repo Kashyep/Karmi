@@ -1,8 +1,10 @@
 # Daily Agent
 
 Bounded, privacy-scoped assistant backend (FastAPI) with an owned web/PWA shell, plus an offline
-model evaluation lab. Local development candidate: all plans, costs and users are synthetic.
-Specification lives in `docs/blueprint/` (PRD, Architecture, Rules, Phases, Tier_Entitlements).
+model evaluation lab, served to an Android beta app. Plan prices are the owner's labels; quotas,
+costs and test users are synthetic or provisional. Specification lives in `docs/blueprint/` (PRD,
+Architecture, Rules, Phases, Tier_Entitlements); the PRD's "Current direction" section overrides
+older text there.
 
 ## Map
 
@@ -14,7 +16,7 @@ src/daily_agent/
   gateway/      model gateway: registry (model-registry.v1), adapters, router, health, service
   providers.py  TypeSafe adapter (the only place allowed to import typesafe_sdk)
   models.py     SQLAlchemy models (money columns are BigInteger micro-units)
-  plans.py      synthetic tier policies (ananta free / yanta / trika / part)
+  plans.py      synthetic tier policies (ananta free / yanta / trika / parth)
   config.py     Settings (DAILY_AGENT_* env); fails closed outside development/test
   security.py   dev tokens, principal/admin deps, HMAC webhook verification
   db.py         lazy engine (get_engine) + get_session dependency
@@ -69,7 +71,9 @@ full gate run with a summarized result.
 
 ## Never
 
-- Never enable WhatsApp, paid checkout, live charges, real outbound messages or production deploys.
+- Never enable WhatsApp, paid checkout, live charges or real outbound messages.
+- The owner runs a hosted beta (`docs/runbooks/azure-deployment.md`). Never deploy, migrate or change
+  it without the owner's explicit approval for that specific action.
 - Never read, print or commit `.env` or real secrets; fixtures must stay obviously synthetic.
 - Never weaken `Settings.fail_closed_in_production` or budget checks to make a test pass.
 - Never mark Docker/integration, device, payment or provider checks as passed without running them.

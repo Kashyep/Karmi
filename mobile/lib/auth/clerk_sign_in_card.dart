@@ -75,6 +75,7 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
     _confirmPassword.dispose();
     super.dispose();
   }
+
   static const _codeNotice =
       'Use the newest email; earlier codes no longer work.';
   static const _incorrectCodeMessage =
@@ -90,9 +91,11 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
 
   bool _isPwnedPasswordError(Object error) {
     if (error is clerk.ClerkError) {
-      if (error.errors?.errors?.any((e) =>
-              e.code?.toLowerCase().contains('pwned') == true ||
-              e.code?.toLowerCase().contains('breach') == true) ==
+      if (error.errors?.errors?.any(
+            (e) =>
+                e.code?.toLowerCase().contains('pwned') == true ||
+                e.code?.toLowerCase().contains('breach') == true,
+          ) ==
           true) {
         return true;
       }
@@ -105,9 +108,11 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
 
   bool _isPasswordTooShortError(Object error) {
     if (error is clerk.ClerkError) {
-      if (error.errors?.errors?.any((e) =>
-              e.code?.toLowerCase().contains('short') == true ||
-              e.code?.toLowerCase().contains('length') == true) ==
+      if (error.errors?.errors?.any(
+            (e) =>
+                e.code?.toLowerCase().contains('short') == true ||
+                e.code?.toLowerCase().contains('length') == true,
+          ) ==
           true) {
         return true;
       }
@@ -119,7 +124,6 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
         (text.contains('password') && text.contains('short')) ||
         (text.contains('password') && text.contains('at least'));
   }
-
 
   Future<void> _submit() async {
     if (_working) return;
@@ -135,9 +139,11 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
       return;
     }
     if (_creatingAccount && !_awaitingCode) {
-      final firstNameRequired = actions.firstNameRequired ||
+      final firstNameRequired =
+          actions.firstNameRequired ||
           actions.signUpMissingFields.contains(clerk.Field.firstName);
-      final lastNameRequired = actions.lastNameRequired ||
+      final lastNameRequired =
+          actions.lastNameRequired ||
           actions.signUpMissingFields.contains(clerk.Field.lastName);
       if ((firstNameRequired && _firstName.text.trim().isEmpty) ||
           (lastNameRequired && _lastName.text.trim().isEmpty)) {
@@ -202,15 +208,12 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
           null,
           _showSignUpError,
           password: _password.text.isEmpty ? null : _password.text,
-          passwordConfirmation:
-              _confirmPassword.text.isEmpty ? null : _confirmPassword.text,
+          passwordConfirmation: _confirmPassword.text.isEmpty
+              ? null
+              : _confirmPassword.text,
         );
       } else {
-        await actions.signIn(
-          email,
-          null,
-          _showClerkError,
-        );
+        await actions.signIn(email, null, _showClerkError);
       }
 
       if (!mounted) return;
@@ -352,8 +355,11 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
               textCapitalization: TextCapitalization.words,
               autofillHints: const [AutofillHints.givenName],
               decoration: InputDecoration(
-                labelText: (actions.firstNameRequired ||
-                        actions.signUpMissingFields.contains(clerk.Field.firstName))
+                labelText:
+                    (actions.firstNameRequired ||
+                        actions.signUpMissingFields.contains(
+                          clerk.Field.firstName,
+                        ))
                     ? 'First name (required)'
                     : 'First name (optional)',
               ),
@@ -365,8 +371,11 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
               textCapitalization: TextCapitalization.words,
               autofillHints: const [AutofillHints.familyName],
               decoration: InputDecoration(
-                labelText: (actions.lastNameRequired ||
-                        actions.signUpMissingFields.contains(clerk.Field.lastName))
+                labelText:
+                    (actions.lastNameRequired ||
+                        actions.signUpMissingFields.contains(
+                          clerk.Field.lastName,
+                        ))
                     ? 'Last name (required)'
                     : 'Last name (optional)',
               ),
@@ -384,9 +393,12 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
                 labelText: 'Email address',
                 prefixIcon: Icon(Icons.mail_outline),
               ),
-              textInputAction:
-                  _creatingAccount ? TextInputAction.next : TextInputAction.done,
-              onSubmitted: _creatingAccount || _working ? null : (_) => _submit(),
+              textInputAction: _creatingAccount
+                  ? TextInputAction.next
+                  : TextInputAction.done,
+              onSubmitted: _creatingAccount || _working
+                  ? null
+                  : (_) => _submit(),
             )
           else
             TextField(
@@ -410,8 +422,7 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
               decoration: InputDecoration(
                 labelText: 'Create a password',
                 prefixIcon: const Icon(Icons.lock_outline),
-                helperText:
-                    'At least ${actions.passwordMinLength} characters.',
+                helperText: 'At least ${actions.passwordMinLength} characters.',
               ),
               textInputAction: TextInputAction.next,
             ),

@@ -216,37 +216,36 @@ void main() {
     expect(find.text('Passwords do not match.'), findsOneWidget);
   });
 
-  testWidgets(
-    'attemptSignUp receives password and confirmation',
-    (tester) async {
-      final actions = FakeClerkEmailCodeActions()
-        ..firstNameRequired = false
-        ..lastNameRequired = false
-        ..passwordMinLength = 8;
-      await pumpHost(tester, ClerkSignInCard(actions: actions));
-      await tester.tap(find.text('New to Karmi? Create an account'));
-      await tester.pumpAndSettle();
+  testWidgets('attemptSignUp receives password and confirmation', (
+    tester,
+  ) async {
+    final actions = FakeClerkEmailCodeActions()
+      ..firstNameRequired = false
+      ..lastNameRequired = false
+      ..passwordMinLength = 8;
+    await pumpHost(tester, ClerkSignInCard(actions: actions));
+    await tester.tap(find.text('New to Karmi? Create an account'));
+    await tester.pumpAndSettle();
 
-      await tester.enterText(
-        find.widgetWithText(TextField, 'Email address'),
-        'user@example.com',
-      );
-      await tester.enterText(
-        find.widgetWithText(TextField, 'Create a password'),
-        'supersecret123',
-      );
-      await tester.enterText(
-        find.widgetWithText(TextField, 'Confirm password'),
-        'supersecret123',
-      );
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Email address'),
+      'user@example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Create a password'),
+      'supersecret123',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Confirm password'),
+      'supersecret123',
+    );
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
 
-      expect(actions.signUpCalls, 1);
-      expect(actions.lastPassword, 'supersecret123');
-      expect(actions.lastPasswordConfirmation, 'supersecret123');
-    },
-  );
+    expect(actions.signUpCalls, 1);
+    expect(actions.lastPassword, 'supersecret123');
+    expect(actions.lastPasswordConfirmation, 'supersecret123');
+  });
 
   testWidgets(
     'mid sign-up resume shows password fields and completes sign-up',
@@ -538,9 +537,7 @@ void main() {
     },
   );
 
-  testWidgets('helper text \'At least 15 characters.\' shown', (
-    tester,
-  ) async {
+  testWidgets('helper text \'At least 15 characters.\' shown', (tester) async {
     final actions = FakeClerkEmailCodeActions();
     await pumpHost(tester, ClerkSignInCard(actions: actions));
     await tester.tap(find.text('New to Karmi? Create an account'));
@@ -596,7 +593,6 @@ void main() {
       findsOneWidget,
     );
   });
-
 }
 
 class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
@@ -668,6 +664,7 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
       isSignedIn = true;
     }
   }
+
   @override
   Future<void> verifySignInCode(
     String email,
@@ -698,7 +695,6 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
     _signUpAwaitingCode = false;
     isSignedIn = true;
   }
-
 
   @override
   Future<void> signUp(

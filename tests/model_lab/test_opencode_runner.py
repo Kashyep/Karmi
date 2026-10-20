@@ -7,6 +7,7 @@ no test performs a network call. The credential is a synthetic placeholder.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -156,10 +157,14 @@ def test_cli_refuses_live_run_without_allow_flag(
     suite = _write_suite(tmp_path, _suite())
     out_dir = tmp_path / "run"
 
-    result = CliRunner().invoke(app, _cli_args(suite, out_dir, "--model", ALLOWED_MODEL))
+    # CI (GITHUB_ACTIONS) makes rich style the error panel, which splits the option name with
+    # escape codes; strip them and widen the terminal so the name stays on one line.
+    result = CliRunner().invoke(
+        app, _cli_args(suite, out_dir, "--model", ALLOWED_MODEL), env={"COLUMNS": "200"}
+    )
 
     assert result.exit_code == 2
-    assert "--allow-free-provider-requests" in result.output
+    assert "--allow-free-provider-requests" in re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert zen.requests == []
     assert not out_dir.exists()
 

@@ -1,5 +1,7 @@
 # Acceptance testing and release evidence
 
+> **Current direction (2026-10-21):** Notes and durable memory were removed, so steps that save, recall or correct a note are out of scope. See the "Current direction" section of `PRD.md`.
+
 Proposed contract, 2026-09-09. No test below has been executed against the user's product by this planning package. Implement commands during coding and align names with the existing repository. Phases.md owns release sequencing; this document gives concrete cross-cutting scenarios.
 
 ## Test runner contract
@@ -49,7 +51,7 @@ Each test record includes ID, requirement, priority, setup, steps, expected/obse
 2. **Everyday work:** as Ananta, draft a reply, save a note, ask for it later and correct it. Confirm answer relevance and memory controls with actual UI observations.
 3. **Action work:** as Yanta, request a reminder with missing timezone. Confirm clarification, then approve an exact timestamp; inspect one saved reminder. Simulate reconnect and ensure it is not duplicated.
 4. **Context/analysis:** as Trika, compare synthetic supplied-text documents; verify source labels against the fixtures and that missing material is disclosed. Repeat beyond the input cap. Test actual file upload only when included in the selected release.
-5. **Priority/limits:** as Part, use the same simple request as Ananta and inspect actual route telemetry. Exhaust each test allowance; confirm reset values and non-coercive upgrade choices.
+5. **Priority/limits:** as Parth, use the same simple request as Ananta and inspect actual route telemetry. Exhaust each test allowance; confirm reset values and non-coercive upgrade choices.
 6. **Admin:** inspect provider failure, one disputed usage event and a draft policy. Verify permissions, redacted logs, activation controls and rollback in staging.
 7. **ModelLab:** export cases for manual execution; import user-provided outputs; blind-score a subset; build report; open graph/table and trace one plotted point to the raw record. Confirm missing cost/latency stays unknown.
 8. **External tests:** only after channel/account eligibility and authorization, verify actual WhatsApp, payment sandbox and any included external connector. Mark unavailable channels BLOCKED and preserve shared-backend evidence.

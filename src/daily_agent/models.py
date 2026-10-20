@@ -143,6 +143,15 @@ class PlatformBudget(Base):
     settled_micro: Mapped[int] = mapped_column(BigInteger, default=0)
 
 
+class GatewayRequestDay(Base):
+    """Live provider requests admitted on one UTC day, across every account."""
+
+    __tablename__ = "gateway_request_days"
+
+    day_key: Mapped[str] = mapped_column(String(10), primary_key=True)
+    requests_used: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class BudgetReservation(Base):
     __tablename__ = "budget_reservations"
     __table_args__ = (UniqueConstraint("account_id", "logical_request_id", "stage"),)

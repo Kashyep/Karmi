@@ -247,6 +247,30 @@ void main() {
     expect(find.byType(PlanSelectionScreen), findsOneWidget);
   });
 
+  testWidgets('beta capacity full (429): banner says try again later', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      backend: backendWith(
+        (_) => jsonResponse({
+          'detail': {
+            'code': 'BETA_CAPACITY_FULL',
+            'message': "Karmi's beta has reached today's limit.",
+            'reset_at': '2026-10-22T00:00:00+00:00',
+          },
+        }, 429),
+      ),
+    );
+    await send(tester, 'hello');
+    await settle(tester);
+    expect(find.text('Karmi beta is full for today'), findsOneWidget);
+    expect(find.text('Beta full today'), findsOneWidget);
+    expect(find.textContaining('try again after'), findsOneWidget);
+    expect(find.text('View plans'), findsNothing);
+    await expectA11yGuidelines(tester);
+  });
+
   testWidgets('401 ends the session and returns to Welcome', (tester) async {
     final app = await pumpApp(
       tester,

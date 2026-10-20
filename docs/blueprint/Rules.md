@@ -6,7 +6,7 @@ Specification v1 • 2026-09-09 • Implementation rules, not evidence of implem
 
 Follow the user's current instructions and applicable repository instructions. Read PRD.md, Architecture.md, Phases.md, Design.md, Tier_Entitlements.md and Model_Testing_Spec.md. Preserve a working existing stack after inspection; an earlier chat claiming a feature exists is not proof. Record conflicts and resolve consequential ones through the Boss. Do not override an existing AGENTS.md with this package without merging its relevant instructions.
 
-The canonical subscription IDs are `ananta`, `yanta`, `trika`, `part`, matching the latest user wording. Display labels may change without migrations. These IDs never identify model difficulty, agent roles or providers. Ananta is free; other prices remain unapproved. No invented margins, unlimited plans or model performance guarantees.
+The canonical subscription IDs are `ananta`, `yanta`, `trika`, `parth`, matching the latest user wording. Display labels may change without migrations. These IDs never identify model difficulty, agent roles or providers. Ananta is free; other prices remain unapproved. No invented margins, unlimited plans or model performance guarantees.
 
 ## Engineering boundaries
 

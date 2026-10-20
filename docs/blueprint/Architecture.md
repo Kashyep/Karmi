@@ -2,6 +2,8 @@
 
 Status: proposed design. Confirm the actual repository, instructions and deployed baseline before editing. FastAPI, PostgreSQL, Redis and MinIO were reported in prior conversation; no current repository inspection establishes them here. Preserve working architecture until intake evidence justifies changes. Pin supported dependency versions and provider APIs during implementation; do not infer versions from past assistant messages.
 
+> **Current direction (2026-10-21):** Notes, durable memory and their routes and tables have been removed. Model calls go through `src/daily_agent/gateway/` (free OpenRouter/OpenCode models, rules router), and a shared daily provider-request cap guards the beta key. See the "Current direction" section of `PRD.md`.
+
 ## 1. Structure and ownership
 
 Use a modular monolith initially, with separately runnable workers. One backend owns identity, subscription policies, context, execution and cost accounting across channels. Avoid microservices until isolation or scaling evidence requires them.

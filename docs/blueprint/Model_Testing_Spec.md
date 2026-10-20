@@ -6,7 +6,7 @@ Status: proposed implementation specification, not a claim that the software or 
 
 Create a Linux terminal application that makes repeatable model comparison fast and inspectable: prepare test sets, import existing responses and reports, optionally execute explicitly budgeted experiments, grade what can be checked, organize human review, and produce model-selection evidence for the daily assistant router.
 
-The lab measures models and execution policies. Ananta, Yanta, Trika and Part remain subscription entitlements; task complexity levels 1–4 are evaluation labels, not plan names or model identities.
+The lab measures models and execution policies. Ananta, Yanta, Trika and Parth remain subscription entitlements; task complexity levels 1–4 are evaluation labels, not plan names or model identities.
 
 ## Decisions the lab must support
 

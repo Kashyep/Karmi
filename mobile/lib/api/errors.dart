@@ -27,6 +27,15 @@ final class LimitReachedException extends KarmiApiException {
   final DateTime? resetAt;
 }
 
+/// HTTP 429 with `detail.code == "BETA_CAPACITY_FULL"`: the beta's shared daily
+/// budget of free AI requests is used up for everyone on this plan.
+final class BetaCapacityFullException extends KarmiApiException {
+  const BetaCapacityFullException({this.resetAt});
+
+  /// When the shared daily budget resets, if the server sent `detail.reset_at`.
+  final DateTime? resetAt;
+}
+
 /// HTTP 403 `detail.code == "TIER_LOCKED"` from `PUT /v1/armory/active-theme`:
 /// the requested theme is above the account's unlocked tier.
 final class TierLockedException extends KarmiApiException {
