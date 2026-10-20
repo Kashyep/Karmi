@@ -17,6 +17,7 @@
   NOT verified: device sign-in (phone dropped off adb), hosted backend (none deployed), full pilot.
 - Parakh branch `openrouter-student-set` holds the OpenRouter adapter, catalog snapshot, registry
   builder and the 49-case student set; its `pilot run` cannot yet run that set (see known-issues).
+- 2026-10-21: merged origin/main history; PR #22 telemetry stack (harness/, policy_artifacts/, routing/, telemetry/, wiring.py, observability.py, migration 5e7a9c1d3f20) superseded by parakh/ + gateway and removed from the tree.
 
 
 ## Current Karmi readiness work (2026-10-10)
