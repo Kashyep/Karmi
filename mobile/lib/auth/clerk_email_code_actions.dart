@@ -11,6 +11,9 @@ abstract interface class ClerkEmailCodeActions {
   bool get isNotAvailable;
   bool get supportsEmailCode;
   bool get legalConsentRequired;
+  int get passwordMinLength;
+  bool get firstNameRequired;
+  bool get lastNameRequired;
   List<clerk.Field> get signUpMissingFields;
   bool get signInAwaitingCode;
   bool get signUpAwaitingCode;
@@ -61,6 +64,22 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
 
   @override
   bool get legalConsentRequired => auth.env.user.signUp.legalConsentEnabled;
+
+  @override
+  int get passwordMinLength {
+    final min = auth.env.user.passwordSettings.minLength;
+    return min > 0 ? min : 15;
+  }
+
+  @override
+  bool get firstNameRequired =>
+      auth.env.user.attributes[clerk.UserAttribute.firstName]?.isRequired ==
+      true;
+
+  @override
+  bool get lastNameRequired =>
+      auth.env.user.attributes[clerk.UserAttribute.lastName]?.isRequired ==
+      true;
 
   @override
   List<clerk.Field> get signUpMissingFields =>

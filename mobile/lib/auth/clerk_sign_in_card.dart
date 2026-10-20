@@ -88,20 +88,45 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
         text.contains('expired');
   }
 
+  bool _isPwnedPasswordError(Object error) {
+    if (error is clerk.ClerkError) {
+      if (error.errors?.errors?.any((e) =>
+              e.code?.toLowerCase().contains('pwned') == true ||
+              e.code?.toLowerCase().contains('breach') == true) ==
+          true) {
+        return true;
+      }
+    }
+    final text = error.toString().toLowerCase();
+    return text.contains('pwned') ||
+        text.contains('breach') ||
+        text.contains('hibp');
+  }
+
+  bool _isPasswordTooShortError(Object error) {
+    if (error is clerk.ClerkError) {
+      if (error.errors?.errors?.any((e) =>
+              e.code?.toLowerCase().contains('short') == true ||
+              e.code?.toLowerCase().contains('length') == true) ==
+          true) {
+        return true;
+      }
+    }
+    final text = error.toString().toLowerCase();
+    return text.contains('form_password_length_too_short') ||
+        text.contains('too_short') ||
+        text.contains('too short') ||
+        (text.contains('password') && text.contains('short')) ||
+        (text.contains('password') && text.contains('at least'));
+  }
+
+
   Future<void> _submit() async {
     if (_working) return;
     final actions = _actions(context);
     final email = _email.text.trim().isNotEmpty
         ? _email.text.trim()
         : (actions.signUpEmail ?? '');
-    if (email.isEmpty || (_awaitingCode && _code.text.trim().isEmpty)) {
-      setState(
-        () => _error = _awaitingCode
-            ? 'Enter the verification code from your email.'
-            : 'Enter your email address to continue.',
-      );
-      return;
-    }
     if (_creatingAccount && actions.legalConsentRequired) {
       setState(
         () => _error =
@@ -110,8 +135,30 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
       return;
     }
     if (_creatingAccount && !_awaitingCode) {
-      if (_password.text.length < 8) {
-        setState(() => _error = 'Password must be at least 8 characters.');
+      final firstNameRequired = actions.firstNameRequired ||
+          actions.signUpMissingFields.contains(clerk.Field.firstName);
+      final lastNameRequired = actions.lastNameRequired ||
+          actions.signUpMissingFields.contains(clerk.Field.lastName);
+      if ((firstNameRequired && _firstName.text.trim().isEmpty) ||
+          (lastNameRequired && _lastName.text.trim().isEmpty)) {
+        setState(() => _error = 'Enter your first and last name.');
+        return;
+      }
+    }
+    if (email.isEmpty || (_awaitingCode && _code.text.trim().isEmpty)) {
+      setState(
+        () => _error = _awaitingCode
+            ? 'Enter the verification code from your email.'
+            : 'Enter your email address to continue.',
+      );
+      return;
+    }
+    if (_creatingAccount && !_awaitingCode) {
+      final minLength = actions.passwordMinLength;
+      if (_password.text.length < minLength) {
+        setState(
+          () => _error = 'Password must be at least $minLength characters.',
+        );
         return;
       }
       if (_password.text != _confirmPassword.text) {
@@ -153,7 +200,7 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
           _firstName.text.trim().isEmpty ? null : _firstName.text.trim(),
           _lastName.text.trim().isEmpty ? null : _lastName.text.trim(),
           null,
-          _showClerkError,
+          _showSignUpError,
           password: _password.text.isEmpty ? null : _password.text,
           passwordConfirmation:
               _confirmPassword.text.isEmpty ? null : _confirmPassword.text,
@@ -216,6 +263,24 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
     if (mounted) {
       setState(() {
         if (_isIncorrectOrExpiredCodeError(error)) {
+          _error = _incorrectCodeMessage;
+        } else {
+          _error = error.toString();
+        }
+      });
+    }
+  }
+
+  void _showSignUpError(Object error) {
+    if (mounted) {
+      setState(() {
+        final minLength = _actions(context).passwordMinLength;
+        if (_isPwnedPasswordError(error)) {
+          _error =
+              'This password appears in a known data breach. Choose a different one.';
+        } else if (_isPasswordTooShortError(error)) {
+          _error = 'Password must be at least $minLength characters.';
+        } else if (_isIncorrectOrExpiredCodeError(error)) {
           _error = _incorrectCodeMessage;
         } else {
           _error = error.toString();
@@ -287,8 +352,8 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
               textCapitalization: TextCapitalization.words,
               autofillHints: const [AutofillHints.givenName],
               decoration: InputDecoration(
-                labelText:
-                    actions.signUpMissingFields.contains(clerk.Field.firstName)
+                labelText: (actions.firstNameRequired ||
+                        actions.signUpMissingFields.contains(clerk.Field.firstName))
                     ? 'First name (required)'
                     : 'First name (optional)',
               ),
@@ -300,8 +365,8 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
               textCapitalization: TextCapitalization.words,
               autofillHints: const [AutofillHints.familyName],
               decoration: InputDecoration(
-                labelText:
-                    actions.signUpMissingFields.contains(clerk.Field.lastName)
+                labelText: (actions.lastNameRequired ||
+                        actions.signUpMissingFields.contains(clerk.Field.lastName))
                     ? 'Last name (required)'
                     : 'Last name (optional)',
               ),
@@ -342,9 +407,11 @@ class _ClerkSignInCardState extends State<ClerkSignInCard> {
               controller: _password,
               obscureText: true,
               autofillHints: const [AutofillHints.newPassword],
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Create a password',
-                prefixIcon: Icon(Icons.lock_outline),
+                prefixIcon: const Icon(Icons.lock_outline),
+                helperText:
+                    'At least ${actions.passwordMinLength} characters.',
               ),
               textInputAction: TextInputAction.next,
             ),

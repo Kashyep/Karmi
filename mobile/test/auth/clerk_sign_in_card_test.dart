@@ -36,7 +36,11 @@ void main() {
   testWidgets(
     'sign-up supports required names, code resend, and verification',
     (tester) async {
-      final actions = FakeClerkEmailCodeActions()..requireFirstName = true;
+      final actions = FakeClerkEmailCodeActions()
+        ..firstNameRequired = false
+        ..lastNameRequired = false
+        ..passwordMinLength = 8
+        ..requireFirstName = true;
       await pumpHost(tester, ClerkSignInCard(actions: actions));
       await tester.tap(find.text('New to Karmi? Create an account'));
       await tester.pumpAndSettle();
@@ -167,7 +171,10 @@ void main() {
   testWidgets('mismatch and <8 chars block submission with a visible error', (
     tester,
   ) async {
-    final actions = FakeClerkEmailCodeActions();
+    final actions = FakeClerkEmailCodeActions()
+      ..firstNameRequired = false
+      ..lastNameRequired = false
+      ..passwordMinLength = 8;
     await pumpHost(tester, ClerkSignInCard(actions: actions));
     await tester.tap(find.text('New to Karmi? Create an account'));
     await tester.pumpAndSettle();
@@ -212,7 +219,10 @@ void main() {
   testWidgets(
     'attemptSignUp receives password and confirmation',
     (tester) async {
-      final actions = FakeClerkEmailCodeActions();
+      final actions = FakeClerkEmailCodeActions()
+        ..firstNameRequired = false
+        ..lastNameRequired = false
+        ..passwordMinLength = 8;
       await pumpHost(tester, ClerkSignInCard(actions: actions));
       await tester.tap(find.text('New to Karmi? Create an account'));
       await tester.pumpAndSettle();
@@ -242,6 +252,9 @@ void main() {
     'mid sign-up resume shows password fields and completes sign-up',
     (tester) async {
       final actions = FakeClerkEmailCodeActions()
+        ..firstNameRequired = false
+        ..lastNameRequired = false
+        ..passwordMinLength = 8
         ..isMidSignUp = true
         ..signUpEmail = 'resume@example.com';
       await pumpHost(tester, ClerkSignInCard(actions: actions));
@@ -277,7 +290,9 @@ void main() {
   testWidgets(
     'code step on sign-up calls verifySignUpCode with code only and never passes password or name',
     (tester) async {
-      final actions = FakeClerkEmailCodeActions();
+      final actions = FakeClerkEmailCodeActions()
+        ..firstNameRequired = false
+        ..lastNameRequired = false;
       await pumpHost(tester, ClerkSignInCard(actions: actions));
       await tester.tap(find.text('New to Karmi? Create an account'));
       await tester.pumpAndSettle();
@@ -417,6 +432,171 @@ void main() {
     },
   );
 
+  testWidgets(
+    'required names block submit with \'Enter your first and last name.\'',
+    (tester) async {
+      final actions = FakeClerkEmailCodeActions();
+      await pumpHost(tester, ClerkSignInCard(actions: actions));
+      await tester.tap(find.text('New to Karmi? Create an account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('First name (required)'), findsOneWidget);
+      expect(find.text('Last name (required)'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Email address'),
+        'user@example.com',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Create a password'),
+        'ValidPassword12345',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Confirm password'),
+        'ValidPassword12345',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(actions.signUpCalls, 0);
+      expect(find.text('Enter your first and last name.'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'First name (required)'),
+        'Ada',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(actions.signUpCalls, 0);
+      expect(find.text('Enter your first and last name.'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Last name (required)'),
+        'Lovelace',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(actions.signUpCalls, 1);
+    },
+  );
+
+  testWidgets(
+    'min length 15 blocks a 14-char password and allows a 15-char one',
+    (tester) async {
+      final actions = FakeClerkEmailCodeActions();
+      await pumpHost(tester, ClerkSignInCard(actions: actions));
+      await tester.tap(find.text('New to Karmi? Create an account'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'First name (required)'),
+        'Ada',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Last name (required)'),
+        'Lovelace',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Email address'),
+        'user@example.com',
+      );
+
+      // 14-char password
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Create a password'),
+        '12345678901234',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Confirm password'),
+        '12345678901234',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(actions.signUpCalls, 0);
+      expect(
+        find.text('Password must be at least 15 characters.'),
+        findsOneWidget,
+      );
+
+      // 15-char password
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Create a password'),
+        '123456789012345',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Confirm password'),
+        '123456789012345',
+      );
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(actions.signUpCalls, 1);
+      expect(actions.lastPassword, '123456789012345');
+    },
+  );
+
+  testWidgets('helper text \'At least 15 characters.\' shown', (
+    tester,
+  ) async {
+    final actions = FakeClerkEmailCodeActions();
+    await pumpHost(tester, ClerkSignInCard(actions: actions));
+    await tester.tap(find.text('New to Karmi? Create an account'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('At least 15 characters.'), findsOneWidget);
+  });
+
+  testWidgets('Clerk sign-up errors map pwned and too-short passwords', (
+    tester,
+  ) async {
+    final actions = FakeClerkEmailCodeActions();
+    await pumpHost(tester, ClerkSignInCard(actions: actions));
+    await tester.tap(find.text('New to Karmi? Create an account'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'First name (required)'),
+      'Ada',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Last name (required)'),
+      'Lovelace',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Email address'),
+      'user@example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Create a password'),
+      '123456789012345',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Confirm password'),
+      '123456789012345',
+    );
+
+    actions.nextError = 'form_password_pwned: password found in breach';
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'This password appears in a known data breach. Choose a different one.',
+      ),
+      findsOneWidget,
+    );
+
+    actions.nextError = 'form_password_length_too_short';
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Password must be at least 15 characters.'),
+      findsOneWidget,
+    );
+  });
+
 }
 
 class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
@@ -432,6 +612,12 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   bool isMidSignUp = false;
   @override
   String? signUpEmail;
+  @override
+  int passwordMinLength = 15;
+  @override
+  bool firstNameRequired = true;
+  @override
+  bool lastNameRequired = true;
   bool requireFirstName = false;
   String? nextError;
   bool _signInAwaitingCode = false;
