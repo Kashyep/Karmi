@@ -24,3 +24,5 @@ gh_2.55.0_linux_amd64.tar.gz
 .env.clerk
 .env.opencode
 .env.openrouter
+.env.azure
+.env.azure.prod

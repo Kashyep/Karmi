@@ -4,30 +4,36 @@ The API is one container (`Dockerfile`, port 8000) plus PostgreSQL. Run **one re
 limiter, circuit breaker and model cooldowns are in-process. TLS must be terminated in front of it
 (the phone app requires https).
 
-## Option A: Fly.io (about $2-5/month; verify pricing)
+## Azure App Service (beta)
 
-```sh
-fly launch --no-deploy --dockerfile Dockerfile --internal-port 8000 --name karmi-beta
-fly secrets set \
-  DAILY_AGENT_ENVIRONMENT=production DAILY_AGENT_ALLOW_DEVELOPMENT_AUTH=false \
-  DAILY_AGENT_DATABASE_URL='postgresql+psycopg://…neon…' \
-  DAILY_AGENT_AUTH_SECRET="$(openssl rand -hex 32)" DAILY_AGENT_WEBHOOK_SECRET="$(openssl rand -hex 32)" \
-  DAILY_AGENT_CLERK_ISSUER=… DAILY_AGENT_CLERK_JWT_PUBLIC_KEY_B64=… \
-  DAILY_AGENT_OPENROUTER_ENABLED=true DAILY_AGENT_OPENROUTER_API_KEY=… \
-  DAILY_AGENT_PRODUCTION_PERIOD_BUDGET_MICRO=1000000 DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO=1000000
-fly deploy --ha=false
-fly ssh console -C "alembic upgrade head"
-curl https://karmi-beta.fly.dev/ready
-```
+Deploy using Azure App Service with an external Postgres database. The service listens on port 8000. TLS ingress must be configured upstream. Student Azure accounts do NOT allow ACR Tasks, so local images must be built and pushed manually.
 
-## Option B: any Linux box with Docker or podman
+1. Build the backend container image locally for linux/amd64:
+   
+   ```sh
+   podman build --platform=linux/amd64 -t karmi-backend .
+   az acr login --name karmiacr
+   podman tag karmi-backend karmiacr.azurecr.io/karmi-backend:latest
+   podman push karmiacr.azurecr.io/karmi-backend:latest
+   ```
 
-```sh
-cp ops/deploy/.env.example ops/deploy/.env   # fill the required values (never commit it)
-docker compose -f ops/deploy/compose.production.example.yaml --env-file ops/deploy/.env up -d --build
-docker compose -f ops/deploy/compose.production.example.yaml exec api alembic upgrade head
-```
-Put Caddy, nginx or a Cloudflare Tunnel in front for https.
+2. Use the deploy script for migration, build, and deploy steps:
+
+   ```sh
+   ~/.venvs/karmi/bin/python scripts/deploy_azure.py migrate   # Run Alembic DB migrations
+   ~/.venvs/karmi/bin/python scripts/deploy_azure.py build     # Tag and push image (as above)
+   ~/.venvs/karmi/bin/python scripts/deploy_azure.py deploy    # Deploys container, creates mode-600 .env.azure.prod
+   ~/.venvs/karmi/bin/python scripts/deploy_azure.py status    # Show latest deploy details
+   ```
+
+   - RG: `rg-karmi-prod`, App: `karmi-beta`, CAE: `cae-karmi-prod`, Region: `eastasia`, port: 8000
+
+3. Environment: The script writes the secrets to `.env.azure.prod` (mode 600, ignored).
+
+4. Never commit or expose secrets or .env.* files.
+
+For readiness and more, see [`docs/runbooks/azure-deployment.md`](../../docs/runbooks/azure-deployment.md).
+
 
 ## After it is up
 
