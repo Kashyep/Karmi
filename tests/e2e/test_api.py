@@ -27,22 +27,6 @@ def sign_event(event_id: str, timestamp: str, raw: bytes, secret: str) -> str:
     return hmac.new(secret.encode(), signable, hashlib.sha256).hexdigest()
 
 
-def test_identity_scopes_private_notes(test_context: dict[str, object]) -> None:
-    client = test_context["client"]
-    factory = test_context["factory"]
-    settings = test_context["settings"]
-    with factory() as session:  # type: ignore[operator]
-        _account_a, _user_a, token_a = create_identity(session, settings, name="A")  # type: ignore[arg-type]
-        _account_b, _user_b, token_b = create_identity(session, settings, name="B")  # type: ignore[arg-type]
-    created = client.post("/v1/notes", headers=auth(token_a), json={"content": "A private"})  # type: ignore[union-attr]
-    assert created.status_code == 201
-    note_id = created.json()["id"]
-    assert client.get("/v1/notes", headers=auth(token_b)).json() == []  # type: ignore[union-attr]
-    denied = client.delete(f"/v1/notes/{note_id}", headers=auth(token_b))  # type: ignore[union-attr]
-    assert denied.status_code == 404
-    assert client.get("/v1/notes", headers=auth(token_a)).json()[0]["content"] == "A private"  # type: ignore[union-attr]
-
-
 def test_message_dedupes_usage_and_persists_outbox(test_context: dict[str, object]) -> None:
     client = test_context["client"]
     factory = test_context["factory"]

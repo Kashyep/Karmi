@@ -22,7 +22,6 @@ from daily_agent.models import (
     BillingEvent,
     BudgetReservation,
     MessageFeedback,
-    Note,
     Reminder,
     RoutingRecord,
     Run,
@@ -45,8 +44,6 @@ from daily_agent.schemas import (
     FeedbackView,
     MessageCreate,
     MessageView,
-    NoteCreate,
-    NoteView,
     Outcome,
     RegenerateCreate,
     ReminderCreate,
@@ -67,7 +64,6 @@ from daily_agent.services import (
     IdempotencyConflict,
     ReservationInFlight,
     accept_internal_event,
-    build_note_context,
     create_task_idempotent,
     current_period_key,
     current_window_key,
@@ -80,7 +76,6 @@ from daily_agent.services import (
     policy_for,
     release_budget,
     reserve_budget,
-    scoped_note_query,
     scoped_task_query,
     seed_development_identity,
     settle_budget,
@@ -284,72 +279,6 @@ def create_app() -> FastAPI:
             tiers=list(ARMORY_TIERS),
         )
 
-    @app.post("/v1/notes", response_model=NoteView)
-    def create_note(
-        body: NoteCreate,
-        response: Response,
-        principal: Principal = Depends(require_principal),
-        session: Session = Depends(get_session),
-    ) -> NoteView:
-        def replay() -> NoteView | None:
-            """The earlier note for this idempotency key, or 409 if the payload differs."""
-            existing = session.scalar(
-                select(Note).where(
-                    Note.account_id == principal.account_id,
-                    Note.idempotency_key == body.idempotency_key,
-                )
-            )
-            if existing is None:
-                return None
-            if existing.content != body.content or existing.owner_user_id != principal.user_id:
-                raise _idempotency_conflict() from None
-            response.status_code = status.HTTP_200_OK
-            return NoteView(id=existing.id, content=existing.content, version=existing.version)
-
-        if body.idempotency_key is not None and (earlier := replay()) is not None:
-            return earlier
-        note = Note(
-            account_id=principal.account_id,
-            owner_user_id=principal.user_id,
-            content=body.content,
-            idempotency_key=body.idempotency_key,
-        )
-        session.add(note)
-        try:
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-            # Lost a concurrent insert race on the same key: replay the winner.
-            if body.idempotency_key is None or (earlier := replay()) is None:
-                raise
-            return earlier
-        response.status_code = status.HTTP_201_CREATED
-        return NoteView(id=note.id, content=note.content, version=note.version)
-
-    @app.get("/v1/notes", response_model=list[NoteView])
-    def list_notes(
-        principal: Principal = Depends(require_principal),
-        session: Session = Depends(get_session),
-    ) -> list[NoteView]:
-        notes = session.scalars(scoped_note_query(principal.account_id, principal.user_id)).all()
-        return [NoteView(id=n.id, content=n.content, version=n.version) for n in notes]
-
-    @app.delete("/v1/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
-    def delete_note(
-        note_id: str,
-        principal: Principal = Depends(require_principal),
-        session: Session = Depends(get_session),
-    ) -> Response:
-        note = session.scalar(
-            scoped_note_query(principal.account_id, principal.user_id).where(Note.id == note_id)
-        )
-        if note is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="note not found")
-        note.deleted = True
-        note.version += 1
-        session.commit()
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-
     @app.get("/v1/tasks", response_model=list[TaskView])
     def list_tasks(
         principal: Principal = Depends(require_principal),
@@ -520,17 +449,8 @@ def create_app() -> FastAPI:
         started_at = datetime.now(UTC)
         started = time.perf_counter()
         try:
-            context = build_note_context(
-                session,
-                account_id=principal.account_id,
-                user_id=principal.user_id,
-                max_tokens=policy.input_tokens,
-                query_text=body.text,
-                settings=settings,
-            )
             result = generate_reply(
                 body.text,
-                context,
                 settings=settings,
                 plan=policy,
                 gateway=gateway,
@@ -565,12 +485,11 @@ def create_app() -> FastAPI:
                 settings=settings,
                 plan=policy,
                 text=body.text,
-                context=context,
                 result=result,
                 timing=timing,
                 gateway=gateway,
             )
-            provider_calls = [*context.provider_calls, *result.provider_calls]
+            provider_calls = list(result.provider_calls)
             if result.release_reservation:
                 # Every model attempt failed: nothing usable was produced, so nothing is charged.
                 release_budget(session, reservation)
@@ -876,15 +795,7 @@ def _apply_intent(
     session: Session, intent: str | None, body: MessageCreate, principal: Principal
 ) -> None:
     """Perform the mutations a generated response claims, so response copy stays true."""
-    if intent == "store_memory":
-        session.add(
-            Note(
-                account_id=principal.account_id,
-                owner_user_id=principal.user_id,
-                content=body.text,
-            )
-        )
-    elif intent == "create_task":
+    if intent == "create_task":
         session.add(
             Task(
                 account_id=principal.account_id,

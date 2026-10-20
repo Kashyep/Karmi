@@ -2,7 +2,6 @@ import calendar
 import hashlib
 import json
 import logging
-import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
@@ -19,7 +18,6 @@ from daily_agent.models import (
     BudgetReservation,
     CostLedger,
     InboxEvent,
-    Note,
     OutboxEvent,
     PlatformBudget,
     ReservationStatus,
@@ -36,7 +34,6 @@ from daily_agent.providers import (
     TYPESAFE_CALL_ESTIMATE_MICRO,
     ProviderCall,
     classify_intent,
-    score_notes_relevance,
 )
 from daily_agent.schemas import Outcome
 
@@ -45,9 +42,6 @@ logger = logging.getLogger(__name__)
 # Fixed cost of the local deterministic route per completed request.
 LOCAL_FAKE_COST_MICRO = 100
 
-# Max notes sent to the live scorer per request — bounds payload size and
-# per-request provider latency.
-MAX_LIVE_SCORE_NOTES = 10
 
 
 class BudgetDenied(Exception):
@@ -591,12 +585,6 @@ def release_budget(session: Session, reservation: BudgetReservation) -> None:
     )
 
 
-def scoped_note_query(account_id: str, user_id: str) -> Select[tuple[Note]]:
-    return select(Note).where(
-        Note.account_id == account_id, Note.owner_user_id == user_id, Note.deleted.is_(False)
-    )
-
-
 def scoped_task_query(account_id: str) -> Select[tuple[Task]]:
     return (
         select(Task)
@@ -620,60 +608,6 @@ def create_task_idempotent(
     session.flush()
     return task
 
-
-@dataclass(frozen=True)
-class ContextManifest:
-    text: str
-    source_ids: tuple[str, ...]
-    estimated_tokens: int
-    omitted_source_ids: tuple[str, ...]
-    counting_method: str = "utf8-bytes-divided-by-4-estimate"
-    provider_calls: tuple[ProviderCall, ...] = ()
-
-
-def build_note_context(
-    session: Session,
-    *,
-    account_id: str,
-    user_id: str,
-    max_tokens: int,
-    query_text: str | None = None,
-    settings: Settings | None = None,
-) -> ContextManifest:
-    notes = list(session.scalars(scoped_note_query(account_id, user_id).order_by(Note.updated_at.desc())))
-
-    provider_calls: list[ProviderCall] = []
-    if query_text and notes and settings is not None and settings.live_models_enabled:
-        # Bound the scoring fan-out: only the newest N notes go to the provider
-        # (one scored question each); the rest keep chronological order.
-        scored_notes, unscored = notes[:MAX_LIVE_SCORE_NOTES], notes[MAX_LIVE_SCORE_NOTES:]
-        scores, calls = score_notes_relevance(query_text, scored_notes)
-        provider_calls.extend(calls)
-        if scores is not None:
-            notes = [
-                note
-                for _score, note in sorted(
-                    zip(scores, scored_notes, strict=True), key=lambda pair: pair[0], reverse=True
-                )
-            ] + unscored
-
-    parts: list[str] = []
-    source_ids: list[str] = []
-    omitted: list[str] = []
-    used = 0
-    for note in notes:
-        estimate = max(1, len(note.content.encode("utf-8")) // 4)
-        if used + estimate > max_tokens:
-            omitted.append(note.id)
-            continue
-        parts.append(note.content)
-        source_ids.append(note.id)
-        used += estimate
-    return ContextManifest(
-        "\n".join(parts), tuple(source_ids), used, tuple(omitted), provider_calls=tuple(provider_calls)
-    )
-
-
 @dataclass(frozen=True)
 class GenerationResult:
     response: str
@@ -691,53 +625,16 @@ DEFERRED_TEXT = (
 OVERSIZE_TEXT = "This request is too large for the current bounded route. Choose a smaller section."
 LOCAL_ROUTE = "fake-economy"
 
-# A drafting request that explicitly points at the user's saved notes. Only then may notes be
-# attached to a model prompt (and then only to models with private-data terms).
-_DRAFT_VERB = re.compile(r"\b(draft|write|compose|rewrite|email|reply)\b", re.IGNORECASE)
-_USES_NOTES = re.compile(
-    r"\b(using|from|based on|with|use)\b[^.?!]{0,40}\b(my|saved)\b[^.?!]{0,20}\bnotes?\b|मेरे नोट",
-    re.IGNORECASE,
-)
-
-
-def _memory_reply(
-    text: str,
-    context: ContextManifest,
-    *,
-    intent: str | None,
-    route: str,
-    calls: tuple[ProviderCall, ...] = (),
-) -> GenerationResult | None:
-    """Deterministic note-memory answers. Reads only; the note itself is written by the caller."""
-    lowered = text.casefold().strip()
-    if lowered.startswith("remember") and not context.text:
-        return GenerationResult(
-            "I do not have a saved fact for that yet.", Outcome.ASK_USER,
-            intent=intent, route=route, provider_calls=calls,
-        )
-    if "my notes" in lowered or "remember" in lowered:
-        if context.text:
-            return GenerationResult(
-                f"From your saved notes: {context.text}", Outcome.ACCEPT,
-                intent=intent, route=route, provider_calls=calls,
-            )
-        return GenerationResult(
-            "I could not find that in your saved notes.", Outcome.ASK_USER,
-            intent=intent, route=route, provider_calls=calls,
-        )
-    return None
-
 
 def generate_reply(
     text: str,
-    context: ContextManifest,
     *,
     settings: Settings,
     plan: PlanPolicy,
     gateway: Gateway | None = None,
     escalate: bool = False,
 ) -> GenerationResult:
-    """Classify the request, route it, and generate. Notes and tasks are written by the caller."""
+    """Classify the request, route it, and generate. Tasks are written by the caller."""
     if len(text) > 20_000:
         return GenerationResult(OVERSIZE_TEXT, Outcome.DEFERRED, intent=None, route=LOCAL_ROUTE)
 
@@ -745,40 +642,21 @@ def generate_reply(
     routing_calls: tuple[ProviderCall, ...] = ()
     intent: str | None = None
     if settings.live_models_enabled:
-        intent, calls = classify_intent(text, context.text)
+        intent, calls = classify_intent(text)
         routing_calls = tuple(calls)
-        if intent == "query_memory":
-            if context.text:
-                return GenerationResult(
-                    f"From your saved notes: {context.text}", Outcome.ACCEPT,
-                    intent=intent, route="typesafe-system-one", provider_calls=routing_calls,
-                )
-            return GenerationResult(
-                "I could not find that in your saved notes.", Outcome.ASK_USER,
-                intent=intent, route="typesafe-system-one", provider_calls=routing_calls,
-            )
-        if intent in {"store_memory", "create_task"}:
-            # The caller performs the actual Note/Task write for these intents so the
+        if intent == "create_task":
+            # The caller performs the actual Task write for this intent so the
             # response copy is only returned when the mutation really happens.
-            label = "note" if intent == "store_memory" else "task"
             return GenerationResult(
-                f"I have saved your {label}: {text.strip()}", Outcome.ACCEPT,
+                f"I have saved your task: {text.strip()}", Outcome.ACCEPT,
                 intent=intent, route="typesafe-system-one", provider_calls=routing_calls,
             )
-        if intent is not None and not (intent == "general_draft" and live):
+        if intent is not None and not live:
             return GenerationResult(
                 f"Draft ready: {text.strip()}", Outcome.ACCEPT,
                 intent=intent, route="typesafe-system-one", provider_calls=routing_calls,
             )
         # Provider unreachable or malformed response: fall through to rules.
-
-    drafting_from_notes = bool(
-        context.text and _DRAFT_VERB.search(text) and _USES_NOTES.search(text)
-    )
-    if not (live and drafting_from_notes):
-        memory = _memory_reply(text, context, intent=None, route=LOCAL_ROUTE, calls=routing_calls)
-        if memory is not None:
-            return memory
 
     if not live:
         return GenerationResult(
@@ -787,11 +665,9 @@ def generate_reply(
         )
 
     assert gateway is not None
-    attach_notes = drafting_from_notes or (intent == "general_draft" and bool(context.text))
     outcome = gateway.generate(
         plan=plan,
         text=text,
-        notes_text=context.text if attach_notes else "",
         task_type=classify_task(text),
         max_output_tokens=plan.output_tokens,
         escalate=escalate,

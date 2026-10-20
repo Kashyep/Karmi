@@ -142,7 +142,6 @@ def test_candidates_respect_plan_ceiling_context_privacy_and_structure() -> None
     )
     assert candidates(reg, "ananta") == ["eco", "eco-structured", "small"]
     assert candidates(reg, "ananta", prompt_tokens=1_000) == ["eco", "eco-structured"]
-    assert candidates(reg, "trika", notes_attached=True) == ["bal-private"]
     assert candidates(reg, "yanta", structured_output=True) == ["eco-structured"]
 
 

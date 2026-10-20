@@ -176,21 +176,6 @@ class CostLedger(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
-class Note(Base):
-    __tablename__ = "notes"
-    __table_args__ = (UniqueConstraint("account_id", "idempotency_key"),)
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
-    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
-    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    content: Mapped[str] = mapped_column(Text)
-    idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    version: Mapped[int] = mapped_column(Integer, default=1)
-    deleted: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (UniqueConstraint("account_id", "idempotency_key"),)

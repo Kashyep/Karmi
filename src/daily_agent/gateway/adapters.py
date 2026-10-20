@@ -113,9 +113,6 @@ class OpenRouterProvider:
             "temperature": 0.2,
             "stream": False,
         }
-        if request.private:
-            # Private notes may only reach endpoints that do not store or train on prompts.
-            body["provider"] = {"data_collection": "deny"}
         started = self._clock()
         try:
             with httpx.Client(

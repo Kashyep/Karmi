@@ -39,8 +39,6 @@ class ChatRequest:
     model_id: str
     messages: tuple[dict[str, str], ...]
     max_output_tokens: int
-    # Notes attached: adapters must ask the upstream router to avoid prompt retention.
-    private: bool = False
 
 
 @dataclass(frozen=True)

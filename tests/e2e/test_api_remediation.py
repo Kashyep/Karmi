@@ -9,7 +9,6 @@ from sqlalchemy import func, select
 from daily_agent.models import (
     Account,
     BillingEvent,
-    Note,
     Run,
     Subscription,
     UsagePeriod,
@@ -95,28 +94,6 @@ def test_task_replay_with_different_payload_is_rejected(test_context: dict[str, 
     assert first.status_code == 201
     assert replay.json()["id"] == first.json()["id"]  # type: ignore[call-arg]
     assert mismatch.status_code == 409
-
-
-def test_notes_accept_optional_idempotency_key(test_context: dict[str, object]) -> None:
-    client = test_context["client"]
-    factory = test_context["factory"]
-    settings = test_context["settings"]
-    with factory() as session:  # type: ignore[operator]
-        _account, _user, token = create_identity(session, settings, name="A")  # type: ignore[arg-type]
-    body = {"content": "remember this", "idempotency_key": "note-key-0001"}
-    first = client.post("/v1/notes", headers=auth(token), json=body)  # type: ignore[union-attr]
-    replay = client.post("/v1/notes", headers=auth(token), json=body)  # type: ignore[union-attr]
-    mismatch = client.post(  # type: ignore[union-attr]
-        "/v1/notes",
-        headers=auth(token),
-        json={"content": "DIFFERENT", "idempotency_key": "note-key-0001"},
-    )
-    assert first.status_code == 201
-    assert replay.status_code == 200
-    assert replay.json()["id"] == first.json()["id"]  # type: ignore[call-arg]
-    assert mismatch.status_code == 409
-    with factory() as session:  # type: ignore[operator]
-        assert session.scalar(select(func.count()).select_from(Note)) == 1
 
 
 def test_usage_endpoint_does_not_mutate(test_context: dict[str, object]) -> None:

@@ -60,7 +60,6 @@ class RouteRequest:
     task_type: TaskType
     prompt_tokens: int
     max_output_tokens: int
-    notes_attached: bool = False
     structured_output: bool = False
     # Regenerate/validation-failure: start one class above the plan floor.
     escalate: bool = False
@@ -104,7 +103,6 @@ def eligible_models(
         and m.model_class.rank >= rank_floor
         and m.context_length >= needed
         and (not request.structured_output or m.supports_structured_output)
-        and (not request.notes_attached or m.private_data_allowed)
         and m.action not in exclude
         and is_available(m)
     ]

@@ -28,7 +28,6 @@ from daily_agent.plans import PlanPolicy
 from daily_agent.providers import TYPESAFE_INPUT_MICRO_PER_1K, TYPESAFE_OUTPUT_MICRO_PER_1K
 from daily_agent.services import (
     LOCAL_FAKE_COST_MICRO,
-    ContextManifest,
     GenerationResult,
     measured_cost_micro,
 )
@@ -41,7 +40,7 @@ FEATURE_SCHEMA_VERSION = "routing-features.v1"
 STATIC_POLICY_VERSION = "karmi-static-v1"
 HARNESS_VERSION = f"karmi-{__version__}"
 # Bump when the provider prompt text in daily_agent/providers.py changes.
-PROMPT_VERSION = "karmi-prompts-v1"
+PROMPT_VERSION = "karmi-prompts-v2"
 
 LOCAL_ACTION = "karmi/fake-economy"
 LIVE_ACTION = "typesafe/system-one"
@@ -59,8 +58,6 @@ CONTRACT_TIERS = {"ananta": "ananta", "yanta": "yanta", "trika": "trika", "parth
 
 # Karmi intents -> Parakh's 15-domain taxonomy (model_lab/schemas.py DOMAINS).
 INTENT_DOMAINS = {
-    "query_memory": "conversation_memory",
-    "store_memory": "conversation_memory",
     "create_task": "task_planning",
     "general_draft": "communication",
 }
@@ -80,14 +77,9 @@ def contract_tier(plan_id: str) -> str:
         raise UnknownPlanError(f"plan {plan_id!r} has no TelemetryBatchV1 tier") from None
 
 
-def task_domain(text: str, intent: str | None) -> str:
-    """Domain from the classified intent, else the same heuristics ``fake_generate`` uses."""
-    if intent in INTENT_DOMAINS:
-        return INTENT_DOMAINS[intent]
-    lowered = text.casefold()
-    if "my notes" in lowered or "remember" in lowered:
-        return "conversation_memory"
-    return "communication"
+def task_domain(intent: str | None) -> str:
+    """Domain from the classified intent; everything else is a communication request."""
+    return INTENT_DOMAINS.get(intent or "", "communication")
 
 
 def action_for_route(route: str) -> str:
@@ -154,20 +146,18 @@ def model_registry(registry: ModelRegistry | None = None) -> list[dict[str, Any]
     return entries
 
 
-def routing_context(
-    *, plan: PlanPolicy, text: str, context: ContextManifest, intent: str | None
-) -> dict[str, Any]:
+def routing_context(*, plan: PlanPolicy, text: str, intent: str | None) -> dict[str, Any]:
     """The RoutingContext Parakh's feature schema interprets. Features only, never text."""
-    estimated = context.estimated_tokens + max(1, len(text.encode("utf-8")) // 4)
+    estimated = max(1, len(text.encode("utf-8")) // 4)
     return {
         "tier": contract_tier(plan.plan_id),
-        "task_domain": task_domain(text, intent),
+        "task_domain": task_domain(intent),
         "estimated_input_tokens": estimated,
         "context_utilization_ratio": round(min(1.0, estimated / plan.input_tokens), 6),
         "tool_count": 0,
         "requires_structured_output": False,
         "requires_tools": False,
-        "requires_memory": bool(context.source_ids),
+        "requires_memory": False,
         "requires_external_data": False,
         # Karmi messages are single-turn with no retry loop at the run level.
         "conversation_depth": 0,
@@ -184,8 +174,8 @@ class RunTiming:
     latency_ms: float
 
 
-def _attempts(context: ContextManifest, result: GenerationResult) -> list[dict[str, Any]]:
-    calls = [*context.provider_calls, *result.provider_calls]
+def _attempts(result: GenerationResult) -> list[dict[str, Any]]:
+    calls = list(result.provider_calls)
     if not calls:
         provider, model = LOCAL_ACTION.split("/", 1)
         return [{
@@ -210,7 +200,6 @@ def record_routing_evidence(
     settings: Settings,
     plan: PlanPolicy,
     text: str,
-    context: ContextManifest,
     result: GenerationResult,
     timing: RunTiming,
     gateway: Gateway | None = None,
@@ -219,7 +208,7 @@ def record_routing_evidence(
 
     Runs inside the request transaction. Returns the routing context for callers/tests.
     """
-    ctx = routing_context(plan=plan, text=text, context=context, intent=result.intent)
+    ctx = routing_context(plan=plan, text=text, intent=result.intent)
     eligible = eligible_actions(settings, plan, gateway)
     executed = action_for_route(result.route)
     session.add(
@@ -228,14 +217,14 @@ def record_routing_evidence(
             tier=ctx["tier"],
             task_domain=ctx["task_domain"],
             routing_context=json.dumps(ctx, sort_keys=True),
-            attempts=json.dumps(_attempts(context, result), sort_keys=True),
+            attempts=json.dumps(_attempts(result), sort_keys=True),
             harness_version=HARNESS_VERSION,
             prompt_version=PROMPT_VERSION,
             policy_version=STATIC_POLICY_VERSION,
             feature_schema_version=FEATURE_SCHEMA_VERSION,
             executed_action=executed,
             latency_ms=timing.latency_ms,
-            cost_micro=measured_cost_micro([*context.provider_calls, *result.provider_calls]),
+            cost_micro=measured_cost_micro(list(result.provider_calls)),
             started_at=timing.started_at,
             completed_at=timing.completed_at,
         )

@@ -11,10 +11,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from daily_agent.models import Note
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -85,43 +82,7 @@ def _client() -> Any:
     )
 
 
-def score_notes_relevance(
-    query_text: str, notes: list[Note]
-) -> tuple[list[float] | None, list[ProviderCall]]:
-    """Score each note's relevance to the query (0..n-1 aligned with ``notes``).
-
-    Returns ``(None, calls)`` on any provider failure so callers can fall back to
-    deterministic ordering; the failure is logged, never silent.
-    """
-    from typesafe_sdk import Score
-
-    state: dict[str, Any] = {
-        "user_query": query_text,
-        "notes": {f"note_{i}": note.content for i, note in enumerate(notes)},
-    }
-    questions = {
-        f"relevance_{i}": Score(
-            instructions=f"How relevant is `notes.note_{i}` to answering the user's query?",
-            criteria=["Irrelevant", "Tangential", "Directly Relevant"],
-        )
-        for i in range(len(notes))
-    }
-    try:
-        with _client() as client:
-            response = client.system_one(state=state, questions=questions)
-        call = _record(response, "score")
-        try:
-            scores = [float(response.scores[f"relevance_{i}"].score) for i in range(len(notes))]
-        except (KeyError, TypeError) as exc:
-            logger.warning("typesafe score response missing expected answers: %s", exc)
-            return None, [call]
-        return scores, [call]
-    except Exception as exc:
-        logger.warning("typesafe score_notes_relevance failed: %s", exc)
-        return None, []
-
-
-def classify_intent(text: str, context_text: str) -> tuple[str | None, list[ProviderCall]]:
+def classify_intent(text: str) -> tuple[str | None, list[ProviderCall]]:
     """Classify the user's primary intent; ``(None, calls)`` on provider failure."""
     from typesafe_sdk import Choice
 
@@ -129,8 +90,6 @@ def classify_intent(text: str, context_text: str) -> tuple[str | None, list[Prov
         "intent": Choice(
             instructions="What is the primary action the user is asking the assistant to take?",
             criteria={
-                "query_memory": "The user is asking to retrieve, search, or recall saved facts.",
-                "store_memory": "The user is providing a new fact or note to be remembered.",
                 "create_task": "The user is instructing the assistant to create a to-do, task, or reminder.",
                 "general_draft": "The user is asking for text generation, drafting, or general chat.",
             },
@@ -138,13 +97,10 @@ def classify_intent(text: str, context_text: str) -> tuple[str | None, list[Prov
     }
     try:
         with _client() as client:
-            response = client.system_one(
-                state={"user_message": text, "retrieved_context": context_text},
-                questions=questions,
-            )
+            response = client.system_one(state={"user_message": text}, questions=questions)
         call = _record(response, "choice")
         intent = response.choices["intent"].choice
-        if intent not in {"query_memory", "store_memory", "create_task", "general_draft"}:
+        if intent not in {"create_task", "general_draft"}:
             logger.warning("typesafe returned unknown intent %r", intent)
             return None, [call]
         return intent, [call]

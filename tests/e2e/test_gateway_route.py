@@ -26,13 +26,11 @@ from daily_agent.gateway.registry import parse_registry
 from daily_agent.models import (
     BudgetReservation,
     CostLedger,
-    Note,
     ReservationStatus,
     Run,
     RunStatus,
     Subscription,
     UsageWindow,
-    User,
 )
 from daily_agent.parakh.telemetry import build_telemetry_batch
 from tests.conftest import create_identity
@@ -179,17 +177,6 @@ def identity(harness: Harness, plan_id: str = "ananta") -> tuple[str, str]:
         return account.id, token
 
 
-NOTE_TEXT = "my locker code is 4821"
-
-
-def add_note(harness: Harness, account_id: str, content: str) -> None:
-    with harness.factory() as session:
-        owner = session.scalar(select(User).where(User.account_id == account_id))
-        assert owner is not None
-        session.add(Note(account_id=account_id, owner_user_id=owner.id, content=content))
-        session.commit()
-
-
 def window_of(harness: Harness, account_id: str) -> UsageWindow:
     with harness.factory() as session:
         window = session.scalar(select(UsageWindow).where(UsageWindow.account_id == account_id))
@@ -310,48 +297,6 @@ def test_rate_limited_model_is_cooled_down_for_later_requests(
         "vendor/eco-b:free",
         "vendor/eco-b:free",
     ], "the cooled-down model is not called again"
-
-
-def test_notes_never_reach_a_model_without_private_data_terms(
-    make_harness: Callable[..., Harness],
-) -> None:
-    harness = make_harness([ECO_A, ECO_B], lambda _r: reply("Dear team, here is the draft."))
-    account_id, token = identity(harness, "yanta")
-    add_note(harness, account_id, NOTE_TEXT)
-
-    response = send(harness, token, "gw-private-0001", "Draft an email using my saved notes")
-
-    body = response.json()
-    assert body["outcome"] == "DEFERRED"
-    assert body["route"] == "fake-economy"
-    assert harness.seen == [], "no model lacking no_training terms may be called with notes"
-    assert NOTE_TEXT not in json.dumps(body)
-
-
-def test_notes_go_only_to_the_private_model_and_ask_providers_to_deny_collection(
-    make_harness: Callable[..., Harness],
-) -> None:
-    harness = make_harness([ECO_A, BAL_PRIVATE], lambda _r: reply("Here is your draft."))
-    account_id, token = identity(harness, "yanta")
-    add_note(harness, account_id, NOTE_TEXT)
-
-    body = send(harness, token, "gw-private-0002", "Draft an email using my saved notes").json()
-
-    assert body["outcome"] == "ACCEPT"
-    assert [model_of(r) for r in harness.seen] == ["vendor/bal-private:free"]
-    payload = json.loads(harness.seen[0].content)
-    assert payload["provider"] == {"data_collection": "deny"}
-    assert NOTE_TEXT in json.dumps(payload["messages"])
-
-
-def test_plain_questions_never_attach_notes(make_harness: Callable[..., Harness]) -> None:
-    harness = make_harness([ECO_A], lambda _r: reply("Photosynthesis is..."))
-    account_id, token = identity(harness)
-    add_note(harness, account_id, NOTE_TEXT)
-
-    send(harness, token, "gw-plain-0001")
-
-    assert NOTE_TEXT not in harness.seen[0].content.decode()
 
 
 def test_plan_classes_limit_which_models_are_reachable(
