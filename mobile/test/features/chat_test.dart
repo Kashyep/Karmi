@@ -29,7 +29,7 @@ void main() {
   ) async {
     await pumpApp(tester);
     final quote = find.text(
-      'Ask for a draft, a task, or something to remember.',
+      'Ask a study question, or get help with maths or code.',
     );
     expect(quote, findsOneWidget);
     expect(tester.widget<Text>(quote).style?.fontFamily, 'Trykker_regular');

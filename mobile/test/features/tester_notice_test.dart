@@ -61,79 +61,84 @@ void main() {
     );
   });
 
-  testWidgets('unacknowledged without session leads to WelcomeScreen after acknowledgment', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
-    final settings = KarmiSettings(prefs);
-    final backend = FakeBackend.healthy();
-    final session = KarmiSession(
-      api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
-      prefs: prefs,
-    );
-    final armory = ArmoryController(
-      api: session.api,
-      prefs: prefs,
-      appIcon: FakeAppIcons(),
-    );
-    addTearDown(armory.dispose);
+  testWidgets(
+    'unacknowledged without session leads to WelcomeScreen after acknowledgment',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final settings = KarmiSettings(prefs);
+      final backend = FakeBackend.healthy();
+      final session = KarmiSession(
+        api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
+        prefs: prefs,
+      );
+      final armory = ArmoryController(
+        api: session.api,
+        prefs: prefs,
+        appIcon: FakeAppIcons(),
+      );
+      addTearDown(armory.dispose);
 
-    await tester.pumpWidget(
-      KarmiApp(
-        settings: settings,
-        session: session,
-        armory: armory,
-        adaptiveGlassQuality: false,
-      ),
-    );
-    await tester.pump();
+      await tester.pumpWidget(
+        KarmiApp(
+          settings: settings,
+          session: session,
+          armory: armory,
+          adaptiveGlassQuality: false,
+        ),
+      );
+      await tester.pump();
 
-    expect(find.byType(TesterNoticeScreen), findsOneWidget);
-    expect(find.byType(WelcomeScreen), findsNothing);
+      expect(find.byType(TesterNoticeScreen), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsNothing);
 
-    await tester.tap(find.text('I Understand and Acknowledge'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('I Understand and Acknowledge'));
+      await tester.pumpAndSettle();
 
-    expect(find.byType(TesterNoticeScreen), findsNothing);
-    expect(find.byType(WelcomeScreen), findsOneWidget);
-  });
+      expect(find.byType(TesterNoticeScreen), findsNothing);
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+    },
+  );
 
-  testWidgets('bumping notice version re-prompts previously acknowledged users', (
-    tester,
-  ) async {
-    // Acknowledged older version 0
-    SharedPreferences.setMockInitialValues({
-      'acknowledged_tester_notice_version': 0,
-      'dev_session_token': 'token',
-    });
-    final prefs = await SharedPreferences.getInstance();
-    final settings = KarmiSettings(prefs);
-    expect(settings.isTesterNoticeAcknowledged(kTesterNoticeVersion), isFalse);
+  testWidgets(
+    'bumping notice version re-prompts previously acknowledged users',
+    (tester) async {
+      // Acknowledged older version 0
+      SharedPreferences.setMockInitialValues({
+        'acknowledged_tester_notice_version': 0,
+        'dev_session_token': 'token',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final settings = KarmiSettings(prefs);
+      expect(
+        settings.isTesterNoticeAcknowledged(kTesterNoticeVersion),
+        isFalse,
+      );
 
-    final backend = FakeBackend.healthy();
-    final session = KarmiSession(
-      api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
-      prefs: prefs,
-    );
-    final armory = ArmoryController(
-      api: session.api,
-      prefs: prefs,
-      appIcon: FakeAppIcons(),
-    );
-    addTearDown(armory.dispose);
+      final backend = FakeBackend.healthy();
+      final session = KarmiSession(
+        api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
+        prefs: prefs,
+      );
+      final armory = ArmoryController(
+        api: session.api,
+        prefs: prefs,
+        appIcon: FakeAppIcons(),
+      );
+      addTearDown(armory.dispose);
 
-    await tester.pumpWidget(
-      KarmiApp(
-        settings: settings,
-        session: session,
-        armory: armory,
-        adaptiveGlassQuality: false,
-      ),
-    );
-    await tester.pump();
+      await tester.pumpWidget(
+        KarmiApp(
+          settings: settings,
+          session: session,
+          armory: armory,
+          adaptiveGlassQuality: false,
+        ),
+      );
+      await tester.pump();
 
-    // Re-prompts because acknowledged version (0) < kTesterNoticeVersion (1)
-    expect(find.byType(TesterNoticeScreen), findsOneWidget);
-  });
+      // Re-prompts because acknowledged version (0) < kTesterNoticeVersion (1)
+      expect(find.byType(TesterNoticeScreen), findsOneWidget);
+    },
+  );
 }

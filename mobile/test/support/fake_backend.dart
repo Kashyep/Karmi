@@ -76,7 +76,9 @@ class FakeBackend {
         });
       }
     }
-    if (handler == null) return http.Response('unrouted: ${request.method} $path', 599);
+    if (handler == null) {
+      return http.Response('unrouted: ${request.method} $path', 599);
+    }
     return handler(request);
   });
 
@@ -133,14 +135,6 @@ class FakeBackend {
         (_) => jsonResponse({'token': 't', 'user_id': 'u'}),
       )
       ..on('GET', '/v1/usage', (_) => jsonResponse(usageJson()))
-      ..on(
-        'GET',
-        '/v1/notes',
-        (_) => jsonResponse([
-          {'id': 'n1', 'content': 'Prefers short answers.', 'version': 1},
-          {'id': 'n2', 'content': 'Timezone is Asia/Kolkata.', 'version': 1},
-        ]),
-      )
       ..on(
         'GET',
         '/v1/tasks',

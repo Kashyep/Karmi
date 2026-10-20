@@ -28,7 +28,10 @@ class KarmiSettings extends ChangeNotifier {
   /// Accepts https URLs, plus plain http only for local development hosts.
   static bool isValidServerUrl(String value) {
     final uri = Uri.tryParse(value.trim());
-    if (uri == null || uri.host.isEmpty || uri.hasQuery || uri.fragment.isNotEmpty) {
+    if (uri == null ||
+        uri.host.isEmpty ||
+        uri.hasQuery ||
+        uri.fragment.isNotEmpty) {
       return false;
     }
     if (uri.scheme == 'https') return true;

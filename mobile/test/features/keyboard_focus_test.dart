@@ -176,10 +176,10 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester);
-    final tabFinder = find.bySemanticsLabel('Memory tab');
+    final tabFinder = find.bySemanticsLabel('Usage tab');
     final rect = tester.getRect(tabFinder.first);
     final before = await ringPixels(tester, rect);
-    await focusByKeyboard(tester, find.text('Memory'));
+    await focusByKeyboard(tester, find.text('Usage'));
     final after = await ringPixels(tester, rect);
     expect(after - before, greaterThan(150), reason: '$before→$after');
   });
@@ -226,8 +226,8 @@ void main() {
     FocusManager.instance.highlightStrategy =
         FocusHighlightStrategy.alwaysTouch;
     await pumpApp(tester);
-    final rect = tester.getRect(find.bySemanticsLabel('Memory tab').first);
-    await openTab(tester, 'Memory');
+    final rect = tester.getRect(find.bySemanticsLabel('Usage tab').first);
+    await openTab(tester, 'Usage');
     expect(await ringPixels(tester, rect), lessThan(50));
   });
 }

@@ -19,12 +19,12 @@ void main() {
   group('sendMessage', () {
     test('loads a fresh bearer token for each authenticated request', () async {
       final tokens = ['clerk-token-1', 'clerk-token-2'];
-      backend.on('GET', '/v1/notes', (_) => jsonResponse([]));
+      backend.on('GET', '/v1/tasks', (_) => jsonResponse([]));
       api.token = 'stale-development-token';
       api.tokenProvider = () async => tokens.removeAt(0);
 
-      await api.listNotes();
-      await api.listNotes();
+      await api.listTasks();
+      await api.listTasks();
 
       expect(
         backend.requests.map((request) => request.headers['Authorization']),
@@ -35,11 +35,11 @@ void main() {
     test(
       'does not fall back to a cached token when provider returns null',
       () async {
-        backend.on('GET', '/v1/notes', (_) => jsonResponse([]));
+        backend.on('GET', '/v1/tasks', (_) => jsonResponse([]));
         api.token = 'stale-development-token';
         api.tokenProvider = () async => null;
 
-        await api.listNotes();
+        await api.listTasks();
 
         expect(
           backend.requests.single.headers,
@@ -272,50 +272,6 @@ void main() {
     });
   });
 
-  group('notes', () {
-    test('listNotes parses id/content/version', () async {
-      backend.on(
-        'GET',
-        '/v1/notes',
-        (_) => jsonResponse([
-          {'id': 'n1', 'content': 'a', 'version': 3},
-        ]),
-      );
-      final notes = await api.listNotes();
-      expect(notes.single.id, 'n1');
-      expect(notes.single.version, 3);
-    });
-
-    test('createNote sends content and idempotency key; accepts 201', () async {
-      backend.on(
-        'POST',
-        '/v1/notes',
-        (_) => jsonResponse({'id': 'n2', 'content': 'b', 'version': 1}, 201),
-      );
-      final note = await api.createNote('b', idempotencyKey: 'note-key-1');
-      expect(note.id, 'n2');
-      expect(jsonDecode(backend.requests.single.body), {
-        'content': 'b',
-        'idempotency_key': 'note-key-1',
-      });
-    });
-
-    test('deleteNote accepts 204 with an empty body', () async {
-      backend.on('DELETE', '/v1/notes/n1', (_) => http.Response('', 204));
-      await api.deleteNote('n1');
-      expect(backend.requests.single.method, 'DELETE');
-    });
-
-    test('deleteNote 404 throws ServerException', () async {
-      backend.on(
-        'DELETE',
-        '/v1/notes/n1',
-        (_) => jsonResponse({'detail': 'note not found'}, 404),
-      );
-      await expectLater(api.deleteNote('n1'), throwsA(isA<ServerException>()));
-    });
-  });
-
   group('tasks and usage', () {
     test('listTasks and completeTask', () async {
       backend
@@ -345,36 +301,32 @@ void main() {
   });
 
   group('feedback and regenerate', () {
-    test('sendFeedback sends rating and reason; parses RunFeedbackView', () async {
-      backend.on(
-        'POST',
-        '/v1/runs/run-101/feedback',
-        (req) {
+    test(
+      'sendFeedback sends rating and reason; parses RunFeedbackView',
+      () async {
+        backend.on('POST', '/v1/runs/run-101/feedback', (req) {
           final body = jsonDecode(req.body) as Map<String, dynamic>;
           return jsonResponse({
             'run_id': 'run-101',
             'rating': body['rating'],
             'reason': body['reason'],
           });
-        },
-      );
+        });
 
-      final res = await api.sendFeedback(
-        'run-101',
-        rating: FeedbackRating.down,
-        reason: 'too_slow',
-      );
-      expect(res.runId, 'run-101');
-      expect(res.rating, FeedbackRating.down);
-      expect(res.reason, 'too_slow');
+        final res = await api.sendFeedback(
+          'run-101',
+          rating: FeedbackRating.down,
+          reason: 'too_slow',
+        );
+        expect(res.runId, 'run-101');
+        expect(res.rating, FeedbackRating.down);
+        expect(res.reason, 'too_slow');
 
-      final req = backend.requests.single;
-      expect(req.headers['Authorization'], 'Bearer test-token');
-      expect(jsonDecode(req.body), {
-        'rating': 'down',
-        'reason': 'too_slow',
-      });
-    });
+        final req = backend.requests.single;
+        expect(req.headers['Authorization'], 'Bearer test-token');
+        expect(jsonDecode(req.body), {'rating': 'down', 'reason': 'too_slow'});
+      },
+    );
 
     test('sendFeedback without reason omits reason field', () async {
       backend.on(
@@ -392,34 +344,37 @@ void main() {
       expect(jsonDecode(req.body), {'rating': 'up'});
     });
 
-    test('regenerateRun sends idempotency_key and reason; parses MessageView with previous_run_id', () async {
-      backend.on(
-        'POST',
-        '/v1/runs/run-200/regenerate',
-        (_) => jsonResponse({
-          ...messageJson('ACCEPT', response: 'Better response'),
-          'run_id': 'run-201',
-          'previous_run_id': 'run-200',
-        }),
-      );
+    test(
+      'regenerateRun sends idempotency_key and reason; parses MessageView with previous_run_id',
+      () async {
+        backend.on(
+          'POST',
+          '/v1/runs/run-200/regenerate',
+          (_) => jsonResponse({
+            ...messageJson('ACCEPT', response: 'Better response'),
+            'run_id': 'run-201',
+            'previous_run_id': 'run-200',
+          }),
+        );
 
-      final view = await api.regenerateRun(
-        'run-200',
-        text: 'original prompt',
-        idempotencyKey: 'regen-key-1',
-        reason: 'wrong',
-      );
-      expect(view.runId, 'run-201');
-      expect(view.previousRunId, 'run-200');
-      expect(view.response, 'Better response');
+        final view = await api.regenerateRun(
+          'run-200',
+          text: 'original prompt',
+          idempotencyKey: 'regen-key-1',
+          reason: 'wrong',
+        );
+        expect(view.runId, 'run-201');
+        expect(view.previousRunId, 'run-200');
+        expect(view.response, 'Better response');
 
-      final req = backend.requests.single;
-      expect(jsonDecode(req.body), {
-        'text': 'original prompt',
-        'idempotency_key': 'regen-key-1',
-        'reason': 'wrong',
-      });
-    });
+        final req = backend.requests.single;
+        expect(jsonDecode(req.body), {
+          'text': 'original prompt',
+          'idempotency_key': 'regen-key-1',
+          'reason': 'wrong',
+        });
+      },
+    );
 
     test('FeedbackRating wire parsing', () {
       expect(FeedbackRating.fromWire('up'), FeedbackRating.up);

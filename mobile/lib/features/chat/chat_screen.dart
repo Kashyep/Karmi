@@ -249,7 +249,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: const [
                     EmptyState(
                       quote:
-                          'Ask for a draft, a task, or something to remember.',
+                          'Ask a study question, or get help with maths or code.',
                       body:
                           'Each reply shows its status, such as "Completed" or '
                           '"Awaiting confirmation".',

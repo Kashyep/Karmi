@@ -15,59 +15,60 @@ Future<void> send(WidgetTester tester, String text) async {
 }
 
 void main() {
-  testWidgets('assistant reply displays accessible thumbs and regenerate actions', (
+  testWidgets(
+    'assistant reply displays accessible thumbs and regenerate actions',
+    (tester) async {
+      final backend = FakeBackend.healthy()
+        ..on(
+          'POST',
+          '/v1/messages',
+          (_) => jsonResponse(
+            messageJson('ACCEPT', response: 'Here is your drafted email.'),
+          ),
+        );
+
+      await pumpApp(tester, backend: backend);
+      await send(tester, 'Draft email');
+
+      expect(find.text('Here is your drafted email.'), findsOneWidget);
+
+      // Verify actions exist with accessible tooltips and tap targets
+      final thumbsUpFinder = find.byWidgetPredicate(
+        (w) => w is IconButton && w.tooltip == 'Thumbs up',
+      );
+      final thumbsDownFinder = find.byWidgetPredicate(
+        (w) => w is IconButton && w.tooltip == 'Thumbs down',
+      );
+      final regenFinder = find.byWidgetPredicate(
+        (w) => w is IconButton && w.tooltip == 'Regenerate response',
+      );
+
+      expect(thumbsUpFinder, findsOneWidget);
+      expect(thumbsDownFinder, findsOneWidget);
+      expect(regenFinder, findsOneWidget);
+
+      final upButton = tester.widget<IconButton>(thumbsUpFinder);
+      expect(upButton.constraints?.minWidth, greaterThanOrEqualTo(48.0));
+      expect(upButton.constraints?.minHeight, greaterThanOrEqualTo(48.0));
+
+      final downButton = tester.widget<IconButton>(thumbsDownFinder);
+      expect(downButton.constraints?.minWidth, greaterThanOrEqualTo(48.0));
+      expect(downButton.constraints?.minHeight, greaterThanOrEqualTo(48.0));
+
+      final regenButton = tester.widget<IconButton>(regenFinder);
+      expect(regenButton.constraints?.minWidth, greaterThanOrEqualTo(48.0));
+      expect(regenButton.constraints?.minHeight, greaterThanOrEqualTo(48.0));
+    },
+  );
+
+  testWidgets('thumbs up sends feedback and selects the rating', (
     tester,
   ) async {
     final backend = FakeBackend.healthy()
       ..on(
         'POST',
         '/v1/messages',
-        (_) => jsonResponse(
-          messageJson('ACCEPT', response: 'Here is your drafted email.'),
-        ),
-      );
-
-    await pumpApp(tester, backend: backend);
-    await send(tester, 'Draft email');
-
-    expect(find.text('Here is your drafted email.'), findsOneWidget);
-
-    // Verify actions exist with accessible tooltips and tap targets
-    final thumbsUpFinder = find.byWidgetPredicate(
-      (w) => w is IconButton && w.tooltip == 'Thumbs up',
-    );
-    final thumbsDownFinder = find.byWidgetPredicate(
-      (w) => w is IconButton && w.tooltip == 'Thumbs down',
-    );
-    final regenFinder = find.byWidgetPredicate(
-      (w) => w is IconButton && w.tooltip == 'Regenerate response',
-    );
-
-    expect(thumbsUpFinder, findsOneWidget);
-    expect(thumbsDownFinder, findsOneWidget);
-    expect(regenFinder, findsOneWidget);
-
-    final upButton = tester.widget<IconButton>(thumbsUpFinder);
-    expect(upButton.constraints?.minWidth, greaterThanOrEqualTo(48.0));
-    expect(upButton.constraints?.minHeight, greaterThanOrEqualTo(48.0));
-
-    final downButton = tester.widget<IconButton>(thumbsDownFinder);
-    expect(downButton.constraints?.minWidth, greaterThanOrEqualTo(48.0));
-    expect(downButton.constraints?.minHeight, greaterThanOrEqualTo(48.0));
-
-    final regenButton = tester.widget<IconButton>(regenFinder);
-    expect(regenButton.constraints?.minWidth, greaterThanOrEqualTo(48.0));
-    expect(regenButton.constraints?.minHeight, greaterThanOrEqualTo(48.0));
-  });
-
-  testWidgets('thumbs up sends feedback and selects the rating', (tester) async {
-    final backend = FakeBackend.healthy()
-      ..on(
-        'POST',
-        '/v1/messages',
-        (_) => jsonResponse(
-          messageJson('ACCEPT', response: 'Plan ready.'),
-        ),
+        (_) => jsonResponse(messageJson('ACCEPT', response: 'Plan ready.')),
       );
 
     await pumpApp(tester, backend: backend);
@@ -83,19 +84,22 @@ void main() {
     expect(jsonDecode(feedbackReq.body), {'rating': 'up'});
     // Thumbs up is selected
     final upBtn = tester.widget<IconButton>(
-      find.byWidgetPredicate((w) => w is IconButton && w.tooltip == 'Thumbs up'),
+      find.byWidgetPredicate(
+        (w) => w is IconButton && w.tooltip == 'Thumbs up',
+      ),
     );
     expect(upBtn.isSelected, isTrue);
   });
 
-  testWidgets('thumbs down shows reason picker and sends reason', (tester) async {
+  testWidgets('thumbs down shows reason picker and sends reason', (
+    tester,
+  ) async {
     final backend = FakeBackend.healthy()
       ..on(
         'POST',
         '/v1/messages',
-        (_) => jsonResponse(
-          messageJson('ACCEPT', response: 'Summary of file.'),
-        ),
+        (_) =>
+            jsonResponse(messageJson('ACCEPT', response: 'Summary of file.')),
       );
 
     await pumpApp(tester, backend: backend);
@@ -180,7 +184,9 @@ void main() {
     expect(jsonDecode(regenReq.body)['idempotency_key'], isNotNull);
   });
 
-  testWidgets('error in feedback displays ErrorBanner with retry', (tester) async {
+  testWidgets('error in feedback displays ErrorBanner with retry', (
+    tester,
+  ) async {
     var failFeedback = true;
     final backend = FakeBackend.healthy()
       ..on(

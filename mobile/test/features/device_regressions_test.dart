@@ -173,8 +173,9 @@ void main() {
     await settle(tester);
     expect(
       find.text(
-        'Compare plans. Purchases are unavailable in this build, '
-        'so your plan cannot be changed here.',
+        'Compare plans. Purchases are unavailable in this beta. '
+        'Every plan uses free models; higher plans get more usage and '
+        'stronger model classes.',
       ),
       findsOneWidget,
     );

@@ -61,7 +61,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 key: const ValueKey('server-url-save'),
                 onPressed: () {
                   final value = controller.text.trim();
-                  if (value.isNotEmpty && !KarmiSettings.isValidServerUrl(value)) {
+                  if (value.isNotEmpty &&
+                      !KarmiSettings.isValidServerUrl(value)) {
                     setLocal(() => problem = 'Use an https:// address.');
                     return;
                   }
@@ -119,13 +120,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'One assistant for your drafts, tasks and notes.',
+                  'One assistant for your drafts and tasks.',
                   style: KarmiText.of(context).quote,
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'Karmi uses AI. Replies can be wrong, and each one shows its '
-                  'status. Your notes are stored on the Karmi server, not on '
+                  'status. Your messages are stored on the Karmi server, not on '
                   'this phone.',
                   style: text.bodyMedium?.copyWith(
                     color: colors.mutedForeground,

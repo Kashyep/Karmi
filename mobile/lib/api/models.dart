@@ -146,24 +146,6 @@ class UsageView {
   final bool synthetic;
 }
 
-class NoteView {
-  const NoteView({
-    required this.id,
-    required this.content,
-    required this.version,
-  });
-
-  factory NoteView.fromJson(Map<String, dynamic> json) => NoteView(
-    id: json['id'] as String,
-    content: json['content'] as String,
-    version: json['version'] as int,
-  );
-
-  final String id;
-  final String content;
-  final int version;
-}
-
 class TaskView {
   const TaskView({
     required this.id,

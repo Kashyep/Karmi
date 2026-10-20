@@ -123,6 +123,9 @@ void serverUrlTests() {
     expect(KarmiSettings.isValidServerUrl('http://evil.example.com'), isFalse);
     expect(KarmiSettings.isValidServerUrl('https://'), isFalse);
     expect(KarmiSettings.isValidServerUrl('ftp://karmi.example.com'), isFalse);
-    expect(KarmiSettings.isValidServerUrl('https://a.example.com/?x=1'), isFalse);
+    expect(
+      KarmiSettings.isValidServerUrl('https://a.example.com/?x=1'),
+      isFalse,
+    );
   });
 }

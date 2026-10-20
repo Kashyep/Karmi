@@ -6,7 +6,6 @@ import '../auth/session.dart';
 import '../armory/armory_controller.dart';
 import '../features/armory/armory_screen.dart';
 import '../features/chat/chat_screen.dart';
-import '../features/memory/memory_screen.dart';
 import '../features/plans/plan_selection_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/tasks/tasks_screen.dart';
@@ -28,11 +27,10 @@ const _destinations = [
   _Destination('Chat', Icons.chat_bubble_outline, Icons.chat_bubble),
   _Destination('Tasks', Icons.check_box_outlined, Icons.check_box),
   _Destination('Usage', Icons.data_usage, Icons.data_usage),
-  _Destination('Memory', Icons.bookmark_border, Icons.bookmark),
   _Destination('Settings', Icons.settings_outlined, Icons.settings),
 ];
 
-/// App shell (T3.1): five tabs. Glass app bar + tab bar normally; plain opaque
+/// App shell (T3.1): four tabs. Glass app bar + tab bar normally; plain opaque
 /// Material bars when reduce transparency / high contrast is on (§5.2).
 class KarmiShell extends StatefulWidget {
   const KarmiShell({
@@ -80,7 +78,6 @@ class _KarmiShellState extends State<KarmiShell> {
     ChatScreen(api: widget.api, onOpenPlans: _openPlans),
     TasksScreen(api: widget.api),
     UsageScreen(api: widget.api),
-    MemoryScreen(api: widget.api),
     SettingsScreen(
       settings: widget.settings,
       session: widget.session,

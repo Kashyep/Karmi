@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,101 +84,6 @@ void main() {
       usage.complete(jsonResponse(usageJson()));
       await settle(tester);
       expect(find.text('Loading usage'), findsNothing);
-    });
-  });
-
-  group('T4.2 Memory', () {
-    testWidgets('lists notes from GET /v1/notes', (tester) async {
-      await pumpApp(tester);
-      await openTab(tester, 'Memory');
-      expect(find.text('Prefers short answers.'), findsOneWidget);
-      expect(find.text('Timezone is Asia/Kolkata.'), findsOneWidget);
-      await expectA11yGuidelines(tester);
-    });
-
-    testWidgets('empty state', (tester) async {
-      final backend = FakeBackend.healthy()
-        ..on('GET', '/v1/notes', (_) => jsonResponse([]));
-      await pumpApp(tester, backend: backend);
-      await openTab(tester, 'Memory');
-      expect(find.text('Nothing saved yet.'), findsOneWidget);
-    });
-
-    testWidgets('loading then error with retry', (tester) async {
-      final backend = FakeBackend.healthy()
-        ..on('GET', '/v1/notes', FakeBackend.network());
-      await pumpApp(tester, backend: backend);
-      await openTab(tester, 'Memory');
-      expect(find.text('Notes unavailable'), findsOneWidget);
-      backend.on('GET', '/v1/notes', (_) => jsonResponse([]));
-      await tester.tap(find.text('Retry'));
-      await settle(tester);
-      expect(find.text('Nothing saved yet.'), findsOneWidget);
-    });
-
-    testWidgets('add note posts content + key and shows it', (tester) async {
-      final backend = FakeBackend.healthy()
-        ..on(
-          'POST',
-          '/v1/notes',
-          (r) => jsonResponse({
-            'id': 'n3',
-            'content': (jsonDecode(r.body) as Map)['content'],
-            'version': 1,
-          }, 201),
-        );
-      await pumpApp(tester, backend: backend);
-      await openTab(tester, 'Memory');
-      await tester.enterText(
-        find.widgetWithText(TextField, 'New note'),
-        'Likes tea',
-      );
-      await tester.pump();
-      await tester.tap(find.text('Add note'));
-      await settle(tester);
-      expect(find.text('Likes tea'), findsOneWidget);
-      final post = backend.requests.singleWhere((r) => r.method == 'POST');
-      final body = jsonDecode(post.body) as Map;
-      expect(body['content'], 'Likes tea');
-      expect(body['idempotency_key'], matches(RegExp(r'^[0-9a-f]{32}$')));
-    });
-
-    testWidgets('delete asks for confirmation; cancel keeps the note', (
-      tester,
-    ) async {
-      final backend = FakeBackend.healthy()
-        ..on('DELETE', '/v1/notes/n1', (_) => http.Response('', 204));
-      await pumpApp(tester, backend: backend);
-      await openTab(tester, 'Memory');
-      await tester.tap(find.byTooltip('Delete note').first);
-      await settle(tester);
-      expect(find.text('Delete this note?'), findsOneWidget);
-      await expectA11yGuidelines(tester);
-      await tester.tap(find.text('Cancel'));
-      await settle(tester);
-      expect(find.text('Prefers short answers.'), findsOneWidget);
-      expect(backend.requests.where((r) => r.method == 'DELETE'), isEmpty);
-
-      await tester.tap(find.byTooltip('Delete note').first);
-      await settle(tester);
-      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
-      await settle(tester);
-      expect(find.text('Prefers short answers.'), findsNothing);
-      expect(find.text('Note deleted'), findsOneWidget);
-      expect(backend.requests.where((r) => r.method == 'DELETE'), hasLength(1));
-    });
-
-    testWidgets('failed delete keeps the note and explains', (tester) async {
-      final backend = FakeBackend.healthy()
-        ..on('DELETE', '/v1/notes/n1', (_) => jsonResponse({}, 500));
-      await pumpApp(tester, backend: backend);
-      await openTab(tester, 'Memory');
-      await tester.tap(find.byTooltip('Delete note').first);
-      await settle(tester);
-      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
-      await settle(tester);
-      expect(find.text('Prefers short answers.'), findsOneWidget);
-      expect(find.text('The note was not deleted. Try again.'), findsOneWidget);
     });
   });
 
@@ -355,7 +259,7 @@ void main() {
   });
 
   group('text scale 2.0 has no overflow', () {
-    for (final tab in ['Tasks', 'Usage', 'Memory', 'Settings']) {
+    for (final tab in ['Tasks', 'Usage', 'Settings']) {
       testWidgets(tab, (tester) async {
         await pumpApp(tester, env: const Env(textScale: 2.0));
         await openTab(tester, tab);

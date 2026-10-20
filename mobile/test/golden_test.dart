@@ -65,7 +65,7 @@ void main() {
         );
       });
 
-      for (final tab in ['Tasks', 'Usage', 'Memory', 'Settings']) {
+      for (final tab in ['Tasks', 'Usage', 'Settings']) {
         testWidgets(tab.toLowerCase(), (tester) async {
           await pumpApp(tester, env: env);
           await openTab(tester, tab);

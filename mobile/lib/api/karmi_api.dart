@@ -128,26 +128,6 @@ class KarmiApi {
     await _send('GET', '/v1/usage') as Map<String, dynamic>,
   );
 
-  Future<List<NoteView>> listNotes() async {
-    final body = await _send('GET', '/v1/notes') as List<dynamic>;
-    return [for (final n in body) NoteView.fromJson(n as Map<String, dynamic>)];
-  }
-
-  Future<NoteView> createNote(
-    String content, {
-    required String idempotencyKey,
-  }) async {
-    final body = await _send(
-      'POST',
-      '/v1/notes',
-      json: {'content': content, 'idempotency_key': idempotencyKey},
-    );
-    return NoteView.fromJson(body as Map<String, dynamic>);
-  }
-
-  Future<void> deleteNote(String id) =>
-      _send('DELETE', '/v1/notes/${Uri.encodeComponent(id)}');
-
   Future<List<TaskView>> listTasks() async {
     final body = await _send('GET', '/v1/tasks') as List<dynamic>;
     return [for (final t in body) TaskView.fromJson(t as Map<String, dynamic>)];
