@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     gateway_breaker_failure_threshold: int = Field(default=5, ge=1, le=100)
     gateway_breaker_open_seconds: float = Field(default=60.0, gt=0)
     gateway_model_cooldown_seconds: float = Field(default=60.0, gt=0)
+    # Shared daily cap on live provider requests across every account, matching the provider
+    # key's own limit (an unfunded OpenRouter key allows 50 a day). The last
+    # ``gateway_paid_reserved_requests`` of them are kept for paid plans.
+    gateway_daily_request_limit: int = Field(default=50, ge=1)
+    gateway_paid_reserved_requests: int = Field(default=10, ge=0)
     # Per-user cap on message/feedback/regenerate calls (in-process; see daily_agent.ratelimit).
     rate_limit_per_minute: int = Field(default=30, ge=1, le=10_000)
     paid_checkout_enabled: bool = False
@@ -151,6 +156,8 @@ class Settings(BaseSettings):
                 raise ValueError("paid checkout requires an approved finite period budget")
             if self.live_models_enabled and self.production_period_budget_micro is None:
                 raise ValueError("live models require an approved finite period budget")
+        if self.gateway_paid_reserved_requests >= self.gateway_daily_request_limit:
+            raise ValueError("the paid reserve must leave some daily requests for the free plan")
         if self.whatsapp_enabled:
             raise ValueError("WhatsApp is policy-disabled for the current India-first release")
         if self.opencode_enabled and not self.opencode_api_key:

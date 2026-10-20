@@ -26,6 +26,7 @@ from daily_agent.gateway.registry import parse_registry
 from daily_agent.models import (
     BudgetReservation,
     CostLedger,
+    GatewayRequestDay,
     ReservationStatus,
     Run,
     RunStatus,
@@ -372,3 +373,114 @@ def test_export_refuses_runs_that_reference_models_missing_from_the_registry(
         }
         with pytest.raises(ValueError, match="absent from the registry"):
             build_telemetry_batch(session, start=window[0], end=window[1], registry=registry(ECO_B))
+
+
+def named_identity(harness: Harness, name: str, plan_id: str = "ananta") -> tuple[str, str]:
+    with harness.factory() as session:
+        account, _user, token = create_identity(session, harness.settings, name=name)
+        if plan_id != "ananta":
+            subscription = session.scalar(
+                select(Subscription).where(Subscription.account_id == account.id)
+            )
+            assert subscription is not None
+            subscription.plan_id = plan_id
+            session.commit()
+        return account.id, token
+
+
+def requests_used(harness: Harness) -> int | None:
+    with harness.factory() as session:
+        row = session.scalar(select(GatewayRequestDay))
+        return None if row is None else row.requests_used
+
+
+def test_shared_request_cap_keeps_a_reserve_for_paid_plans(
+    make_harness: Callable[..., Harness],
+) -> None:
+    # Limit 6, 2 kept for paid plans: free accounts may use 4. Each message holds 2 slots and
+    # hands back the one a successful single attempt did not use.
+    harness = make_harness(
+        [ECO_A],
+        lambda _r: reply("ok"),
+        gateway_daily_request_limit=6,
+        gateway_paid_reserved_requests=2,
+    )
+    free_account, free_token = named_identity(harness, "Free")
+    _paid_account, paid_token = named_identity(harness, "Paid", "yanta")
+
+    assert [send(harness, free_token, f"cap-free-{i}").status_code for i in range(3)] == [
+        200, 200, 200,
+    ]
+    assert requests_used(harness) == 3
+
+    denied = send(harness, free_token, "cap-free-3")
+
+    assert denied.status_code == 429
+    detail = denied.json()["detail"]
+    assert detail["code"] == "BETA_CAPACITY_FULL"
+    assert "05:30 IST (00:00 UTC)" in detail["message"]
+    assert datetime.fromisoformat(detail["reset_at"]) > datetime.now(UTC)
+    assert len(harness.seen) == 3, "a denied request never reaches the provider"
+    assert window_of(harness, free_account).everyday_used == 3, "denial charges no allowance"
+
+    assert send(harness, paid_token, "cap-paid-0").status_code == 200
+    assert send(harness, paid_token, "cap-paid-1").status_code == 200
+    paid_denied = send(harness, paid_token, "cap-paid-2")
+    assert paid_denied.status_code == 429
+    assert paid_denied.json()["detail"]["code"] == "BETA_CAPACITY_FULL"
+    assert requests_used(harness) == 5
+
+
+def test_failed_attempts_count_against_the_shared_cap(
+    make_harness: Callable[..., Harness],
+) -> None:
+    harness = make_harness(
+        [ECO_A, ECO_B],
+        lambda _r: httpx.Response(503, json={}),
+        gateway_daily_request_limit=4,
+        gateway_paid_reserved_requests=0,
+    )
+    _account, token = identity(harness)
+
+    assert send(harness, token, "cap-fail-0").json()["outcome"] == "DEFERRED"
+    assert send(harness, token, "cap-fail-1").json()["outcome"] == "DEFERRED"
+    third = send(harness, token, "cap-fail-2")
+
+    assert third.status_code == 429
+    assert third.json()["detail"]["code"] == "BETA_CAPACITY_FULL"
+    assert len(harness.seen) == 4
+    assert requests_used(harness) == 4
+
+
+def test_unused_slots_return_when_no_model_is_eligible(
+    make_harness: Callable[..., Harness],
+) -> None:
+    harness = make_harness(
+        [ADV], lambda _r: reply("x"), gateway_daily_request_limit=2,
+        gateway_paid_reserved_requests=0,
+    )
+    _account, token = identity(harness)  # ananta cannot reach the advanced model
+
+    for i in range(3):
+        assert send(harness, token, f"cap-none-{i}").json()["outcome"] == "DEFERRED"
+
+    assert harness.seen == []
+    assert requests_used(harness) == 0
+
+
+def test_demo_path_is_not_counted_against_the_cap(
+    make_harness: Callable[..., Harness],
+) -> None:
+    harness = make_harness(
+        [ECO_A],
+        lambda _r: reply("x"),
+        openrouter_enabled=False,
+        gateway_daily_request_limit=2,
+        gateway_paid_reserved_requests=0,
+    )
+    _account, token = identity(harness)
+
+    for i in range(3):
+        assert send(harness, token, f"cap-demo-{i}").status_code == 200
+
+    assert requests_used(harness) is None

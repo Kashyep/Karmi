@@ -12,11 +12,13 @@ from sqlalchemy.orm import Session
 
 from daily_agent.config import Settings
 from daily_agent.gateway import Gateway
+from daily_agent.gateway.registry import KNOWN_PROVIDERS
 from daily_agent.gateway.router import classify_task
 from daily_agent.models import (
     Account,
     BudgetReservation,
     CostLedger,
+    GatewayRequestDay,
     InboxEvent,
     OutboxEvent,
     PlatformBudget,
@@ -582,6 +584,78 @@ def release_budget(session: Session, reservation: BudgetReservation) -> None:
         reservation.id,
         reservation.account_id,
         reservation.reserved_micro,
+    )
+
+
+class GatewayCapacityFull(Exception):
+    """The shared daily provider-request cap has no room left for this caller's plan."""
+
+    def __init__(self, *, reset_at: datetime) -> None:
+        super().__init__("shared daily model request limit reached")
+        self.reset_at = reset_at
+
+
+@dataclass(frozen=True)
+class GatewayAdmission:
+    day_key: str
+    slots: int
+
+
+def admit_gateway_requests(
+    session: Session,
+    settings: Settings,
+    *,
+    paid: bool,
+    slots: int,
+    now: datetime | None = None,
+) -> GatewayAdmission:
+    """Hold ``slots`` of today's shared provider requests, or raise ``GatewayCapacityFull``.
+
+    Free plans stop ``gateway_paid_reserved_requests`` short of the limit so paid testers keep
+    a share. The guarded UPDATE keeps concurrent workers inside the cap.
+    """
+    key, reset = current_window_key(now)
+    if session.get(GatewayRequestDay, key) is None:
+        try:
+            with session.begin_nested():
+                session.add(GatewayRequestDay(day_key=key, requests_used=0))
+                session.flush()
+        except IntegrityError:
+            pass  # a concurrent request created today's row first
+    ceiling = settings.gateway_daily_request_limit
+    if not paid:
+        ceiling -= settings.gateway_paid_reserved_requests
+    result = session.execute(
+        update(GatewayRequestDay)
+        .where(
+            GatewayRequestDay.day_key == key,
+            GatewayRequestDay.requests_used + slots <= ceiling,
+        )
+        .values(requests_used=GatewayRequestDay.requests_used + slots)
+    )
+    if not isinstance(result, CursorResult) or result.rowcount != 1:
+        logger.warning("gateway request cap reached day=%s paid=%s", key, paid)
+        raise GatewayCapacityFull(reset_at=reset)
+    return GatewayAdmission(day_key=key, slots=slots)
+
+
+def gateway_requests_made(calls: tuple[ProviderCall, ...] | list[ProviderCall]) -> int:
+    """Provider requests a reply used (failed attempts count: the provider may have billed them)."""
+    return sum(1 for call in calls if call.provider in KNOWN_PROVIDERS)
+
+
+def return_gateway_requests(session: Session, admission: GatewayAdmission, used: int) -> None:
+    """Give back held request slots that were not used."""
+    unused = admission.slots - max(0, min(used, admission.slots))
+    if unused <= 0:
+        return
+    session.execute(
+        update(GatewayRequestDay)
+        .where(
+            GatewayRequestDay.day_key == admission.day_key,
+            GatewayRequestDay.requests_used >= unused,
+        )
+        .values(requests_used=GatewayRequestDay.requests_used - unused)
     )
 
 
