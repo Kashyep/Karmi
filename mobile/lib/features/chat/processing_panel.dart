@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/karmi_colors.dart';
 import 'state/chat_controller.dart';
-
 /// Displays staged summary during assistant generation without exposing model reasoning.
 class ProcessingPanel extends StatelessWidget {
   const ProcessingPanel({super.key, required this.phase});
@@ -46,6 +46,17 @@ class ProcessingPanel extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
+    final karmiColors = theme.extension<KarmiColors>();
+
+    final surfaceColor =
+        karmiColors?.sidebarSurface ?? colorScheme.surfaceContainerLow;
+    final borderColor =
+        karmiColors?.borderSubtle ?? colorScheme.outlineVariant;
+    final brandGreen = karmiColors?.primary ?? colorScheme.primary;
+    final textColor =
+        karmiColors?.foreground ?? colorScheme.onSurfaceVariant;
+    final subtleColor =
+        karmiColors?.mutedForeground ?? colorScheme.outline;
 
     return Semantics(
       liveRegion: true,
@@ -54,41 +65,52 @@ class ProcessingPanel extends StatelessWidget {
         duration: duration,
         child: Padding(
           key: ValueKey(phase),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox.square(
-                dimension: 14,
-                child: disableAnimations
-                    ? Icon(
-                        Icons.more_horiz,
-                        size: 14,
-                        color: colorScheme.onSurfaceVariant,
-                      )
-                    : CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colorScheme.primary,
-                      ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              decoration: BoxDecoration(
+                color: surfaceColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor, width: 1),
               ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              if (subtleLabel != null) ...[
-                const SizedBox(width: 6),
-                Text(
-                  subtleLabel,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: colorScheme.outline,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox.square(
+                    dimension: 14,
+                    child: disableAnimations
+                        ? Icon(
+                            Icons.more_horiz,
+                            size: 14,
+                            color: subtleColor,
+                          )
+                        : CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: brandGreen,
+                          ),
                   ),
-                ),
-              ],
-            ],
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: textColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (subtleLabel != null) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      subtleLabel,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: subtleColor,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ),

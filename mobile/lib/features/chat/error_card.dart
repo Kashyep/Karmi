@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/chat/chat_models.dart';
-
+import '../../theme/karmi_colors.dart';
 /// User-facing card for errors during assistant runs.
 class ErrorCard extends StatelessWidget {
   const ErrorCard({
@@ -71,12 +71,54 @@ class ErrorCard extends StatelessWidget {
         ErrorCategory.internal => onRetry != null ? (onRetry!, 'Retry') : null,
       };
 
+  // Recoverable warning categories (resumeUnavailable, quotaExhausted, unauthorized) use warningSurface; fatal errors use errorSurface.
+  bool get _isWarning => switch (category) {
+    ErrorCategory.resumeUnavailable ||
+    ErrorCategory.quotaExhausted ||
+    ErrorCategory.unauthorized => true,
+    ErrorCategory.capacityFull ||
+    ErrorCategory.providerUnavailable ||
+    ErrorCategory.validationFailed ||
+    ErrorCategory.network ||
+    ErrorCategory.internal => false,
+  };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final karmiColors = theme.extension<KarmiColors>();
     final message = messageFor(category);
     final action = _actionFor(category);
+
+    final cardColor = karmiColors != null
+        ? (_isWarning ? karmiColors.warningSurface : karmiColors.errorSurface)
+        : colorScheme.errorContainer;
+
+    final borderColor = karmiColors != null
+        ? (_isWarning
+            ? karmiColors.warning.withValues(alpha: 0.3)
+            : karmiColors.destructive.withValues(alpha: 0.3))
+        : colorScheme.outlineVariant;
+
+    final contentColor =
+        karmiColors?.foreground ?? colorScheme.onErrorContainer;
+
+    final iconColor = karmiColors != null
+        ? (_isWarning ? karmiColors.warning : karmiColors.destructive)
+        : colorScheme.onErrorContainer;
+
+    final buttonBgColor = karmiColors != null
+        ? (_isWarning
+            ? karmiColors.warning.withValues(alpha: 0.16)
+            : karmiColors.destructive.withValues(alpha: 0.16))
+        : colorScheme.onErrorContainer.withValues(alpha: 0.12);
+
+    final buttonBorderColor = karmiColors != null
+        ? (_isWarning
+            ? karmiColors.warning.withValues(alpha: 0.35)
+            : karmiColors.destructive.withValues(alpha: 0.35))
+        : colorScheme.onErrorContainer.withValues(alpha: 0.25);
 
     return Semantics(
       container: true,
@@ -85,8 +127,11 @@ class ErrorCard extends StatelessWidget {
       child: Card(
         elevation: 0,
         margin: EdgeInsets.zero,
-        color: colorScheme.errorContainer,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: cardColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: borderColor, width: 1),
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
@@ -94,14 +139,14 @@ class ErrorCard extends StatelessWidget {
               Icon(
                 iconFor(category),
                 size: 20,
-                color: colorScheme.onErrorContainer,
+                color: iconColor,
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   message,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onErrorContainer,
+                    color: contentColor,
                   ),
                 ),
               ),
@@ -109,22 +154,28 @@ class ErrorCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Tooltip(
                   message: action.$2,
-                  child: TextButton(
-                    onPressed: action.$1,
-                    style: TextButton.styleFrom(
-                      foregroundColor: colorScheme.onErrorContainer,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+                  child: Semantics(
+                    button: true,
+                    label: action.$2,
+                    child: TextButton(
+                      onPressed: action.$1,
+                      style: TextButton.styleFrom(
+                        foregroundColor: contentColor,
+                        backgroundColor: buttonBgColor,
+                        side: BorderSide(color: buttonBorderColor, width: 1),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        minimumSize: const Size(48, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
-                      minimumSize: const Size(48, 48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                      child: Text(
+                        action.$2,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                    ),
-                    child: Text(
-                      action.$2,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
