@@ -93,3 +93,20 @@ Burst (200 deltas, one SSE body):
 Attribution of the substring excess: the extra counts are descendant elements whose `toString()` mentions `ComposerTextFieldFocus` (Focus, TextField, EditableText), not rebuilt Composer widgets. The log-based gate therefore overcounts HEAD for reasons unrelated to rebuild work. The strict counts show the real gap is Composer rebuilding once more per send (3 vs 2), and MessageBubble rebuilds that grow with visible transcript on both trees (inherent to a non-memoized ChatScreen `setState`; not fixed in this pass).
 
 Not done in this pass: no source fix in `lib/features/chat/**`. The gate is not yet shown to be met under the original substring metric (HEAD 18 to 25 per send vs baseline 6 to 16; burst 5 vs 1).
+
+### perf2 after fix (strict gate metric)
+
+Source changes: `chat_screen.dart` caches the Composer widget and uses stable callbacks, and memoizes non-streaming MessageBubble widgets per message identity plus the inputs they read (`announce`, `isLastAssistant`, `busy`, feedback rating/reason/in-flight).
+
+| Metric | Baseline `dcf4f75` | HEAD before | After fix |
+|---|---|---|---|
+| Strict per send: Composer | 2 | 3 | 2 |
+| Strict per send: MessageBubble | 2, 4, 6, 8, 9 (grows) | 2, 4, 6, 8, 9 | 1 (only the new/announced bubble) |
+| Strict per send: ChatScreen | 1 | 1 | 1 |
+| Strict burst: Composer | 1 | 1 | 1 |
+| Substring total per send | 6, 9, 12, 15, 16 | 18, 20, 22, 24, 25 | 12 (flat) |
+| Substring total burst | 1 | 5 | 5 |
+
+Strict counts are at or below baseline on every send. The substring totals still include Focus/TextField descendants whose description mentions `ComposerTextFieldFocus`; that artifact is unchanged, so the substring metric does not show the gate as met.
+
+Not done: the burst is still a single SSE chunk, so it does not exercise per-flush rebuilds. A paced-chunk burst harness was not implemented. The full `test/features/chat` + `test/qa` + `test/a11y` run timed out at 590 s after 91 passing tests with no failures recorded. `test/features/chat_test.dart` passed alone (19/19).

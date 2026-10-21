@@ -76,6 +76,17 @@ class _ChatScreenState extends State<ChatScreen> {
   final Set<String> _feedbackInFlight = {};
   ErrorCategory? _feedbackError;
   VoidCallback? _feedbackRetry;
+
+  // Stable callbacks and memoized widget instances. A ChatScreen rebuild
+  // (setState on a controller notify) must not hand Composer or unchanged
+  // bubbles new instances; Flutter skips an element whose widget is identical.
+  late final ValueChanged<ComposerSubmit> _composerSubmit = _submitComposer;
+  late final VoidCallback _composerStop = _stopComposer;
+  Widget? _composerWidget;
+  String? _composerDraftKey;
+  bool? _composerBusy;
+  DraftStore? _composerDraftStore;
+  final Map<String, _BubbleMemo> _bubbleMemos = {};
   @override
   void initState() {
     super.initState();
@@ -367,6 +378,64 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _submitComposer(ComposerSubmit submit) {
+    final attachments = submit.attachments
+        .map((a) => a.toFencedBlock())
+        .toList();
+    _chatController.send(submit.text, attachments);
+  }
+
+  void _stopComposer() => _chatController.stop();
+
+  /// Returns the same Composer instance while its inputs are unchanged.
+  Widget _buildComposer() {
+    final draftKey = _activeConversationId ?? 'new';
+    final busy = _isBusy;
+    final draftStore = widget.draftStore;
+    if (_composerWidget == null ||
+        draftKey != _composerDraftKey ||
+        busy != _composerBusy ||
+        !identical(draftStore, _composerDraftStore)) {
+      _composerDraftKey = draftKey;
+      _composerBusy = busy;
+      _composerDraftStore = draftStore;
+      _composerWidget = Composer(
+        draftKey: draftKey,
+        draftStore: draftStore,
+        busy: busy,
+        onSubmit: _composerSubmit,
+        onStop: _composerStop,
+      );
+    }
+    return _composerWidget!;
+  }
+
+  /// Returns the cached bubble widget when the message object and every input
+  /// the bubble reads are unchanged; otherwise builds and records a new one.
+  Widget _memoBubble(
+    ChatMessageView msg,
+    int index,
+    int count,
+    int lastAssistantIndex,
+  ) {
+    final memo = _BubbleMemo(
+      msg: msg,
+      announce: index == count - 1 && msg.role == 'assistant',
+      isLastAssistant: index == lastAssistantIndex,
+      busy: _isBusy,
+      feedbackRating: _feedbackRatings[msg.id],
+      feedbackReason: _feedbackReasons[msg.id],
+      isFeedbackInFlight: _feedbackInFlight.contains(msg.id),
+    );
+    final cached = _bubbleMemos[msg.id];
+    if (cached != null && cached.sameInputs(memo)) {
+      return cached.widget;
+    }
+    memo.widget = _buildChatBubble(msg, index, count, lastAssistantIndex);
+    _bubbleMemos[msg.id] = memo;
+    return memo.widget;
+  }
+
   Widget _buildChatBubble(
     ChatMessageView msg,
     int index,
@@ -444,7 +513,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemBuilder: (context, index) {
                       final msg = messages[index];
                       if (msg.status != MessageStatus.streaming) {
-                        return _buildChatBubble(
+                        return _memoBubble(
                           msg,
                           index,
                           messages.length,
@@ -504,20 +573,42 @@ class _ChatScreenState extends State<ChatScreen> {
           padding: EdgeInsets.only(
             bottom: MediaQuery.paddingOf(context).bottom,
           ),
-          child: Composer(
-            draftKey: _activeConversationId ?? 'new',
-            draftStore: widget.draftStore,
-            busy: _isBusy,
-            onSubmit: (submit) {
-              final attachments = submit.attachments
-                  .map((a) => a.toFencedBlock())
-                  .toList();
-              _chatController.send(submit.text, attachments);
-            },
-            onStop: _chatController.stop,
-          ),
+          child: _buildComposer(),
         ),
       ],
     );
   }
+}
+
+/// Inputs a non-streaming bubble reads from ChatScreen state. Closures in the
+/// cached widget read controller/state at call time, so equal inputs mean an
+/// identical bubble.
+class _BubbleMemo {
+  _BubbleMemo({
+    required this.msg,
+    required this.announce,
+    required this.isLastAssistant,
+    required this.busy,
+    required this.feedbackRating,
+    required this.feedbackReason,
+    required this.isFeedbackInFlight,
+  });
+
+  final ChatMessageView msg;
+  final bool announce;
+  final bool isLastAssistant;
+  final bool busy;
+  final FeedbackRating? feedbackRating;
+  final String? feedbackReason;
+  final bool isFeedbackInFlight;
+  late Widget widget;
+
+  bool sameInputs(_BubbleMemo other) =>
+      identical(msg, other.msg) &&
+      announce == other.announce &&
+      isLastAssistant == other.isLastAssistant &&
+      busy == other.busy &&
+      feedbackRating == other.feedbackRating &&
+      feedbackReason == other.feedbackReason &&
+      isFeedbackInFlight == other.isFeedbackInFlight;
 }
