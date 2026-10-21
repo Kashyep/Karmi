@@ -150,7 +150,8 @@ class _ChatScreenState extends State<ChatScreen> {
         reason: updated.feedbackReason,
       );
     } on KarmiApiException catch (error) {
-      if (!mounted) return;
+      // The reply is gone after New chat: no banner for a cleared transcript.
+      if (!mounted || !_entries.contains(updated)) return;
       setState(() {
         _actionError = _ActionError(
           title: "Couldn't send feedback",
@@ -188,7 +189,7 @@ class _ChatScreenState extends State<ChatScreen> {
         reason: reason,
       );
     } on KarmiApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_entries.contains(updated)) return;
       setState(() {
         _actionError = _ActionError(
           title: "Couldn't send feedback",
@@ -235,7 +236,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _updateReply(updated, replacement);
       });
     } on KarmiApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_entries.contains(updated)) return;
       setState(() {
         _actionError = _ActionError(
           title: "Couldn't regenerate reply",

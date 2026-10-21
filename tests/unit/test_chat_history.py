@@ -230,6 +230,15 @@ def test_trim_history() -> None:
     assert history_tokens(sample_turns) == 100
 
 
+def test_trim_history_exact_budget_boundary() -> None:
+    plan = SYNTHETIC_POLICIES["ananta"]
+    text = "q" * (plan.input_tokens * 4 - SYSTEM_PROMPT_MAX_CHARS - 100)  # leaves 100 bytes
+    fits = HistoryTurn(role="user", content="f" * 100)
+    over = HistoryTurn(role="user", content="o" * 101)
+    assert trim_history([fits], text=text, plan=plan) == (fits,)
+    assert trim_history([over], text=text, plan=plan) == ()
+
+
 def test_message_request_hash() -> None:
     text = "Explain photosynthesis"
     expected_no_hist = hashlib.sha256(text.encode("utf-8")).hexdigest()

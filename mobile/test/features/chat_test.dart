@@ -591,6 +591,80 @@ void main() {
   );
 
   testWidgets(
+    'tapping New chat while regenerate is in flight drops stale error banner',
+    (tester) async {
+      final completer = Completer<http.Response>();
+      await pumpApp(
+        tester,
+        backend: backendWith((request) {
+          return jsonResponse(messageJson('ACCEPT', response: 'Initial reply'));
+        })..on('POST', '/v1/runs/run-1/regenerate', (_) => completer.future),
+      );
+
+      // 1. First POST /v1/messages returns an ACCEPT reply.
+      await send(tester, 'First message');
+      await settle(tester);
+      expect(find.text('Initial reply'), findsOneWidget);
+
+      // 2. Tap the reply's regenerate action while regenerate is in flight.
+      await tester.tap(find.byTooltip('Regenerate response'));
+      await tester.pump();
+
+      // 3. Tap New chat and pump.
+      await tester.tap(find.byTooltip('New chat'));
+      await tester.pump();
+
+      // 4. Complete the regenerate completer with an error response.
+      completer.complete(http.Response('{}', 500));
+      await settle(tester);
+
+      // 5. Expect no stale error banner and empty state is shown.
+      expect(find.text("Couldn't regenerate reply"), findsNothing);
+      expect(
+        find.text('Ask a study question, or get help with maths or code.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'tapping New chat while feedback is in flight drops stale error banner',
+    (tester) async {
+      final completer = Completer<http.Response>();
+      await pumpApp(
+        tester,
+        backend: backendWith((request) {
+          return jsonResponse(messageJson('ACCEPT', response: 'Initial reply'));
+        })..on('POST', '/v1/runs/run-1/feedback', (_) => completer.future),
+      );
+
+      // 1. First message returns reply.
+      await send(tester, 'First message');
+      await settle(tester);
+      expect(find.text('Initial reply'), findsOneWidget);
+
+      // 2. Tap feedback (thumbs down) while feedback is in flight.
+      await tester.tap(find.byTooltip('Thumbs down'));
+      await tester.pump();
+
+      // 3. Tap New chat and pump.
+      await tester.tap(find.byTooltip('New chat'));
+      await tester.pump();
+
+      // 4. Complete the feedback completer with an error response.
+      completer.complete(http.Response('{}', 500));
+      await settle(tester);
+
+      // 5. Expect no stale error banner and empty state is shown.
+      expect(find.text("Couldn't send feedback"), findsNothing);
+      expect(
+        find.text('Ask a study question, or get help with maths or code.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
     'ChatController.newChat clears entries and pending in ChatScreen',
     (tester) async {
       final controller = ChatController();
