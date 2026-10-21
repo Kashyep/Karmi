@@ -8,10 +8,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
-from datetime import UTC, datetime
 import threading
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import create_engine, select

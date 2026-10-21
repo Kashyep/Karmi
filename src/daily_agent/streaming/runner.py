@@ -10,8 +10,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import Connection, Engine, select
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import SingletonThreadPool
 
 from daily_agent.config import Settings
@@ -108,9 +108,9 @@ class StreamRunner:
         self._flush_lock = threading.Lock()
         self._flushed_terminal = False
         self.final_call: Any = None
+        self._sqlite_singleton_memory: bool = self._detect_sqlite_singleton_memory()
         if self.run_state.on_finalize is None:
             self.run_state.on_finalize = self.finalize
-
     @property
     def budget_settled(self) -> bool:
         return self._budget_settled
@@ -119,27 +119,27 @@ class StreamRunner:
     def budget_settled(self, value: bool) -> None:
         self._budget_settled = value
 
+    def _detect_sqlite_singleton_memory(self) -> bool:
+        engine: Engine | None = None
+        if isinstance(self.session_factory, sessionmaker):
+            bind = self.session_factory.kw.get("bind")
+            if isinstance(bind, Engine):
+                engine = bind
+            elif isinstance(bind, Connection):
+                engine = bind.engine
+        if engine is None:
+            with self.session_factory() as session:
+                bind = session.get_bind()
+                if isinstance(bind, Engine):
+                    engine = bind
+                elif isinstance(bind, Connection):
+                    engine = bind.engine
+        if engine is not None:
+            return engine.dialect.name == "sqlite" and isinstance(engine.pool, SingletonThreadPool)
+        return False
+
     def _is_sqlite_singleton_memory(self) -> bool:
-        if hasattr(self, "_sqlite_singleton_memory"):
-            return self._sqlite_singleton_memory
-        is_singleton = False
-        try:
-            bind = getattr(self.session_factory, "kw", {}).get("bind") or getattr(
-                self.session_factory, "bind", None
-            )
-            if bind is None:
-                with self.session_factory() as session:
-                    bind = session.get_bind()
-            if (
-                bind is not None
-                and bind.dialect.name == "sqlite"
-                and isinstance(bind.pool, SingletonThreadPool)
-            ):
-                is_singleton = True
-        except Exception:
-            pass
-        self._sqlite_singleton_memory = is_singleton
-        return is_singleton
+        return self._sqlite_singleton_memory
 
     async def _run_in_thread(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         if self._is_sqlite_singleton_memory():
@@ -155,38 +155,37 @@ class StreamRunner:
         message_finish_reason: str | None = None,
         outcome: str | None = None,
     ) -> None:
-        with self._flush_lock:
-            with self.session_factory() as session:
-                run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
-                if run is not None:
-                    run.partial_text = text
-                    run.last_seq = self.seq
-                    if run_status is not None:
-                        run.status = run_status
-                    if run_finish_reason is not None:
-                        run.finish_reason = run_finish_reason
-                    if outcome is not None:
-                        run.outcome = outcome
-                    if run_status == RunStatus.COMPLETED:
-                        run.response_text = text
+        with self._flush_lock, self.session_factory() as session:
+            run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
+            if run is not None:
+                run.partial_text = text
+                run.last_seq = self.seq
+                if run_status is not None:
+                    run.status = run_status
+                if run_finish_reason is not None:
+                    run.finish_reason = run_finish_reason
+                if outcome is not None:
+                    run.outcome = outcome
+                if run_status == RunStatus.COMPLETED:
+                    run.response_text = text
 
-                msg = session.scalar(select(ChatMessage).where(ChatMessage.id == self.run_state.assistant_message_id))
-                if msg is not None:
-                    # If continuing, full content includes prior text
-                    full_content = (self.prior_content or "") + text
-                    msg.content = full_content
-                    if message_status is not None:
-                        msg.status = message_status
-                    if message_finish_reason is not None:
-                        msg.finish_reason = message_finish_reason
-                if msg is not None and run_status in (RunStatus.COMPLETED, RunStatus.FAILED):
-                    self._flushed_terminal = True
-                    conversation = session.get(Conversation, msg.conversation_id)
-                    if conversation is not None:
-                        touch_conversation(conversation, utcnow())
-                session.commit()
-                self.last_flush_time = time.monotonic()
-                self.last_flushed_len = len(text)
+            msg = session.scalar(select(ChatMessage).where(ChatMessage.id == self.run_state.assistant_message_id))
+            if msg is not None:
+                # If continuing, full content includes prior text
+                full_content = (self.prior_content or "") + text
+                msg.content = full_content
+                if message_status is not None:
+                    msg.status = message_status
+                if message_finish_reason is not None:
+                    msg.finish_reason = message_finish_reason
+            if msg is not None and run_status in (RunStatus.COMPLETED, RunStatus.FAILED):
+                self._flushed_terminal = True
+                conversation = session.get(Conversation, msg.conversation_id)
+                if conversation is not None:
+                    touch_conversation(conversation, utcnow())
+            session.commit()
+            self.last_flush_time = time.monotonic()
+            self.last_flushed_len = len(text)
 
     def _settle_or_release_budget(self, *, release: bool = False) -> None:
         with self._budget_lock:

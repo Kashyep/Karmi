@@ -39,9 +39,9 @@ from daily_agent.schemas_chat import (
 from daily_agent.security import Principal
 from daily_agent.services import (
     BudgetDenied,
+    GatewayAdmission,
     GatewayCapacityFull,
     ReservationInFlight,
-    GatewayAdmission,
     admit_gateway_requests,
     estimate_request_cost_micro,
     policy_for,
@@ -88,9 +88,8 @@ async def stream_run_events(run_state: RunState, after_seq: int = -1) -> AsyncIt
                         yield encode_sse_event(evt.event, evt.data, event_id=evt.seq)
                 elif evt.event in ("run.finished", "run.error"):
                     yield encode_sse_event(evt.event, evt.data, event_id=evt.seq)
-                elif evt.event == "heartbeat":
-                    if not catching_up:
-                        yield encode_sse_event(evt.event, evt.data)
+                elif evt.event == "heartbeat" and not catching_up:
+                    yield encode_sse_event(evt.event, evt.data)
 
             if is_terminal and cursor >= len(run_state.events):
                 break

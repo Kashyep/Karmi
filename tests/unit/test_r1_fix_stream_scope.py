@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import asyncio
-from datetime import timedelta
 import json
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from daily_agent.api import create_app
 from daily_agent.config import Settings, get_settings
@@ -19,13 +17,12 @@ from daily_agent.models import (
     ChatMessage,
     Conversation,
     Run,
-    Subscription,
     User,
     chat_message_id_str,
     utcnow,
     uuid_str,
 )
-from daily_agent.schemas_chat import FinishReason, MessageStatus
+from daily_agent.schemas_chat import FinishReason
 from daily_agent.security import issue_development_token
 from daily_agent.streaming.registry import RunState, StreamEvent, get_stream_registry
 from tests.conftest import create_identity

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from datetime import timedelta
-import json
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
+import daily_agent.streaming.runner
 from daily_agent.api import create_app
 from daily_agent.config import Settings, get_settings
 from daily_agent.conversations.service import (
@@ -42,7 +43,6 @@ from daily_agent.streaming.registry import (
     get_stream_registry,
 )
 from daily_agent.streaming.runner import StreamRunner, start_stream_run
-import daily_agent.streaming.runner
 from tests.conftest import create_identity
 
 
@@ -1065,7 +1065,7 @@ def test_cross_user_search_isolation(tmp_path: Path) -> None:
         token_c = issue_development_token(user_c, settings)
 
         # User A's private conversation and message with unique secret keywords
-        secret_keyword = "classified_mars_mission_payload_alpha"
+        secret_keyword = "classified_mars_mission_payload_alpha"  # noqa: S105 - test search term, not password
         conv_a = Conversation(
             id=f"conv_a_{uuid4().hex}",
             account_id=account_a.id,
