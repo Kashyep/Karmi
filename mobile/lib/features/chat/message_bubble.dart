@@ -90,7 +90,7 @@ class MessageBubble extends StatelessWidget {
         if (isUser) {
           final maxWidth = constraints.maxWidth * 0.75;
           final userPill = Container(
-            constraints: BoxConstraints(maxWidth: maxWidth),
+            constraints: BoxConstraints(minHeight: 48, maxWidth: maxWidth),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: colors.userBubble,
