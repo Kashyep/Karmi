@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from daily_agent import opencode
-from daily_agent.gateway.adapters import OpenRouterProvider
+from daily_agent.gateway.adapters import MAX_OUTPUT_TOKENS, OpenRouterProvider
 from daily_agent.gateway.health import HealthTracker
 from daily_agent.gateway.registry import RegistryError, load_registry, parse_registry
 from daily_agent.gateway.router import (
@@ -296,3 +296,7 @@ def test_unmeasured_task_scores_fall_back_to_the_mean_of_measured_ones() -> None
     assert model.score("maths") == 1.0
     assert model.score("code") == 0.75
     assert registry(entry("n")).models[0].score("code") == 0.0
+
+
+def test_every_plan_uses_the_gateway_output_maximum() -> None:
+    assert {p.output_tokens for p in SYNTHETIC_POLICIES.values()} == {MAX_OUTPUT_TOKENS}

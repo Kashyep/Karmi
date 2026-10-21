@@ -10,9 +10,9 @@ models only.
 
 | Plan | Price (₹/month) | Requests/day | Tokens/day | Input / output cap (tokens) | Model classes | Starts at |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ananta | 0 | 20 | 40,000 | 4,000 / 512 | economy | economy |
-| Yanta | 149 | 100 | 300,000 | 8,000 / 1,024 | economy, balanced | economy |
-| Trika | 399 | 250 | 800,000 | 16,000 / 2,048 | economy, balanced, advanced | balanced |
+| Ananta | 0 | 20 | 40,000 | 4,000 / 4,096 | economy | economy |
+| Yanta | 149 | 100 | 300,000 | 8,000 / 4,096 | economy, balanced | economy |
+| Trika | 399 | 250 | 800,000 | 16,000 / 4,096 | economy, balanced, advanced | balanced |
 | Parth | 899 | 500 | 2,000,000 | 32,000 / 4,096 | balanced, advanced | balanced |
 
 Per-plan quotas sit under a shared daily cap on live provider requests across all accounts

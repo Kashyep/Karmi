@@ -25,16 +25,18 @@ class PlanPolicy:
 
 # Request/token quotas and cost caps are provisional development values pending the approved
 # Revenue_model; prices are the owner's decision of record (Ananta 0, Yanta 149, Trika 399, Part 899).
+# Owner decision 2026-10-21: no per-plan reply-length cap while models are free; every plan uses
+# the gateway maximum (4,096 output tokens).
 SYNTHETIC_POLICIES: dict[str, PlanPolicy] = {
     "ananta": PlanPolicy(
-        "ananta", "Ananta", 0, 20, 40_000, 4_000, 512, 2_000, 20_000, ("economy",), "economy"
+        "ananta", "Ananta", 0, 20, 40_000, 4_000, 4_096, 2_000, 20_000, ("economy",), "economy"
     ),
     "yanta": PlanPolicy(
-        "yanta", "Yanta", 149, 100, 300_000, 8_000, 1_024, 4_000, 80_000,
+        "yanta", "Yanta", 149, 100, 300_000, 8_000, 4_096, 4_000, 80_000,
         ("economy", "balanced"), "economy",
     ),
     "trika": PlanPolicy(
-        "trika", "Trika", 399, 250, 800_000, 16_000, 2_048, 8_000, 200_000,
+        "trika", "Trika", 399, 250, 800_000, 16_000, 4_096, 8_000, 200_000,
         ("economy", "balanced", "advanced"), "balanced",
     ),
     "parth": PlanPolicy(
