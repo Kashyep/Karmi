@@ -241,7 +241,6 @@ void main() {
 
     testWidgets('6. Assistant reply liveRegion is false during streaming and true when finished', (tester) async {
       final handle = tester.ensureSemantics();
-      addTearDown(handle.dispose);
 
       final streamingMessage = ChatMessageView(
         id: 'msg-stream-1',
@@ -266,7 +265,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final streamingNode = tester.getSemantics(find.bySemanticsLabel('Karmi replied'));
+      final streamingNode = tester.getSemantics(find.bySemanticsLabel(RegExp('^Karmi replied')));
       // ignore: deprecated_member_use
       expect(streamingNode.hasFlag(SemanticsFlag.isLiveRegion), isFalse);
       expect(streamingNode.getSemanticsData().flagsCollection.isLiveRegion, isFalse);
@@ -288,10 +287,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final finishedNode = tester.getSemantics(find.bySemanticsLabel('Karmi replied'));
+      final finishedNode = tester.getSemantics(find.bySemanticsLabel(RegExp('^Karmi replied')));
       // ignore: deprecated_member_use
       expect(finishedNode.hasFlag(SemanticsFlag.isLiveRegion), isTrue);
       expect(finishedNode.getSemanticsData().flagsCollection.isLiveRegion, isTrue);
+      handle.dispose();
     });
   });
 }
