@@ -47,3 +47,22 @@ Rebuild-count row is per send, not per delta.
 ## Commit
 
 `docs(r1/qa): perf AFTER measurements`
+
+## fixperf re-measurement (branch `r1/fixperf`, commit ca7e193)
+
+Host-VM proxies only. Same caveats as above.
+
+Streaming benchmark (`mobile/test/perf/stream_perf_test.dart`, 89acba8): 200 deltas. HEAD streams via `POST /v1/chat/stream` with one SSE body of 200 `message.delta` events. The baseline uses its non-streaming `POST /v1/messages` path, which returns the same 200 tokens as one reply, because the legacy backend has no per-delta stream. This adaptation is not a like-for-like streaming comparison.
+
+| Metric | Baseline (`dcf4f75`) | HEAD before fix (89acba8) | HEAD after fix (ca7e193) |
+|---|---|---|---|
+| Filtered rebuilds per 200 deltas (ChatScreen/MessageBubble/_UserRow/Composer) | 3 (0.015/delta) | 11 (0.055/delta) | 11 (0.055/delta) |
+| Frame build median / p95 (200 frames, 16 ms pump) | 0.18 ms / 25.20 ms | 0.32 ms / 45.30 ms (rerun 0.17 / 25.42) | 0.17 ms / 25.55 ms |
+| Per-send filtered rebuilds, median (5 sends) | 9 | 20 | 20 |
+| Release APK size | 22,392,361 bytes | HEAD build not yet complete; see below | pending |
+
+Fix attempted: `ChatController` bumps a `streamRevision` ValueNotifier per 50 ms delta flush instead of `notifyListeners`, and `ChatScreen` wraps the streaming bubble in a `ValueListenableBuilder`. Tests pass (`test/features/chat`, `test/features/chat_test.dart`, `test/perf`). The filtered rebuild counts did NOT change, so the fix does not meet the gate. Per-send rebuilds also still exceed the baseline (20 vs 9). The filter counts lines naming ChatScreen/MessageBubble/_UserRow/Composer, and the HEAD burst's dominant dirty widgets are generic framework widgets (Theme, Focus, Text, Icon), so the filtered counter does not isolate the streaming path. The cause of the remaining 11 is not yet identified.
+
+Cold-start proxy (`chat_perf_test.dart`, 7 samples, one run at ca7e193): median 242.6 ms, p95 2241.7 ms. Noise-dominated; do not read a trend from it.
+
+Release APK: baseline 22,392,361 bytes. The HEAD build was started at ca7e193 as `flutter build apk --release` with log `/tmp/apk-logs/head2.log`. Its size is not yet recorded here.
