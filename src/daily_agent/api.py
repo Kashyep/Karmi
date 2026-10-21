@@ -74,8 +74,10 @@ from daily_agent.services import (
     estimate_request_cost_micro,
     gateway_requests_made,
     generate_reply,
+    history_tokens,
     measured_cost_micro,
     measured_tokens,
+    message_request_hash,
     persist_completed_run,
     plan_policy,
     policy_for,
@@ -88,6 +90,7 @@ from daily_agent.services import (
     subscription_period,
     sync_account_progression,
     sync_theme_progression,
+    trim_history,
 )
 from daily_agent.web import build_manifest, render_shell
 
@@ -401,7 +404,7 @@ def create_app() -> FastAPI:
         previous_run_id: str | None = None,
         regenerate_reason: str | None = None,
     ) -> MessageView:
-        request_hash = hashlib.sha256(body.text.encode("utf-8")).hexdigest()
+        request_hash = message_request_hash(body.text, body.history)
         existing = session.scalar(
             select(Run).where(
                 Run.account_id == principal.account_id,
@@ -421,9 +424,13 @@ def create_app() -> FastAPI:
             )
         _subscription, policy = policy_for(session, principal.account_id)
         amount = estimate_request_cost_micro(policy, settings)
+        # Earlier turns are client-supplied and never stored; only what fits the plan's input
+        # budget is sent, and it counts toward the token hold like the message itself.
+        history = trim_history(body.history, text=body.text, plan=policy)
         # Token quota applies to live generation only; the demo path never spends tokens.
         token_hold = (
-            max(1, len(body.text.encode("utf-8")) // 4) + policy.output_tokens
+            max(1, len(body.text.encode("utf-8")) // 4 + history_tokens(history))
+            + policy.output_tokens
             if gateway.live
             else 0
         )
@@ -480,6 +487,7 @@ def create_app() -> FastAPI:
                 plan=policy,
                 gateway=gateway,
                 escalate=escalate,
+                history=history,
             )
             timing = RunTiming(
                 started_at=started_at,
@@ -687,13 +695,15 @@ def create_app() -> FastAPI:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="regenerate needs a new idempotency key",
             )
-        if previous.request_hash != hashlib.sha256(body.text.encode("utf-8")).hexdigest():
+        if previous.request_hash != message_request_hash(body.text, body.history):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="text does not match the original request",
+                detail="text or history does not match the original request",
             )
         return execute_message(
-            MessageCreate(text=body.text, idempotency_key=body.idempotency_key),
+            MessageCreate(
+                text=body.text, idempotency_key=body.idempotency_key, history=body.history
+            ),
             principal,
             session,
             settings,

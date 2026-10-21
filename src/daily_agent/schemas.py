@@ -32,9 +32,22 @@ class ReminderCreate(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
+MAX_HISTORY_TURNS = 20
+MAX_HISTORY_TURN_CHARS = 8_000
+
+
+class HistoryTurn(BaseModel):
+    """One earlier chat turn, sent by the client and never stored server-side."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=MAX_HISTORY_TURN_CHARS)
+
+
 class MessageCreate(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
     idempotency_key: str = Field(min_length=8, max_length=120)
+    # Recent turns before ``text``, oldest first. Optional: old clients send none.
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
 
 
 class MessageView(BaseModel):
@@ -68,6 +81,7 @@ class RegenerateCreate(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
     idempotency_key: str = Field(min_length=8, max_length=120)
     reason: FeedbackReason | None = None
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
 
 
 class UsageView(BaseModel):

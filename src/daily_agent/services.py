@@ -2,6 +2,7 @@ import calendar
 import hashlib
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
@@ -12,8 +13,10 @@ from sqlalchemy.orm import Session
 
 from daily_agent.config import Settings
 from daily_agent.gateway import Gateway
+from daily_agent.gateway.adapters import MAX_PROMPT_CHARS as ADAPTER_PROMPT_CHARS
 from daily_agent.gateway.registry import KNOWN_PROVIDERS
 from daily_agent.gateway.router import classify_task
+from daily_agent.gateway.service import SYSTEM_PROMPT_MAX_CHARS
 from daily_agent.models import (
     Account,
     BudgetReservation,
@@ -31,13 +34,14 @@ from daily_agent.models import (
     UsageWindow,
     User,
 )
+from daily_agent.opencode import MAX_PROMPT_CHARS as OPENCODE_PROMPT_CHARS
 from daily_agent.plans import SYNTHETIC_POLICIES, PlanPolicy
 from daily_agent.providers import (
     TYPESAFE_CALL_ESTIMATE_MICRO,
     ProviderCall,
     classify_intent,
 )
-from daily_agent.schemas import Outcome
+from daily_agent.schemas import HistoryTurn, Outcome
 
 logger = logging.getLogger(__name__)
 
@@ -700,6 +704,53 @@ OVERSIZE_TEXT = "This request is too large for the current bounded route. Choose
 LOCAL_ROUTE = "fake-economy"
 
 
+def message_request_hash(text: str, history: Sequence[HistoryTurn] = ()) -> str:
+    """Idempotency hash of a chat payload.
+
+    Without history it stays ``sha256(text)`` so rows written before history existed (and
+    regenerate checks against them) still match; with history it covers a canonical JSON of both.
+    """
+    if not history:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    canonical = json.dumps(
+        {"text": text, "history": [{"role": t.role, "content": t.content} for t in history]},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _utf8_len(value: str) -> int:
+    return len(value.encode("utf-8"))
+
+
+# Every adapter bounds total prompt characters; history never pushes a request past the smallest.
+HISTORY_REQUEST_CAP_BYTES = min(ADAPTER_PROMPT_CHARS, OPENCODE_PROMPT_CHARS)
+
+
+def trim_history(
+    history: Sequence[HistoryTurn], *, text: str, plan: PlanPolicy
+) -> tuple[HistoryTurn, ...]:
+    """Keep the newest whole turns that fit the plan's input budget next to the system prompt and
+    the current message (``bytes // 4`` estimate). Oldest turns go first; ``text`` always stays."""
+    total_bytes = min(plan.input_tokens * 4, HISTORY_REQUEST_CAP_BYTES)
+    budget_bytes = total_bytes - SYSTEM_PROMPT_MAX_CHARS - _utf8_len(text)
+    kept: list[HistoryTurn] = []
+    for turn in reversed(history):
+        size = _utf8_len(turn.content)
+        if size > budget_bytes:
+            break  # dropping a newer turn but keeping an older one would garble the thread
+        budget_bytes -= size
+        kept.append(turn)
+    kept.reverse()
+    return tuple(kept)
+
+
+def history_tokens(history: Sequence[HistoryTurn]) -> int:
+    return sum(_utf8_len(turn.content) for turn in history) // 4
+
+
 def generate_reply(
     text: str,
     *,
@@ -707,8 +758,11 @@ def generate_reply(
     plan: PlanPolicy,
     gateway: Gateway | None = None,
     escalate: bool = False,
+    history: Sequence[HistoryTurn] = (),
 ) -> GenerationResult:
-    """Classify the request, route it, and generate. Tasks are written by the caller."""
+    """Classify the request, route it, and generate. Tasks are written by the caller.
+
+    ``history`` must already be trimmed (``trim_history``); classification uses ``text`` only."""
     if len(text) > 20_000:
         return GenerationResult(OVERSIZE_TEXT, Outcome.DEFERRED, intent=None, route=LOCAL_ROUTE)
 
@@ -745,6 +799,7 @@ def generate_reply(
         task_type=classify_task(text),
         max_output_tokens=plan.output_tokens,
         escalate=escalate,
+        history=[{"role": turn.role, "content": turn.content} for turn in history],
     )
     calls_all = (*routing_calls, *outcome.calls)
     if outcome.failed or outcome.text is None:

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime
+
 import httpx
 
 from daily_agent.config import Settings
@@ -16,6 +19,7 @@ def build_gateway(
     *,
     registry: ModelRegistry | None = None,
     transport: httpx.BaseTransport | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> Gateway:
     """Assemble the gateway from settings. Unconfigured providers are simply not routable."""
     providers: dict[str, ChatProvider] = {}
@@ -38,6 +42,7 @@ def build_gateway(
             default_cooldown_seconds=settings.gateway_model_cooldown_seconds,
         ),
         kill_switch=settings.gateway_kill_switch,
+        clock=clock,
     )
 
 
