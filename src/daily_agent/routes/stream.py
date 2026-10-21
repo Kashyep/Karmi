@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -39,6 +41,7 @@ from daily_agent.services import (
     BudgetDenied,
     GatewayCapacityFull,
     ReservationInFlight,
+    GatewayAdmission,
     admit_gateway_requests,
     estimate_request_cost_micro,
     policy_for,
@@ -65,10 +68,12 @@ def _capacity_full_message(reset_at: datetime) -> str:
 
 async def stream_run_events(run_state: RunState, after_seq: int = -1) -> AsyncIterator[str]:
     cursor = 0
+    catching_up = after_seq >= 0
     try:
         while True:
             async with run_state.condition:
                 while cursor >= len(run_state.events) and not run_state.terminal:
+                    catching_up = False
                     await run_state.condition.wait()
                 new_events: list[StreamEvent] = list(run_state.events[cursor:])
                 cursor = len(run_state.events)
@@ -84,7 +89,8 @@ async def stream_run_events(run_state: RunState, after_seq: int = -1) -> AsyncIt
                 elif evt.event in ("run.finished", "run.error"):
                     yield encode_sse_event(evt.event, evt.data, event_id=evt.seq)
                 elif evt.event == "heartbeat":
-                    yield encode_sse_event(evt.event, evt.data)
+                    if not catching_up:
+                        yield encode_sse_event(evt.event, evt.data)
 
             if is_terminal and cursor >= len(run_state.events):
                 break
@@ -154,29 +160,57 @@ async def chat_stream(
 ) -> StreamingResponse:
     # 1. Idempotency check on (conversation_id, client_message_id)
     if body.conversation_id:
-        existing_user_msg = session.scalar(
-            select(ChatMessage).where(
+        conv = session.scalar(
+            select(Conversation).where(
+                Conversation.id == body.conversation_id,
+                Conversation.account_id == principal.account_id,
+                Conversation.user_id == principal.user_id,
+                Conversation.deleted_at.is_(None),
+            )
+        )
+        if conv is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="conversation not found",
+            )
+        existing_user_msg = session.scalars(
+            select(ChatMessage)
+            .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+            .where(
                 ChatMessage.conversation_id == body.conversation_id,
                 ChatMessage.client_message_id == body.client_message_id,
                 ChatMessage.account_id == principal.account_id,
+                Conversation.user_id == principal.user_id,
+                Conversation.deleted_at.is_(None),
             )
-        )
+            .order_by(ChatMessage.created_at.desc())
+        ).first()
     else:
-        existing_user_msg = session.scalar(
-            select(ChatMessage).where(
+        existing_user_msg = session.scalars(
+            select(ChatMessage)
+            .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+            .where(
                 ChatMessage.client_message_id == body.client_message_id,
                 ChatMessage.account_id == principal.account_id,
+                Conversation.user_id == principal.user_id,
+                Conversation.deleted_at.is_(None),
             )
-        )
+            .order_by(ChatMessage.created_at.desc())
+        ).first()
 
     if existing_user_msg is not None:
         # Replay the existing run
-        assistant_msg = session.scalar(
-            select(ChatMessage).where(
+        assistant_msg = session.scalars(
+            select(ChatMessage)
+            .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+            .where(
                 ChatMessage.parent_message_id == existing_user_msg.id,
                 ChatMessage.account_id == principal.account_id,
+                Conversation.user_id == principal.user_id,
+                Conversation.deleted_at.is_(None),
             )
-        )
+            .order_by(ChatMessage.variant_index.desc())
+        ).first()
         run_id = existing_user_msg.run_id or (assistant_msg.run_id if assistant_msg else None)
         if run_id:
             registry = get_stream_registry()
@@ -187,7 +221,13 @@ async def chat_stream(
                     media_type="text/event-stream",
                     headers=SSE_HEADERS,
                 )
-            run = session.scalar(select(Run).where(Run.id == run_id))
+            run = session.scalar(
+                select(Run).where(
+                    Run.id == run_id,
+                    Run.account_id == principal.account_id,
+                    Run.user_id == principal.user_id,
+                )
+            )
             return StreamingResponse(
                 _replay_from_db(existing_user_msg, assistant_msg, run),
                 media_type="text/event-stream",
@@ -209,6 +249,7 @@ async def chat_stream(
     )
     run_id = uuid_str()
     logical_request_id = f"stream:{conv.id}:{body.client_message_id}"
+    admission: GatewayAdmission | None = None
     try:
         reservation = reserve_budget(
             session,
@@ -220,7 +261,7 @@ async def chat_stream(
             tokens=token_hold,
         )
         if gateway.live:
-            admit_gateway_requests(
+            admission = admit_gateway_requests(
                 session, settings, paid=policy.price_inr > 0, slots=2
             )
     except GatewayCapacityFull as exc:
@@ -293,17 +334,20 @@ async def chat_stream(
     # 6. Start background runner
     engine = session.get_bind()
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    start_stream_run(
-        run_state=run_state,
-        plan=policy,
-        text=body.text,
-        task_type=classify_task(body.text),
-        max_output_tokens=policy.output_tokens,
-        gateway=gateway,
-        settings=settings,
-        session_factory=session_factory,
-        reservation_id=reservation.id,
-    )
+    start_kwargs: dict[str, Any] = {
+        "run_state": run_state,
+        "plan": policy,
+        "text": body.text,
+        "task_type": classify_task(body.text),
+        "max_output_tokens": policy.output_tokens,
+        "gateway": gateway,
+        "settings": settings,
+        "session_factory": session_factory,
+        "reservation_id": reservation.id,
+    }
+    if "admission" in inspect.signature(start_stream_run).parameters:
+        start_kwargs["admission"] = admission
+    start_stream_run(**start_kwargs)
 
     return StreamingResponse(
         stream_run_events(run_state, after_seq=-1),
@@ -324,15 +368,19 @@ async def run_events(
 
     registry = get_stream_registry()
     run_state = registry.get(run_id)
-    if run_state is None:
+    if run_state is None or after_seq > run_state.last_seq:
         assistant_msg = session.scalar(
-            select(ChatMessage).where(
+            select(ChatMessage)
+            .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+            .where(
                 ChatMessage.run_id == run_id,
                 ChatMessage.role == "assistant",
                 ChatMessage.account_id == principal.account_id,
+                Conversation.user_id == principal.user_id,
+                Conversation.deleted_at.is_(None),
             )
         )
-        assistant_id = assistant_msg.id if assistant_msg else None
+        assistant_id = assistant_msg.id if assistant_msg else (run_state.assistant_message_id if run_state else None)
 
         async def _resume_unavailable() -> AsyncIterator[str]:
             yield encode_sse_event(
@@ -374,10 +422,14 @@ async def stop_run(
             run.finish_reason = FinishReason.CANCELLED.value
             run.outcome = "STOPPED"
             msg = session.scalar(
-                select(ChatMessage).where(
+                select(ChatMessage)
+                .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+                .where(
                     ChatMessage.run_id == run_id,
                     ChatMessage.role == "assistant",
                     ChatMessage.account_id == principal.account_id,
+                    Conversation.user_id == principal.user_id,
+                    Conversation.deleted_at.is_(None),
                 )
             )
             if msg:
@@ -400,9 +452,13 @@ async def continue_message(
     gateway: Gateway = Depends(gateway_dependency),
 ) -> StreamingResponse:
     msg = session.scalar(
-        select(ChatMessage).where(
+        select(ChatMessage)
+        .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+        .where(
             ChatMessage.id == assistant_message_id,
             ChatMessage.account_id == principal.account_id,
+            Conversation.user_id == principal.user_id,
+            Conversation.deleted_at.is_(None),
         )
     )
     if msg is None:
@@ -422,7 +478,16 @@ async def continue_message(
             detail=f"cannot continue message with finish_reason={msg.finish_reason}",
         )
 
-    user_msg = session.scalar(select(ChatMessage).where(ChatMessage.id == msg.parent_message_id))
+    user_msg = session.scalar(
+        select(ChatMessage)
+        .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+        .where(
+            ChatMessage.id == msg.parent_message_id,
+            ChatMessage.account_id == principal.account_id,
+            Conversation.user_id == principal.user_id,
+            Conversation.deleted_at.is_(None),
+        )
+    )
     if user_msg is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="parent user message not found")
 
@@ -435,6 +500,7 @@ async def continue_message(
     )
     new_run_id = uuid_str()
     logical_request_id = f"stream:continue:{new_run_id}"
+    admission: GatewayAdmission | None = None
     try:
         reservation = reserve_budget(
             session,
@@ -446,7 +512,7 @@ async def continue_message(
             tokens=token_hold,
         )
         if gateway.live:
-            admit_gateway_requests(
+            admission = admit_gateway_requests(
                 session, settings, paid=policy.price_inr > 0, slots=2
             )
     except GatewayCapacityFull as exc:
@@ -492,18 +558,21 @@ async def continue_message(
 
     engine = session.get_bind()
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    start_stream_run(
-        run_state=run_state,
-        plan=policy,
-        text=user_msg.content,
-        task_type=classify_task(user_msg.content),
-        max_output_tokens=policy.output_tokens,
-        gateway=gateway,
-        settings=settings,
-        session_factory=session_factory,
-        reservation_id=reservation.id,
-        prior_content=msg.content,
-    )
+    start_kwargs: dict[str, Any] = {
+        "run_state": run_state,
+        "plan": policy,
+        "text": user_msg.content,
+        "task_type": classify_task(user_msg.content),
+        "max_output_tokens": policy.output_tokens,
+        "gateway": gateway,
+        "settings": settings,
+        "session_factory": session_factory,
+        "reservation_id": reservation.id,
+        "prior_content": msg.content,
+    }
+    if "admission" in inspect.signature(start_stream_run).parameters:
+        start_kwargs["admission"] = admission
+    start_stream_run(**start_kwargs)
 
     return StreamingResponse(
         stream_run_events(run_state, after_seq=-1),
@@ -521,9 +590,13 @@ async def regenerate_message(
     gateway: Gateway = Depends(gateway_dependency),
 ) -> StreamingResponse:
     msg = session.scalar(
-        select(ChatMessage).where(
+        select(ChatMessage)
+        .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+        .where(
             ChatMessage.id == assistant_message_id,
             ChatMessage.account_id == principal.account_id,
+            Conversation.user_id == principal.user_id,
+            Conversation.deleted_at.is_(None),
         )
     )
     if msg is None:
@@ -533,7 +606,16 @@ async def regenerate_message(
     if msg.status == MessageStatus.STREAMING.value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot regenerate streaming message")
 
-    user_msg = session.scalar(select(ChatMessage).where(ChatMessage.id == msg.parent_message_id))
+    user_msg = session.scalar(
+        select(ChatMessage)
+        .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+        .where(
+            ChatMessage.id == msg.parent_message_id,
+            ChatMessage.account_id == principal.account_id,
+            Conversation.user_id == principal.user_id,
+            Conversation.deleted_at.is_(None),
+        )
+    )
     if user_msg is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="parent user message not found")
 
@@ -553,6 +635,7 @@ async def regenerate_message(
     )
     new_run_id = uuid_str()
     logical_request_id = f"stream:regen:{new_run_id}"
+    admission: GatewayAdmission | None = None
     try:
         reservation = reserve_budget(
             session,
@@ -564,7 +647,7 @@ async def regenerate_message(
             tokens=token_hold,
         )
         if gateway.live:
-            admit_gateway_requests(
+            admission = admit_gateway_requests(
                 session, settings, paid=policy.price_inr > 0, slots=2
             )
     except GatewayCapacityFull as exc:
@@ -619,18 +702,21 @@ async def regenerate_message(
 
     engine = session.get_bind()
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    start_stream_run(
-        run_state=run_state,
-        plan=policy,
-        text=user_msg.content,
-        task_type=classify_task(user_msg.content),
-        max_output_tokens=policy.output_tokens,
-        gateway=gateway,
-        settings=settings,
-        session_factory=session_factory,
-        reservation_id=reservation.id,
-        prior_content=None,
-    )
+    start_kwargs: dict[str, Any] = {
+        "run_state": run_state,
+        "plan": policy,
+        "text": user_msg.content,
+        "task_type": classify_task(user_msg.content),
+        "max_output_tokens": policy.output_tokens,
+        "gateway": gateway,
+        "settings": settings,
+        "session_factory": session_factory,
+        "reservation_id": reservation.id,
+        "prior_content": None,
+    }
+    if "admission" in inspect.signature(start_stream_run).parameters:
+        start_kwargs["admission"] = admission
+    start_stream_run(**start_kwargs)
 
     return StreamingResponse(
         stream_run_events(run_state, after_seq=-1),
