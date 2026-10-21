@@ -69,7 +69,7 @@ void main() {
   });
 
   testWidgets(
-    'tablet (800): history overlay hidden until header History button is tapped',
+    'tablet (800): history overlay hidden until opened via HistoryPanelScope',
     (tester) async {
       await _pumpShell(tester, 800);
 
@@ -80,8 +80,8 @@ void main() {
         reason: 'overlay must be slid off-screen before it is opened',
       );
 
-      await tester.tap(find.byTooltip('Conversation history'));
-      await tester.pump(const Duration(milliseconds: 500));
+      HistoryPanelScope.open(tester.element(find.byType(Scaffold).first));
+      await tester.pumpAndSettle();
 
       expect(tester.widget<AnimatedPositioned>(panel).left, 0);
       expect(find.text(_railMarker), findsOneWidget);
