@@ -45,6 +45,7 @@ class KarmiShell extends StatefulWidget {
     required this.armory,
     this.historyRailBuilder,
     this.historyCommands,
+    this.clock,
   });
 
   final KarmiApi api;
@@ -53,6 +54,9 @@ class KarmiShell extends StatefulWidget {
   final ArmoryController armory;
   final WidgetBuilder? historyRailBuilder;
   final ChatHistoryCommands? historyCommands;
+
+  /// Injected into the chat empty-state greeting; null uses the wall clock.
+  final DateTime Function()? clock;
 
   @override
   State<KarmiShell> createState() => _KarmiShellState();
@@ -71,6 +75,7 @@ class _KarmiShellState extends State<KarmiShell> {
       _pages[0] = null;
     }
   }
+
   bool _isHistoryOverlayOpen = false;
 
   void _openHistory() {
@@ -139,6 +144,7 @@ class _KarmiShellState extends State<KarmiShell> {
           onOpenPlans: _openPlans,
           draftStore: widget.session.draftStore,
           historyCommands: widget.historyCommands,
+          clock: widget.clock,
           trailing: _OverflowMenu(
             onArmory: _openArmory,
             onPlans: _openPlans,
@@ -207,7 +213,8 @@ class _KarmiShellState extends State<KarmiShell> {
   Widget _buildContent(BuildContext context, Widget body) {
     final width = MediaQuery.sizeOf(context).width;
     final isCompactNav = width < 600;
-    final isTablet = width >= KarmiShape.tabletBreakpoint &&
+    final isTablet =
+        width >= KarmiShape.tabletBreakpoint &&
         width < KarmiShape.desktopBreakpoint;
     final isDesktop = width >= KarmiShape.desktopBreakpoint;
 
@@ -296,10 +303,7 @@ class _KarmiShellState extends State<KarmiShell> {
                     ),
                   ],
                 ),
-          body: _withPreviewBanner(
-            content,
-            top: 8,
-          ),
+          body: _withPreviewBanner(content, top: 8),
           bottomNavigationBar: isCompactNav
               ? NavigationBar(
                   selectedIndex: _index,
@@ -352,7 +356,8 @@ class _KarmiShellState extends State<KarmiShell> {
       top: isChat
           ? mq.padding.top
           : (mq.padding.top + appBar.preferredSize.height),
-      bottom: mq.padding.bottom + (isCompactNav ? tabBar.preferredSize.height : 0),
+      bottom:
+          mq.padding.bottom + (isCompactNav ? tabBar.preferredSize.height : 0),
     );
     return HistoryPanelScope(
       isOpen: _isHistoryOverlayOpen,
@@ -382,10 +387,7 @@ class _KarmiShellState extends State<KarmiShell> {
             data: mq.copyWith(padding: bodyPadding),
             child: IconTheme(
               data: Theme.of(context).iconTheme,
-              child: _withPreviewBanner(
-                content,
-                top: bodyPadding.top + 8,
-              ),
+              child: _withPreviewBanner(content, top: bodyPadding.top + 8),
             ),
           ),
         ),

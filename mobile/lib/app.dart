@@ -30,6 +30,7 @@ class KarmiApp extends StatefulWidget {
     required this.session,
     required this.armory,
     this.adaptiveGlassQuality = true,
+    this.clock,
   });
 
   final KarmiSettings settings;
@@ -38,6 +39,9 @@ class KarmiApp extends StatefulWidget {
 
   /// Runs liquid_glass_widgets' device benchmark. Off in widget tests.
   final bool adaptiveGlassQuality;
+
+  /// Injected into the chat empty-state greeting; null uses the wall clock.
+  final DateTime Function()? clock;
 
   @override
   State<KarmiApp> createState() => _KarmiAppState();
@@ -157,6 +161,7 @@ class _KarmiAppState extends State<KarmiApp> {
                     api: widget.session.api,
                     settings: widget.settings,
                     session: widget.session,
+                    clock: widget.clock,
                     armory: widget.armory,
                     historyCommands: _historyCommands,
                     historyRailBuilder: (context) => Builder(

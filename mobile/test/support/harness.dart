@@ -170,7 +170,8 @@ Future<AppHandle> pumpApp(
     backend.on('POST', '/v1/chat/stream', (req) {
       final body = jsonDecode(req.body) as Map<String, dynamic>;
       final text = body['text'] as String? ?? 'Reply';
-      final sse = 'event: run.started\n'
+      final sse =
+          'event: run.started\n'
           'data: {"run_id":"run-1","conversation_id":"conv-1","user_message_id":"msg-u","assistant_message_id":"msg-a","seq":0}\n\n'
           'id: 1\n'
           'event: message.delta\n'
@@ -209,6 +210,8 @@ Future<AppHandle> pumpApp(
       session: session,
       armory: armory,
       adaptiveGlassQuality: false,
+      // Fixed clock keeps the time-of-day greeting identical across runs.
+      clock: () => DateTime(2026, 10, 22, 10),
     ),
   );
   await settle(tester);
