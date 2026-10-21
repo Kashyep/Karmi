@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from daily_agent.config import Settings
+from daily_agent.conversations.service import touch_conversation
 from daily_agent.gateway.service import SYSTEM_PROMPT, Gateway
 from daily_agent.gateway.types import (
     CapacityFullError,
@@ -24,7 +25,7 @@ from daily_agent.gateway.types import (
     UnauthorizedError,
     ValidationFailedError,
 )
-from daily_agent.models import BudgetReservation, ChatMessage, Run, RunStatus
+from daily_agent.models import BudgetReservation, ChatMessage, Conversation, Run, RunStatus, utcnow
 from daily_agent.plans import PlanPolicy
 from daily_agent.schemas_chat import ErrorCategory, FinishReason, MessageStatus
 from daily_agent.services import measured_cost_micro, measured_tokens, release_budget, settle_budget
@@ -126,6 +127,10 @@ class StreamRunner:
                     msg.status = message_status
                 if message_finish_reason is not None:
                     msg.finish_reason = message_finish_reason
+            if msg is not None and run_status in (RunStatus.COMPLETED, RunStatus.FAILED):
+                conversation = session.get(Conversation, msg.conversation_id)
+                if conversation is not None:
+                    touch_conversation(conversation, utcnow())
             session.commit()
             self.last_flush_time = time.monotonic()
             self.last_flushed_len = len(text)

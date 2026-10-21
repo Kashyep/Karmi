@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_for_code
 from daily_agent.config import Settings, get_settings
-from daily_agent.db import create_schema, get_session
+from daily_agent.db import create_schema, get_engine, get_session
 from daily_agent.deps import gateway_dependency, limited_principal, own_run
 from daily_agent.gateway import Gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
@@ -92,6 +92,7 @@ from daily_agent.services import (
     sync_account_progression,
     sync_theme_progression,
 )
+from daily_agent.streaming.registry import sweep_interrupted_runs
 from daily_agent.web import build_manifest, render_shell
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,10 @@ def create_app() -> FastAPI:
         settings = get_settings()
         if settings.is_development and settings.database_url.startswith("sqlite"):
             create_schema()
+        with Session(get_engine()) as session:
+            swept = sweep_interrupted_runs(session)
+        if swept:
+            logger.info("stream.swept_interrupted runs=%s", swept)
         yield
 
     app = FastAPI(title="Daily Agent", version="0.1.0", lifespan=lifespan)

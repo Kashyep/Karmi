@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from daily_agent.config import Settings, get_settings
+from daily_agent.conversations.service import ensure_conversation_for_message, touch_conversation
 from daily_agent.db import get_session
 from daily_agent.deps import gateway_dependency, limited_principal, own_run
 from daily_agent.gateway.router import classify_task
@@ -23,7 +24,6 @@ from daily_agent.models import (
     Run,
     RunStatus,
     chat_message_id_str,
-    conversation_id_str,
     utcnow,
     uuid_str,
 )
@@ -194,29 +194,10 @@ async def chat_stream(
                 headers=SSE_HEADERS,
             )
 
-    # 2. Get or create conversation
-    if body.conversation_id:
-        conv = session.scalar(
-            select(Conversation).where(
-                Conversation.id == body.conversation_id,
-                Conversation.account_id == principal.account_id,
-                Conversation.deleted_at.is_(None),
-            )
-        )
-        if conv is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="conversation not found")
-    else:
-        conv = Conversation(
-            id=conversation_id_str(),
-            account_id=principal.account_id,
-            user_id=principal.user_id,
-            title=body.text[:60],
-            title_source="auto",
-            last_message_at=utcnow(),
-        )
-        session.add(conv)
-        session.flush()
-        logger.info("conversation.created conversation_id=%s", conv.id)
+    # 2. Get or create conversation (first message creates it; no empty records)
+    conv = ensure_conversation_for_message(
+        session, principal, body.conversation_id, body.text, utcnow()
+    )
 
     # 3. Budget reservation & admission pre-stream
     _subscription, policy = policy_for(session, principal.account_id)
@@ -402,6 +383,9 @@ async def stop_run(
             if msg:
                 msg.status = MessageStatus.STOPPED.value
                 msg.finish_reason = FinishReason.CANCELLED.value
+                conversation = session.get(Conversation, msg.conversation_id)
+                if conversation is not None:
+                    touch_conversation(conversation, utcnow())
             session.commit()
     logger.info("stream.stopped run_id=%s", run_id)
     return StopResponse(status="cancelled")
