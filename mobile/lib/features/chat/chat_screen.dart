@@ -185,14 +185,7 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     if (_ownsChatController) {
-      _chatController.removeListener(_onChatControllerChanged);
       _chatController.stop();
-      _chatController.dispose();
-      _chatController = ChatController(
-        client: _runStreamClient,
-        conversationId: conversationId,
-      );
-      _chatController.addListener(_onChatControllerChanged);
     }
 
     try {
