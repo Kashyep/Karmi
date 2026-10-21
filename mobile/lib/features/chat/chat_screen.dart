@@ -532,136 +532,151 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final insets = _readingInsets(context, karmiPageInsets(context));
-    final messages = _chatController.messages;
-    final lastAssistantIndex = messages.lastIndexWhere(
-      (m) => m.role == 'assistant',
-    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final paneWidth = constraints.maxWidth;
+        final insets = _readingInsets(
+          context,
+          karmiPageInsets(context),
+          paneWidth,
+        );
+        final messages = _chatController.messages;
+        final lastAssistantIndex = messages.lastIndexWhere(
+          (m) => m.role == 'assistant',
+        );
 
-    return Column(
-      children: [
-        KarmiChatHeader(
-          title: _activeConversationTitle,
-          onOpenHistory: _resolveOpenHistory(context),
-          onNewChat: _startNewChat,
-          onOpenPlans: widget.onOpenPlans,
-        ),
-        if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),
-        Expanded(
-          child: Stack(
-            children: [
-              EndAnchoredScroll(
-                controller: _scrollController,
-                builder: (context, scrollController, physics) {
-                  if (messages.isEmpty) {
-                    return ListView(
-                      controller: scrollController,
-                      physics: physics,
-                      padding: insets.copyWith(bottom: 16),
-                      children: [
-                        ChatEmptyState(
-                          key: const ValueKey('new-chat-empty-state'),
-                          clock: widget.clock,
-                          onStarterPicked: (prompt) =>
-                              _chatController.send(prompt),
-                        ),
-                      ],
-                    );
-                  }
-
-                  return ListView.builder(
-                    controller: scrollController,
-                    physics: physics,
-                    padding: insets.copyWith(bottom: 16),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = messages[index];
-                      if (msg.status != MessageStatus.streaming) {
-                        return _memoBubble(
-                          msg,
-                          index,
-                          messages.length,
-                          lastAssistantIndex,
+        return Column(
+          children: [
+            KarmiChatHeader(
+              title: _activeConversationTitle,
+              onOpenHistory: _resolveOpenHistory(context),
+              onNewChat: _startNewChat,
+              onOpenPlans: widget.onOpenPlans,
+            ),
+            if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: Stack(
+                children: [
+                  EndAnchoredScroll(
+                    controller: _scrollController,
+                    builder: (context, scrollController, physics) {
+                      if (messages.isEmpty) {
+                        return ListView(
+                          controller: scrollController,
+                          physics: physics,
+                          padding: insets.copyWith(bottom: 16),
+                          children: [
+                            ChatEmptyState(
+                              key: const ValueKey('new-chat-empty-state'),
+                              clock: widget.clock,
+                              onStarterPicked: (prompt) =>
+                                  _chatController.send(prompt),
+                            ),
+                          ],
                         );
                       }
-                      // Only the streaming bubble rebuilds on each delta flush.
-                      return ValueListenableBuilder<int>(
-                        valueListenable: _chatController.streamRevision,
-                        builder: (context, _, child) => _buildChatBubble(
-                          _chatController.messageById(msg.id) ?? msg,
-                          index,
-                          messages.length,
-                          lastAssistantIndex,
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: KarmiShape.jumpPillGap),
-                  child: ValueListenableBuilder<bool>(
-                    valueListenable: _scrollController.isAtBottom,
-                    builder: (context, isAtBottom, _) {
-                      return ValueListenableBuilder<bool>(
-                        valueListenable: _scrollController.hasNewContent,
-                        builder: (context, hasNewContent, _) {
-                          return JumpToLatestButton(
-                            visible: !isAtBottom,
-                            hasNewContent: hasNewContent,
-                            onTap: _scrollController.jumpToLatest,
+
+                      return ListView.builder(
+                        controller: scrollController,
+                        physics: physics,
+                        padding: insets.copyWith(bottom: 16),
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          final msg = messages[index];
+                          if (msg.status != MessageStatus.streaming) {
+                            return _memoBubble(
+                              msg,
+                              index,
+                              messages.length,
+                              lastAssistantIndex,
+                            );
+                          }
+                          // Only the streaming bubble rebuilds on each delta flush.
+                          return ValueListenableBuilder<int>(
+                            valueListenable: _chatController.streamRevision,
+                            builder: (context, _, child) => _buildChatBubble(
+                              _chatController.messageById(msg.id) ?? msg,
+                              index,
+                              messages.length,
+                              lastAssistantIndex,
+                            ),
                           );
                         },
                       );
                     },
                   ),
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: KarmiShape.jumpPillGap,
+                      ),
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _scrollController.isAtBottom,
+                        builder: (context, isAtBottom, _) {
+                          return ValueListenableBuilder<bool>(
+                            valueListenable: _scrollController.hasNewContent,
+                            builder: (context, hasNewContent, _) {
+                              return JumpToLatestButton(
+                                visible: !isAtBottom,
+                                hasNewContent: hasNewContent,
+                                onTap: _scrollController.jumpToLatest,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ProcessingPanel(phase: _chatController.phase),
+            if (_chatController.error != null || _feedbackError != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: ErrorCard(
+                  category: _chatController.error ?? _feedbackError!,
+                  onRetry: _chatController.error != null
+                      ? _retryLast
+                      : _feedbackRetry,
+                  onContinue: _continueLast,
+                  onUpgrade: widget.onOpenPlans,
                 ),
               ),
-            ],
-          ),
-        ),
-        ProcessingPanel(phase: _chatController.phase),
-        if (_chatController.error != null || _feedbackError != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: ErrorCard(
-              category: _chatController.error ?? _feedbackError!,
-              onRetry: _chatController.error != null
-                  ? _retryLast
-                  : _feedbackRetry,
-              onContinue: _continueLast,
-              onUpgrade: widget.onOpenPlans,
+            AnimatedPadding(
+              key: const ValueKey('chat-composer-dock'),
+              duration: KarmiMotion.composerDurationOf(context),
+              curve: KarmiMotion.composerCurve,
+              padding: EdgeInsets.only(
+                bottom: _composerDockBottomPadding(
+                  context,
+                  messages.isNotEmpty || _isLoadingMessages,
+                ),
+              ),
+              child: _readingColumn(context, _buildComposer(), paneWidth),
             ),
-          ),
-        AnimatedPadding(
-          key: const ValueKey('chat-composer-dock'),
-          duration: KarmiMotion.composerDurationOf(context),
-          curve: KarmiMotion.composerCurve,
-          padding: EdgeInsets.only(
-            bottom: _composerDockBottomPadding(
-              context,
-              messages.isNotEmpty || _isLoadingMessages,
-            ),
-          ),
-          child: _readingColumn(context, _buildComposer()),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
   /// Tablet and wider: the reading column is capped at
   /// [KarmiShape.readableColumnMaxWidth]. Narrower screens stay full width.
-  bool _isReadingColumnCapped(BuildContext context) =>
-      MediaQuery.sizeOf(context).width >= KarmiShape.tabletBreakpoint;
+  bool _isReadingColumnCapped(double paneWidth) =>
+      paneWidth >= KarmiShape.tabletBreakpoint;
 
   /// Horizontal list padding that centres the message stream on the reading
   /// column. Only padding changes, so the scrollbar stays at the viewport edge.
-  EdgeInsets _readingInsets(BuildContext context, EdgeInsets insets) {
-    if (!_isReadingColumnCapped(context)) return insets;
+  EdgeInsets _readingInsets(
+    BuildContext context,
+    EdgeInsets insets,
+    double paneWidth,
+  ) {
+    if (!_isReadingColumnCapped(paneWidth)) return insets;
     final gutter =
-        (MediaQuery.sizeOf(context).width - KarmiShape.readableColumnMaxWidth) /
+        (paneWidth - KarmiShape.readableColumnMaxWidth) /
         2;
     return insets.copyWith(
       left: gutter > insets.left ? gutter : insets.left,
@@ -669,8 +684,8 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _readingColumn(BuildContext context, Widget child) {
-    if (!_isReadingColumnCapped(context)) return child;
+  Widget _readingColumn(BuildContext context, Widget child, double paneWidth) {
+    if (!_isReadingColumnCapped(paneWidth)) return child;
     return Center(
       child: ConstrainedBox(
         key: const ValueKey('chat-reading-column'),
