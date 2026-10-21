@@ -2,9 +2,7 @@
 // subtree, per send and per 200-delta burst. Host-VM proxy. Uses the
 // framework's debugOnRebuildDirtyWidget hook (no log parsing).
 // Run: cd mobile && flutter test test/perf/rebuild_histogram_test.dart --reporter expanded
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
