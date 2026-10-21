@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -341,6 +341,7 @@ void main() {
         matching: find.byType(IconButton),
       ),
     );
+    expect(send.onPressed, isNull);
     expect(find.byType(KarmiLoader), findsNothing);
     await expectA11yGuidelines(tester);
   });
@@ -365,6 +366,7 @@ void main() {
       ),
     );
     expect(button.onPressed, isNotNull);
+    reply.complete(sseResponse('Completed'));
     await settle(tester);
     expect(find.byType(KarmiLoader), findsNothing);
     expect(find.text('Completed'), findsOneWidget);
@@ -449,6 +451,7 @@ void main() {
       tester,
       backend: backend,
     );
+    await send(tester, 'hello');
     await settle(tester);
     await settle(tester);
     expect(find.byType(ErrorCard), findsOneWidget);
@@ -550,10 +553,8 @@ void main() {
   testWidgets('beta capacity full (429): banner says try again later', (
     tester,
   ) async {
-    var calls = 0;
     final backend = backendWith(
       (_) {
-        calls++;
         return jsonResponse({
           'detail': {
             'code': 'BETA_CAPACITY_FULL',
