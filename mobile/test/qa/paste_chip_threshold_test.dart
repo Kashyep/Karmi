@@ -65,7 +65,9 @@ void main() {
       'pasting 2501 chars IS chipped into a PasteChip and cleared from input field',
       (tester) async {
         ComposerSubmit? submitted;
-        await tester.pumpWidget(_buildComposerHost(onSubmit: (s) => submitted = s));
+        await tester.pumpWidget(
+          _buildComposerHost(onSubmit: (s) => submitted = s),
+        );
         await tester.pumpAndSettle();
 
         final text2501 = 'B' * 2501;
@@ -102,6 +104,8 @@ void main() {
         expect(find.byType(PasteChip), findsOneWidget);
 
         // Tap the remove icon button on PasteChip
+        // Let the attachment tray finish its size animation before tapping.
+        await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('Remove pasted text'));
         await tester.pump();
 
