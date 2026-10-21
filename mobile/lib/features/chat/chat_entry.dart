@@ -1,4 +1,4 @@
-import '../../api/models.dart';
+import '../../api/karmi_api.dart';
 
 /// Delivery state of a message the user typed.
 enum SendState {
@@ -11,8 +11,9 @@ enum SendState {
   capacityFull,
 }
 
-/// One row in the local, in-memory transcript. There is no history endpoint,
-/// so the transcript is not persisted.
+/// One row in the local, in-memory transcript. There is no history endpoint;
+/// recent turns are sent with each message to provide context, but the transcript
+/// is not persisted.
 sealed class ChatEntry {
   const ChatEntry(this.id);
 
@@ -26,11 +27,15 @@ final class UserEntry extends ChatEntry {
     required String id,
     required this.text,
     required this.idempotencyKey,
+    this.history = const [],
     this.state = SendState.sending,
   }) : super(id);
 
   final String text;
   final String idempotencyKey;
+
+  /// Earlier turns sent with this message for context. Reused on retries.
+  final List<HistoryTurn> history;
   SendState state;
 
   /// Allowance or beta-capacity reset time from a 429 response, when known.

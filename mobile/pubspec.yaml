@@ -18,6 +18,7 @@ dependencies:
   http: 1.6.0
   clerk_flutter: 0.0.18-beta
   clerk_auth: 0.0.18-beta
+  flutter_markdown_plus: 1.0.12
 
 dev_dependencies:
   flutter_test:

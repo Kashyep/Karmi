@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../api/models.dart';
 import '../../theme/karmi_colors.dart';
@@ -73,7 +74,19 @@ class MessageBubble extends StatelessWidget {
                   children: [
                     StatusChip.outcome(reply!.message.outcome),
                     const SizedBox(height: 8),
-                    Text(reply!.message.response, style: text.bodyLarge),
+                    MarkdownBody(
+                      data: reply!.message.response,
+                      styleSheet: _markdownStyle(context, colors, text),
+                      selectable: false,
+                      onTapLink: (text, href, title) {},
+                      // Never fetch images named by a model reply; show the alt text.
+                      imageBuilder: (uri, title, alt) => Text(
+                        alt ?? '',
+                        style: text.bodyLarge?.copyWith(
+                          color: colors.mutedForeground,
+                        ),
+                      ),
+                    ),
                     if (reply!.message.outcome == Outcome.askUser &&
                         onReviewDetails != null) ...[
                       const SizedBox(height: 4),
@@ -109,6 +122,44 @@ class MessageBubble extends StatelessWidget {
       },
     );
   }
+}
+
+MarkdownStyleSheet _markdownStyle(
+  BuildContext context,
+  KarmiColors colors,
+  TextTheme text,
+) {
+  final bodyStyle =
+      text.bodyLarge?.copyWith(color: colors.foreground) ??
+      TextStyle(
+        color: colors.foreground,
+        fontFamilyFallback: KarmiTypography.sansFallback,
+      );
+  return MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+    p: bodyStyle,
+    pPadding: EdgeInsets.zero,
+    listBullet: bodyStyle,
+    listBulletPadding: const EdgeInsets.only(right: 8),
+    a: bodyStyle.copyWith(
+      color: colors.primary,
+      decoration: TextDecoration.underline,
+    ),
+    code: TextStyle(
+      fontFamily: 'monospace',
+      fontFamilyFallback: KarmiTypography.sansFallback,
+      fontSize: (bodyStyle.fontSize ?? 16) * 0.88,
+      color: colors.foreground,
+    ),
+    codeblockDecoration: BoxDecoration(
+      color: colors.muted.withValues(alpha: 0.25),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: colors.borderSubtle),
+    ),
+    codeblockPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    tableBorder: TableBorder.all(color: colors.borderSubtle),
+    tableBody: bodyStyle,
+    tableHead: bodyStyle.copyWith(fontWeight: FontWeight.bold),
+  );
 }
 
 class _ReplyActions extends StatelessWidget {

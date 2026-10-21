@@ -5,7 +5,10 @@ import '../../theme/karmi_motion.dart';
 import '../../widgets/feedback.dart';
 import '../../widgets/karmi_card.dart';
 import '../tasks/task_confirmation_sheet.dart';
+import 'chat_controller.dart';
 import 'chat_entry.dart';
+
+export 'chat_controller.dart';
 import 'composer.dart';
 import 'message_bubble.dart';
 import 'status_chip.dart';
@@ -14,9 +17,15 @@ import 'status_chip.dart';
 /// in-flight (409) / limit-reached (429) states. No streaming or history exists
 /// server-side, so the transcript is in memory only.
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.api, this.onOpenPlans});
+  const ChatScreen({
+    super.key,
+    required this.api,
+    this.controller,
+    this.onOpenPlans,
+  });
 
   final KarmiApi api;
+  final ChatController? controller;
   final VoidCallback? onOpenPlans;
 
   @override
@@ -31,17 +40,43 @@ class _ChatScreenState extends State<ChatScreen> {
   _ActionError? _actionError;
 
   @override
+  void initState() {
+    super.initState();
+    widget.controller?.addListener(_newChat);
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_newChat);
+      widget.controller?.addListener(_newChat);
+    }
+  }
+
+  @override
   void dispose() {
+    widget.controller?.removeListener(_newChat);
     _scroll.dispose();
     super.dispose();
   }
 
+  void _newChat() {
+    setState(() {
+      _entries.clear();
+      _pending = null;
+      _actionError = null;
+    });
+  }
+
   void _send(String text) {
     _actionError = null;
+    final history = buildHistoryFromEntries(_entries);
     final entry = UserEntry(
       id: 'u${_nextId++}',
       text: text,
       idempotencyKey: KarmiApi.newIdempotencyKey(),
+      history: history,
     );
     setState(() => _entries.add(entry));
     _deliver(entry);
@@ -60,14 +95,17 @@ class _ChatScreenState extends State<ChatScreen> {
       final reply = await widget.api.sendMessage(
         entry.text,
         idempotencyKey: entry.idempotencyKey,
+        history: entry.history,
       );
       if (!mounted) return;
+      if (!_entries.contains(entry)) return;
       setState(() {
         entry.state = SendState.sent;
         _entries.add(ReplyEntry(id: 'r${_nextId++}', message: reply));
       });
     } on KarmiApiException catch (error) {
       if (!mounted) return;
+      if (!_entries.contains(entry)) return;
       setState(() {
         entry.state = switch (error) {
           NetworkException() => SendState.offline,
@@ -80,7 +118,10 @@ class _ChatScreenState extends State<ChatScreen> {
         if (error is BetaCapacityFullException) entry.resetAt = error.resetAt;
       });
     } finally {
-      if (mounted) setState(() => _pending = null);
+      // A New chat may have started another send meanwhile; only clear our own.
+      if (mounted && identical(_pending, entry)) {
+        setState(() => _pending = null);
+      }
     }
     _scrollToEnd();
   }
@@ -186,6 +227,7 @@ class _ChatScreenState extends State<ChatScreen> {
         text: prompt.text,
         idempotencyKey: KarmiApi.newIdempotencyKey(),
         reason: reply.feedbackReason,
+        history: prompt.history,
       );
       if (!mounted) return;
       setState(() {
@@ -442,4 +484,54 @@ class _UserRow extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Extracts recent turns from [entries] for context:
+/// - Completed UserEntry + ReplyEntry pairs BEFORE the message being sent.
+/// - Skips pairs whose user entry failed/offline/limit/capacity or reply outcome is DEFERRED.
+/// - Content truncated/skipped to fit 1..8000 chars (skip empty; truncate >8000 chars).
+/// - Newest 20 turns max (i.e. keep the last 20 turn objects, oldest first in the list).
+List<HistoryTurn> buildHistoryFromEntries(List<ChatEntry> entries) {
+  final turns = <HistoryTurn>[];
+  for (var i = 0; i < entries.length - 1; i++) {
+    final user = entries[i];
+    final reply = entries[i + 1];
+    if (user is UserEntry && reply is ReplyEntry) {
+      if (user.state != SendState.sent) continue;
+      if (reply.message.outcome == Outcome.deferred) continue;
+
+      final uText = user.text;
+      if (uText.isNotEmpty) {
+        turns.add(
+          HistoryTurn(role: 'user', content: truncateHistoryContent(uText)),
+        );
+      }
+
+      final rText = reply.message.response;
+      if (rText.isNotEmpty) {
+        turns.add(
+          HistoryTurn(
+            role: 'assistant',
+            content: truncateHistoryContent(rText),
+          ),
+        );
+      }
+    }
+  }
+  if (turns.length > 20) {
+    return turns.sublist(turns.length - 20);
+  }
+  return turns;
+}
+
+/// Truncates [text] to at most 8000 UTF-16 code units safely.
+/// If the code unit at index 7999 is a high surrogate (0xD800-0xDBFF),
+/// it cuts at 7999 instead to avoid splitting a surrogate pair.
+String truncateHistoryContent(String text) {
+  if (text.length <= 8000) return text;
+  final cu = text.codeUnitAt(7999);
+  if (cu >= 0xD800 && cu <= 0xDBFF) {
+    return text.substring(0, 7999);
+  }
+  return text.substring(0, 8000);
 }
