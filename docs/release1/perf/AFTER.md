@@ -66,3 +66,30 @@ Fix attempted: `ChatController` bumps a `streamRevision` ValueNotifier per 50 ms
 Cold-start proxy (`chat_perf_test.dart`, 7 samples, one run at ca7e193): median 242.6 ms, p95 2241.7 ms. Noise-dominated; do not read a trend from it.
 
 Release APK: baseline 22,392,361 bytes. The HEAD build was started at ca7e193 as `flutter build apk --release` with log `/tmp/apk-logs/head2.log`. Its size is not yet recorded here.
+
+## perf2 attribution (branch `r1/perf2`; harness `mobile/test/perf/rebuild_histogram_test.dart`)
+
+Host-VM proxy. Uses `debugOnRebuildDirtyWidget` (first build per element excluded, matching the log filter's `Building` vs `Rebuilding`). Two counters:
+
+- **strict**: `element.widget.runtimeType` exactly one of ChatScreen/MessageBubble/_UserRow/Composer.
+- **substring (log-equivalent)**: `element.toString()` contains one of those names, whole tree.
+
+Per send (5 sends after warm-up; strict counts from the ChatScreen-subtree histogram):
+
+| Widget | Baseline `dcf4f75` | HEAD `4a2ad5c` |
+|---|---|---|
+| Composer | 2 per send | 3 per send |
+| MessageBubble | 2, 4, 6, 8, 9 (grows with visible transcript) | 2, 4, 6, 8, 9 (same) |
+| ChatScreen | 1 per send | 1 per send |
+| Substring total | 6, 9, 12, 15, 16 | 18, 20, 22, 24, 25 |
+
+Burst (200 deltas, one SSE body):
+
+| Metric | Baseline | HEAD |
+|---|---|---|
+| Strict (Composer 1, ChatScreen 0, MessageBubble 0) | 1 | 1 |
+| Substring total | 1 | 5 |
+
+Attribution of the substring excess: the extra counts are descendant elements whose `toString()` mentions `ComposerTextFieldFocus` (Focus, TextField, EditableText), not rebuilt Composer widgets. The log-based gate therefore overcounts HEAD for reasons unrelated to rebuild work. The strict counts show the real gap is Composer rebuilding once more per send (3 vs 2), and MessageBubble rebuilds that grow with visible transcript on both trees (inherent to a non-memoized ChatScreen `setState`; not fixed in this pass).
+
+Not done in this pass: no source fix in `lib/features/chat/**`. The gate is not yet shown to be met under the original substring metric (HEAD 18 to 25 per send vs baseline 6 to 16; burst 5 vs 1).
