@@ -13,6 +13,12 @@ import 'settings/karmi_settings.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureBundledFonts();
+  // Startup (R1 §6 G): these three inits are independent and run in parallel.
+  // Clerk is NOT deferred: KarmiSession takes ClerkAuthState at construction
+  // (session.dart owns the token provider wiring), so it must be ready before
+  // KarmiApp is built. No deferred (`deferred as`) imports: every first-frame
+  // screen (Welcome, Shell, TesterNotice) is imported eagerly by app.dart, so
+  // there is no startup-path screen to defer.
   const publishableKey = String.fromEnvironment('CLERK_PUBLISHABLE_KEY');
   final glassInitFuture = LiquidGlassWidgets.initialize();
   final prefsFuture = SharedPreferences.getInstance();

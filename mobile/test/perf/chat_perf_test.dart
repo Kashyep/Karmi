@@ -1,15 +1,10 @@
 // R1 perf baseline. Host-VM widget-test measurements (NOT device frame timings).
 // Run: cd mobile && flutter test test/perf/chat_perf_test.dart --reporter expanded
 // Emits lines prefixed `PERF ` for capture into docs/release1/perf/BASELINE.md.
-import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
 
 import '../support/fake_backend.dart';
 import '../support/harness.dart';
@@ -24,6 +19,7 @@ double _p95(List<double> xs) {
   return s[math.min(s.length - 1, (s.length * 0.95).ceil() - 1)];
 }
 
+// ignore: avoid_print
 void _perf(String line) => print('PERF $line');
 
 FakeBackend _numberedReplies() {
