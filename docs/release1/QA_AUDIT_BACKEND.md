@@ -22,6 +22,29 @@
 - **Low**: 3
 - **Total Findings**: 10
 
+## Resolution
+
+| # | Severity | Title | Resolution | Commit | Regression test |
+|---|---|---|---|---|---|
+| 1 | Critical | Cross-User Authorization Bypass in Continue and Regenerate | Fixed - scoped to Conversation.user_id + deleted_at IS NULL, 404 on mismatch | 59d4609 | tests/unit/test_r1_fix_stream_scope.py |
+| 2 | High | Cross-User Data Leakage During Idempotency Replay | Fixed - join Conversation user_id; supplied conversation_id must be caller's else 404 | 59d4609 | tests/unit/test_r1_fix_stream_scope.py |
+| 3 | High | Startup Sweep Leaves Budget Reservations Locked | Fixed - sweep releases RESERVED reservations via release_budget, idempotent | 4b5ccb3 | tests/unit/test_r1_fix_streaming.py |
+| 4 | High | Unbounded StreamRegistry / Stuck Runs | Fixed - eviction on register(); non-terminal runs past 15-min stuck timeout finalized and evicted | 4b5ccb3 | tests/unit/test_r1_fix_streaming.py |
+| 5 | Medium | Synchronous DB Flush Blocks Event Loop | Fixed - flush via asyncio.to_thread (in-memory sqlite bypass) | 4b5ccb3 | tests/unit/test_r1_fix_streaming.py |
+| 6 | Medium | MultipleResultsFound in Idempotency Check | Fixed - ordered first() and conversation-scoped lookup | 59d4609 | tests/unit/test_r1_fix_stream_scope.py |
+| 7 | Medium | after_seq Beyond Buffer Emits run.finished | Fixed - run.error resume_unavailable retryable=false | 59d4609 | tests/unit/test_r1_fix_stream_scope.py |
+| 8 | Low | Historical Heartbeat Burst on Resume | Fixed - historical heartbeats skipped on resume | 59d4609 | tests/unit/test_r1_fix_stream_scope.py |
+| 9 | Low | Soft-Deleted Conversation Continue/Regenerate | Fixed - 404 when deleted_at set | 59d4609 | tests/unit/test_r1_fix_stream_scope.py |
+| 10 | Low | Unused Gateway Admission Slots Leaked | Fixed - admission passed to runner, unused slots returned at terminal; route 59d4609, runner 4b5ccb3 | 59d4609, 4b5ccb3 | tests/unit/test_r1_fix_streaming.py |
+
+### QA1 Client and Integration Items
+
+| Item | Resolution | Commit | Regression test |
+|---|---|---|---|
+| Composer IME Enter sends during composition | Fixed - Enter respects IME composition | b8a4fff | mobile/test/qa/composer_keys_test.dart (un-xfailed) |
+| Paste chip threshold boundary (2500 chars) | Fixed - strict over-threshold check | b8a4fff | mobile/test/qa/paste_chip_threshold_test.dart (un-xfailed) |
+| Conversations Postgres integration and migrations c7a1d2e3f405 + d8b2e3f4a516 | Added - upgrade/downgrade round trip; create/search/archive/delete/restore on real Postgres | 8eb0f81 | tests/integration/test_conversations_pg.py |
+
 ---
 
 ## Findings by Severity
