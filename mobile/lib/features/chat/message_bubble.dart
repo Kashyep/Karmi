@@ -2,22 +2,27 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../api/chat/chat_models.dart';
 import '../../api/models.dart';
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_theme.dart';
 import '../../widgets/karmi_card.dart';
 import 'chat_entry.dart';
+import 'rendering/markdown_message.dart';
 import 'status_chip.dart';
 
 /// A chat bubble on an opaque surface, capped to a readable line length.
 class MessageBubble extends StatelessWidget {
   const MessageBubble.user({super.key, required UserEntry this.entry})
     : reply = null,
+      chatMessage = null,
       announce = false,
       onReviewDetails = null,
       onFeedback = null,
       onSelectReason = null,
-      onRegenerate = null;
+      onRegenerate = null,
+      onContinue = null,
+      onResume = null;
 
   const MessageBubble.reply({
     super.key,
@@ -27,10 +32,27 @@ class MessageBubble extends StatelessWidget {
     this.onFeedback,
     this.onSelectReason,
     this.onRegenerate,
-  }) : entry = null;
+  })  : entry = null,
+        chatMessage = null,
+        onContinue = null,
+        onResume = null;
+
+  const MessageBubble.chatMessage({
+    super.key,
+    required ChatMessageView this.chatMessage,
+    this.announce = false,
+    this.onReviewDetails,
+    this.onFeedback,
+    this.onSelectReason,
+    this.onRegenerate,
+    this.onContinue,
+    this.onResume,
+  })  : entry = null,
+        reply = null;
 
   final UserEntry? entry;
   final ReplyEntry? reply;
+  final ChatMessageView? chatMessage;
 
   /// Latest reply: exposed as a live region so screen readers announce it.
   final bool announce;
@@ -41,11 +63,13 @@ class MessageBubble extends StatelessWidget {
   final ValueChanged<FeedbackRating>? onFeedback;
   final ValueChanged<String>? onSelectReason;
   final VoidCallback? onRegenerate;
+  final VoidCallback? onContinue;
+  final VoidCallback? onResume;
   @override
   Widget build(BuildContext context) {
     final colors = KarmiColors.of(context);
     final text = Theme.of(context).textTheme;
-    final isUser = entry != null;
+    final isUser = entry != null || (chatMessage != null && chatMessage!.role == 'user');
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -62,11 +86,31 @@ class MessageBubble extends StatelessWidget {
             border: isUser ? null : Border.all(color: colors.borderSubtle),
           ),
           child: isUser
-              ? Text(
-                  entry!.text,
+              ? SelectableText(
+                  entry != null ? entry!.text : (chatMessage?.content ?? ''),
                   style: text.bodyLarge?.copyWith(
                     color: colors.primaryForeground,
                   ),
+                )
+              : chatMessage != null
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MarkdownMessage(
+                      text: chatMessage!.content,
+                      streaming: chatMessage!.status == MessageStatus.streaming,
+                      allowCollapse: true,
+                    ),
+                    if (chatMessage!.status != MessageStatus.streaming) ...[
+                      const SizedBox(height: 4),
+                      _ChatMessageActions(
+                        message: chatMessage!,
+                        onContinue: onContinue,
+                        onResume: onResume,
+                        onRegenerate: onRegenerate,
+                      ),
+                    ],
+                  ],
                 )
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,6 +238,63 @@ class _ReplyActions extends StatelessWidget {
             ],
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _ChatMessageActions extends StatelessWidget {
+  const _ChatMessageActions({
+    required this.message,
+    this.onContinue,
+    this.onResume,
+    this.onRegenerate,
+  });
+
+  final ChatMessageView message;
+  final VoidCallback? onContinue;
+  final VoidCallback? onResume;
+  final VoidCallback? onRegenerate;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = KarmiColors.of(context);
+    final showContinue =
+        message.finishReason == FinishReason.length && onContinue != null;
+    final showResume = (message.finishReason == FinishReason.interrupted ||
+            message.status == MessageStatus.interrupted) &&
+        onResume != null;
+
+    if (!showContinue && !showResume && onRegenerate == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (showContinue)
+          TextButton.icon(
+            onPressed: onContinue,
+            icon: const Icon(Icons.arrow_forward, size: 16),
+            label: const Text('Continue'),
+          ),
+        if (showResume)
+          TextButton.icon(
+            onPressed: onResume,
+            icon: const Icon(Icons.play_arrow, size: 16),
+            label: const Text('Resume'),
+          ),
+        if (onRegenerate != null)
+          IconButton(
+            iconSize: 20,
+            tooltip: 'Regenerate response',
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            icon: const Icon(Icons.refresh),
+            color: colors.mutedForeground,
+            onPressed: onRegenerate,
+          ),
       ],
     );
   }

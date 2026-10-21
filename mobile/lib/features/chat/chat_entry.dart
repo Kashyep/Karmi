@@ -1,3 +1,4 @@
+import '../../api/chat/chat_models.dart';
 import '../../api/models.dart';
 
 /// Delivery state of a message the user typed.
@@ -72,4 +73,14 @@ final class ReplyEntry extends ChatEntry {
     isFeedbackInFlight: isFeedbackInFlight ?? this.isFeedbackInFlight,
     isRegenerating: isRegenerating ?? this.isRegenerating,
   );
+}
+
+/// A server-streamed chat message (`ChatMessageView`).
+final class StreamMessageEntry extends ChatEntry {
+  const StreamMessageEntry({
+    required String id,
+    required this.message,
+  }) : super(id);
+
+  final ChatMessageView message;
 }
