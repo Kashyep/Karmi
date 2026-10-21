@@ -72,6 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _conversationsApi = ConversationsApi(
       baseUrl: widget.api.baseUrl,
       tokenProvider: widget.api.tokenProvider,
+      client: widget.api.client,
     );
 
     _scrollController = EndAnchoredScrollController();

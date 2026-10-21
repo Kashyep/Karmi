@@ -33,7 +33,7 @@ class RunStreamClient {
   }) {
     return RunStreamClient(
       baseUrl: api.baseUrl,
-      client: client,
+      client: client ?? api.client,
       timeout: timeout ?? api.timeout,
       token: api.token,
       tokenProvider: api.tokenProvider,
