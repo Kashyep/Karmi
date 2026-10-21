@@ -63,6 +63,18 @@ class ChatController extends ChangeNotifier {
   /// Unmodifiable view of chat messages in this conversation.
   List<ChatMessageView> get messages => List.unmodifiable(_messages);
 
+  /// Bumped on every coalesced delta flush. Listeners rebuild only the streaming
+  /// bubble; structural changes still go through [notifyListeners].
+  final ValueNotifier<int> streamRevision = ValueNotifier<int>(0);
+
+  /// Current copy of message [id], or null. Avoids copying the whole list.
+  ChatMessageView? messageById(String id) {
+    for (final m in _messages) {
+      if (m.id == id) return m;
+    }
+    return null;
+  }
+
   /// Current run phase.
   ChatRunPhase get phase => _phase;
 
@@ -358,6 +370,7 @@ class ChatController extends ChangeNotifier {
     _deltaFlushTimer = null;
     _streamSubscription?.cancel();
     _streamSubscription = null;
+    streamRevision.dispose();
     super.dispose();
   }
 
@@ -499,7 +512,8 @@ class ChatController extends ChangeNotifier {
     final chunk = _deltaBuffer.toString();
     _deltaBuffer.clear();
     _appendAssistantText(chunk);
-    _notifySafe();
+    // Content-only flush: drive the streaming bubble, not the whole screen.
+    if (!_disposed) streamRevision.value++;
   }
 
   void _stopDeltaFlushTimer() {

@@ -367,6 +367,40 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildChatBubble(
+    ChatMessageView msg,
+    int index,
+    int count,
+    int lastAssistantIndex,
+  ) {
+    final isLastAssistant = index == lastAssistantIndex;
+    return MessageBubble.chatMessage(
+      key: ValueKey(msg.id),
+      chatMessage: msg,
+      announce: index == count - 1 && msg.role == 'assistant',
+      onContinue: msg.finishReason == FinishReason.length
+          ? () => _chatController.continueMessage(msg.id)
+          : null,
+      onResume:
+          (msg.finishReason == FinishReason.interrupted ||
+              msg.status == MessageStatus.interrupted)
+          ? _chatController.resume
+          : null,
+      onRegenerate: isLastAssistant && !_isBusy
+          ? () => _chatController.regenerate(msg.id)
+          : null,
+      onFeedback: msg.role == 'assistant'
+          ? (rating) => _onFeedback(msg, rating)
+          : null,
+      onSelectReason: msg.role == 'assistant'
+          ? (reason) => _onSelectReason(msg, reason)
+          : null,
+      feedbackRating: _feedbackRatings[msg.id],
+      feedbackReason: _feedbackReasons[msg.id],
+      isFeedbackInFlight: _feedbackInFlight.contains(msg.id),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final insets = karmiPageInsets(context);
@@ -409,33 +443,23 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemCount: messages.length,
                     itemBuilder: (context, index) {
                       final msg = messages[index];
-                      final isLastAssistant = index == lastAssistantIndex;
-                      return MessageBubble.chatMessage(
-                        key: ValueKey(msg.id),
-                        chatMessage: msg,
-                        announce:
-                            index == messages.length - 1 &&
-                            msg.role == 'assistant',
-                        onContinue: msg.finishReason == FinishReason.length
-                            ? () => _chatController.continueMessage(msg.id)
-                            : null,
-                        onResume:
-                            (msg.finishReason == FinishReason.interrupted ||
-                                msg.status == MessageStatus.interrupted)
-                            ? _chatController.resume
-                            : null,
-                        onRegenerate: isLastAssistant && !_isBusy
-                            ? () => _chatController.regenerate(msg.id)
-                            : null,
-                        onFeedback: msg.role == 'assistant'
-                            ? (rating) => _onFeedback(msg, rating)
-                            : null,
-                        onSelectReason: msg.role == 'assistant'
-                            ? (reason) => _onSelectReason(msg, reason)
-                            : null,
-                        feedbackRating: _feedbackRatings[msg.id],
-                        feedbackReason: _feedbackReasons[msg.id],
-                        isFeedbackInFlight: _feedbackInFlight.contains(msg.id),
+                      if (msg.status != MessageStatus.streaming) {
+                        return _buildChatBubble(
+                          msg,
+                          index,
+                          messages.length,
+                          lastAssistantIndex,
+                        );
+                      }
+                      // Only the streaming bubble rebuilds on each delta flush.
+                      return ValueListenableBuilder<int>(
+                        valueListenable: _chatController.streamRevision,
+                        builder: (context, _, child) => _buildChatBubble(
+                          _chatController.messageById(msg.id) ?? msg,
+                          index,
+                          messages.length,
+                          lastAssistantIndex,
+                        ),
                       );
                     },
                   );
