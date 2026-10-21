@@ -18,35 +18,40 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('A11y Keyboard Tests', () {
-    testWidgets('Composer: Enter sends trimmed text, clears input, and notifies onSubmit', (tester) async {
-      ComposerSubmit? submitted;
-      await pumpHost(
-        tester,
-        Center(
-          child: Composer(
-            draftKey: 'test-enter',
-            busy: false,
-            onSubmit: (s) => submitted = s,
-            onStop: () {},
-            draftStore: _KeyDraftStore(),
+    testWidgets(
+      'Composer: Enter sends trimmed text, clears input, and notifies onSubmit',
+      (tester) async {
+        ComposerSubmit? submitted;
+        await pumpHost(
+          tester,
+          Center(
+            child: Composer(
+              draftKey: 'test-enter',
+              busy: false,
+              onSubmit: (s) => submitted = s,
+              onStop: () {},
+              draftStore: _KeyDraftStore(),
+            ),
           ),
-        ),
-      );
+        );
 
-      final textField = find.byType(TextField);
-      await tester.enterText(textField, 'Hello from Enter');
-      await tester.pump();
+        final textField = find.byType(TextField);
+        await tester.enterText(textField, 'Hello from Enter');
+        await tester.pump();
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
 
-      expect(submitted, isNotNull);
-      expect(submitted!.text, 'Hello from Enter');
-      final field = tester.widget<TextField>(textField);
-      expect(field.controller?.text, isEmpty);
-    });
+        expect(submitted, isNotNull);
+        expect(submitted!.text, 'Hello from Enter');
+        final field = tester.widget<TextField>(textField);
+        expect(field.controller?.text, isEmpty);
+      },
+    );
 
-    testWidgets('Composer: Shift+Enter inserts newline and does NOT send', (tester) async {
+    testWidgets('Composer: Shift+Enter inserts newline and does NOT send', (
+      tester,
+    ) async {
       ComposerSubmit? submitted;
       await pumpHost(
         tester,
@@ -73,7 +78,9 @@ void main() {
       expect(submitted, isNull);
     });
 
-    testWidgets('Tab traversal across composer -> attach -> send is in order', (tester) async {
+    testWidgets('Tab traversal across composer -> attach -> send is in order', (
+      tester,
+    ) async {
       await pumpHost(
         tester,
         Center(
@@ -108,7 +115,10 @@ void main() {
       expect(attachNode, isNotNull);
       expect(attachNode, isNot(equals(textNode)));
       expect(
-        attachNode!.context!.findAncestorWidgetOfExactType<IconButton>()?.tooltip == 'Attach files',
+        attachNode!.context!
+                .findAncestorWidgetOfExactType<IconButton>()
+                ?.tooltip ==
+            'Attach files',
         isTrue,
         reason: 'Focus should be on Attach button',
       );
@@ -122,13 +132,18 @@ void main() {
       expect(sendNode, isNotNull);
       expect(sendNode, isNot(equals(attachNode)));
       expect(
-        sendNode!.context!.findAncestorWidgetOfExactType<IconButton>()?.tooltip == 'Send message',
+        sendNode!.context!
+                .findAncestorWidgetOfExactType<IconButton>()
+                ?.tooltip ==
+            'Send message',
         isTrue,
         reason: 'Focus should be on Send button',
       );
     });
 
-    testWidgets('Esc key focus behavior (no Esc dismiss in lib)', (tester) async {
+    testWidgets('Esc key focus behavior (no Esc dismiss in lib)', (
+      tester,
+    ) async {
       await pumpHost(
         tester,
         Center(

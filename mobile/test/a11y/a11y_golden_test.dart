@@ -97,10 +97,7 @@ void main() {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: ErrorCard(
-                category: ErrorCategory.network,
-                onRetry: () {},
-              ),
+              child: ErrorCard(category: ErrorCategory.network, onRetry: () {}),
             ),
           ),
           env: env,
@@ -108,9 +105,7 @@ void main() {
         await fontsReady(tester);
         await expectLater(
           find.byType(MaterialApp),
-          matchesGoldenFile(
-            a11yGoldenPath('a11y_error_card_network_$suffix'),
-          ),
+          matchesGoldenFile(a11yGoldenPath('a11y_error_card_network_$suffix')),
         );
       });
 
@@ -122,9 +117,7 @@ void main() {
               padding: EdgeInsets.all(16),
               child: Align(
                 alignment: Alignment.topLeft,
-                child: ProcessingPanel(
-                  phase: ChatRunPhase.streaming,
-                ),
+                child: ProcessingPanel(phase: ChatRunPhase.streaming),
               ),
             ),
           ),
@@ -170,10 +163,7 @@ void main() {
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: ErrorCard(
-              category: ErrorCategory.network,
-              onRetry: () {},
-            ),
+            child: ErrorCard(category: ErrorCategory.network, onRetry: () {}),
           ),
         ),
         env: const Env(textScale: 2.0),
@@ -192,9 +182,7 @@ void main() {
             padding: EdgeInsets.all(16),
             child: Align(
               alignment: Alignment.topLeft,
-              child: ProcessingPanel(
-                phase: ChatRunPhase.streaming,
-              ),
+              child: ProcessingPanel(phase: ChatRunPhase.streaming),
             ),
           ),
         ),

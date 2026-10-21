@@ -28,39 +28,40 @@ class UsageWarningPill extends StatelessWidget {
     final baseStyle =
         Theme.of(context).textTheme.labelMedium ?? const TextStyle();
 
-    return Semantics(
-      label: label,
-      container: true,
-      child: Container(
-        key: const ValueKey('usage-warning-pill'),
-        padding: const EdgeInsets.symmetric(
-          horizontal: KarmiTokens.s12,
-          vertical: KarmiTokens.s8,
-        ),
-        decoration: BoxDecoration(
-          color: KarmiTokens.usageWarningFill(brightness),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: ExcludeSemantics(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.warning_amber,
-                size: 16,
-                color: KarmiTokens.usageWarningIcon(brightness),
-              ),
-              const SizedBox(width: KarmiTokens.s4),
-              Text(
-                label,
-                style: baseStyle.copyWith(
-                  color: KarmiTokens.usageWarningForeground(brightness),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+    return Container(
+      key: const ValueKey('usage-warning-pill'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: KarmiTokens.s12,
+        vertical: KarmiTokens.s8,
+      ),
+      decoration: BoxDecoration(
+        color: KarmiTokens.usageWarningFill(brightness),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ExcludeSemantics(
+            child: Icon(
+              Icons.warning_amber,
+              size: 16,
+              color: KarmiTokens.usageWarningIcon(brightness),
+            ),
           ),
-        ),
+          const SizedBox(width: KarmiTokens.s4),
+          Semantics(
+            label: label,
+            container: true,
+            excludeSemantics: true,
+            child: Text(
+              label,
+              style: baseStyle.copyWith(
+                color: KarmiTokens.usageWarningForeground(brightness),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
