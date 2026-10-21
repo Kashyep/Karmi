@@ -47,8 +47,7 @@ void main() {
     testWidgets(
       'pasting exactly 2500 chars is NOT chipped (remains raw text in input)',
       (tester) async {
-        ComposerSubmit? submitted;
-        await tester.pumpWidget(_buildComposerHost(onSubmit: (s) => submitted = s));
+        await tester.pumpWidget(_buildComposerHost(onSubmit: (_) {}));
         await tester.pumpAndSettle();
 
         final text2500 = 'A' * 2500;
@@ -93,8 +92,7 @@ void main() {
     testWidgets(
       'removing 2501-char paste chip deletes pasted content from submission',
       (tester) async {
-        ComposerSubmit? submitted;
-        await tester.pumpWidget(_buildComposerHost(onSubmit: (s) => submitted = s));
+        await tester.pumpWidget(_buildComposerHost(onSubmit: (_) {}));
         await tester.pumpAndSettle();
 
         final text2501 = 'C' * 2501;
