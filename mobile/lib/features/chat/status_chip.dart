@@ -16,30 +16,48 @@ class StatusChip extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.tone,
+    this.backgroundColor,
   });
 
-  factory StatusChip.outcome(Outcome outcome, {Key? key}) {
+  factory StatusChip.outcome(
+    Outcome outcome, {
+    Key? key,
+    Color? backgroundColor,
+  }) {
     final (label, icon, tone) = outcomeStatus(outcome);
-    return StatusChip(key: key, label: label, icon: icon, tone: tone);
+    return StatusChip(
+      key: key,
+      label: label,
+      icon: icon,
+      tone: tone,
+      backgroundColor: backgroundColor,
+    );
   }
 
-  factory StatusChip.task({required bool completed, Key? key}) => completed
+  factory StatusChip.task({
+    required bool completed,
+    Key? key,
+    Color? backgroundColor,
+  }) => completed
       ? StatusChip(
           key: key,
           label: 'Completed',
           icon: Icons.check_circle_outline,
           tone: StatusTone.success,
+          backgroundColor: backgroundColor,
         )
       : StatusChip(
           key: key,
           label: 'Open',
           icon: Icons.radio_button_unchecked,
           tone: StatusTone.neutral,
+          backgroundColor: backgroundColor,
         );
 
   final String label;
   final IconData icon;
   final StatusTone tone;
+  final Color? backgroundColor;
 
   static Color toneColor(KarmiColors colors, StatusTone tone) => switch (tone) {
     StatusTone.success => colors.success,
@@ -59,7 +77,7 @@ class StatusChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: colors.muted,
+          color: backgroundColor ?? colors.muted,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: toneColor),
         ),
