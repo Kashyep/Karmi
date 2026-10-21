@@ -120,11 +120,6 @@ class ErrorCard extends StatelessWidget {
                       minimumSize: const Size(48, 48),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(
-                          color: colorScheme.onErrorContainer.withValues(
-                            alpha: 0.3,
-                          ),
-                        ),
                       ),
                     ),
                     child: Text(

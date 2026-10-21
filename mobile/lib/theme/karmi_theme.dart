@@ -184,6 +184,12 @@ abstract final class KarmiTheme {
       onTertiary: colors.accentForeground,
       error: colors.destructive,
       onError: colors.destructiveForeground,
+      errorContainer: brightness == Brightness.light
+          ? const Color(0xFFFDE8E8)
+          : const Color(0xFF4A0E14),
+      onErrorContainer: brightness == Brightness.light
+          ? const Color(0xFF7A141E)
+          : const Color(0xFFFFDAD6),
       surface: colors.card,
       onSurface: colors.foreground,
       onSurfaceVariant: colors.mutedForeground,
