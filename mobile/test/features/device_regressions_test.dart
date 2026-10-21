@@ -76,6 +76,8 @@ void main() {
     testWidgets('glass app bar has a tint platter at the legibility floor '
         '(${brightness.name})', (tester) async {
       await pumpApp(tester, env: Env(brightness: brightness));
+      // The Chat tab owns its integrated header; other tabs keep the bar.
+      await openTab(tester, 'Settings');
       final bar = tester.widget<GlassAppBar>(find.byType(GlassAppBar));
       final floor = brightness == Brightness.light
           ? KarmiGlass.lightTintAlpha
