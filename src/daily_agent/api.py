@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_for_code
@@ -105,10 +105,13 @@ def create_app() -> FastAPI:
         settings = get_settings()
         if settings.is_development and settings.database_url.startswith("sqlite"):
             create_schema()
-        with Session(get_engine()) as session:
-            swept = sweep_interrupted_runs(session)
-        if swept:
-            logger.info("stream.swept_interrupted runs=%s", swept)
+        try:
+            with Session(get_engine()) as session:
+                swept = sweep_interrupted_runs(session)
+            if swept:
+                logger.info("stream.swept_interrupted runs=%s", swept)
+        except SQLAlchemyError:
+            logger.warning("stream.sweep_failed (schema not migrated?)", exc_info=True)
         yield
 
     app = FastAPI(title="Daily Agent", version="0.1.0", lifespan=lifespan)
