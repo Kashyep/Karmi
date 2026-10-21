@@ -400,8 +400,8 @@ class Conversation(Base):
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=conversation_id_str)
-    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     title_source: Mapped[str] = mapped_column(String(8), default="auto", server_default="auto")
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
@@ -429,9 +429,9 @@ class ChatMessage(Base):
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=chat_message_id_str)
     conversation_id: Mapped[str] = mapped_column(
-        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+        ForeignKey("conversations.id", ondelete="CASCADE")
     )
-    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
     role: Mapped[str] = mapped_column(String(12))
     status: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text, default="", server_default="")

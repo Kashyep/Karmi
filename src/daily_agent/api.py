@@ -17,7 +17,7 @@ from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_fo
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_session
 from daily_agent.deps import gateway_dependency, limited_principal, own_run
-from daily_agent.gateway import Gateway, build_gateway
+from daily_agent.gateway import Gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
 from daily_agent.models import (
     Account,
