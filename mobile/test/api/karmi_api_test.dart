@@ -227,6 +227,10 @@ void main() {
       );
     });
 
+    test('default timeout outlasts two 12 s gateway attempts', () {
+      expect(KarmiApi().timeout, const Duration(seconds: 60));
+    });
+
     test('timeout throws Network', () async {
       final slow = KarmiApi(
         baseUrl: 'http://karmi.test',
