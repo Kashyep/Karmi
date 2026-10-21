@@ -135,7 +135,7 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('other_setting', 'user_preference');
 
-      final store = SharedPrefsDraftStore(prefs: prefs);
+      final store = SharedPrefsDraftStore(userId: 'user_a', prefs: prefs);
       await store.save('new', 'draft for new conversation');
       await store.save('conv-123', 'draft for existing conversation');
 

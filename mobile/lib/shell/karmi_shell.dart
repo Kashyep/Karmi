@@ -85,7 +85,11 @@ class _KarmiShellState extends State<KarmiShell> {
   Widget _buildPage(int index) {
     switch (index) {
       case 0:
-        return ChatScreen(api: widget.api, onOpenPlans: _openPlans);
+        return ChatScreen(
+          api: widget.api,
+          onOpenPlans: _openPlans,
+          draftStore: widget.session.draftStore,
+        );
       case 1:
         return TasksScreen(api: widget.api);
       case 2:
