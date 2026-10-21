@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/features/chat/scroll/jump_to_latest_button.dart';
+import 'package:karmi_app/theme/karmi_theme.dart';
+import 'package:karmi_app/theme/karmi_tier.dart';
 
 void main() {
   group('JumpToLatestButton', () {
@@ -8,6 +10,7 @@ void main() {
       bool tapped = false;
       await tester.pumpWidget(
         MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
           home: Scaffold(
             body: JumpToLatestButton(
               visible: false,
@@ -33,6 +36,7 @@ void main() {
       bool tapped = false;
       await tester.pumpWidget(
         MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
           home: Scaffold(
             body: Center(
               child: JumpToLatestButton(
@@ -55,6 +59,7 @@ void main() {
       // Default state: Jump to latest
       await tester.pumpWidget(
         MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
           home: Scaffold(
             body: JumpToLatestButton(
               visible: true,
@@ -72,6 +77,7 @@ void main() {
       // New content state: New messages
       await tester.pumpWidget(
         MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
           home: Scaffold(
             body: JumpToLatestButton(
               visible: true,
@@ -92,6 +98,7 @@ void main() {
     testWidgets('reduced motion path (MediaQuery disableAnimations true) builds without animation error', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
           home: MediaQuery(
             data: const MediaQueryData(disableAnimations: true),
             child: Scaffold(
@@ -109,6 +116,7 @@ void main() {
       // Toggle to false under reduced motion
       await tester.pumpWidget(
         MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
           home: MediaQuery(
             data: const MediaQueryData(disableAnimations: true),
             child: Scaffold(
@@ -130,6 +138,7 @@ void main() {
     testWidgets('touch target is at least 48x48', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
           home: Scaffold(
             body: Center(
               child: JumpToLatestButton(
