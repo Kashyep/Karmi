@@ -5,6 +5,9 @@ import '../../api/karmi_api.dart';
 import '../../api/stream/run_stream_client.dart';
 import '../../shell/breakpoints.dart';
 import '../../theme/karmi_motion.dart';
+import '../../shell/chat_header.dart';
+import '../../shell/chat_history_commands.dart';
+import '../../shell/history_panel.dart';
 import '../../theme/karmi_theme.dart';
 import 'empty_state.dart';
 import '../../widgets/karmi_card.dart';
@@ -34,6 +37,7 @@ class ChatScreen extends StatefulWidget {
     this.conversationsApi,
     this.draftStore,
     this.clock,
+    this.historyCommands,
   });
 
   final KarmiApi api;
@@ -46,6 +50,7 @@ class ChatScreen extends StatefulWidget {
   final ConversationsApi? conversationsApi;
   final DraftStore? draftStore;
   final DateTime Function()? clock;
+  final ChatHistoryCommands? historyCommands;
 
   /// Builds a history rail widget for wide layouts.
   static Widget historyRailBuilder({
@@ -96,6 +101,12 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _activeConversationId = widget.conversationId;
+    final commands = widget.historyCommands;
+    if (commands != null) {
+      commands.openConversation = (id) => _loadConversationMessages(id);
+      commands.newChat = _startNewChat;
+      commands.activeId.value = _activeConversationId;
+    }
     _runStreamClient =
         widget.runStreamClient ?? RunStreamClient.fromApi(widget.api);
     _conversationsApi =
@@ -130,6 +141,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _ownsConversationListController = true;
       _conversationListController.refresh();
     }
+    _conversationListController.addListener(_onConversationListChanged);
 
     if (_activeConversationId != null && _chatController.messages.isEmpty) {
       _loadConversationMessages(_activeConversationId!);
@@ -139,9 +151,32 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void didUpdateWidget(ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.historyCommands != oldWidget.historyCommands) {
+      if (oldWidget.historyCommands != null) {
+        oldWidget.historyCommands!.openConversation = null;
+        oldWidget.historyCommands!.newChat = null;
+      }
+      if (widget.historyCommands != null) {
+        widget.historyCommands!.openConversation =
+            (id) => _loadConversationMessages(id);
+        widget.historyCommands!.newChat = _startNewChat;
+        widget.historyCommands!.activeId.value = _activeConversationId;
+      }
+    }
+    if (widget.conversationListController !=
+        oldWidget.conversationListController) {
+      oldWidget.conversationListController
+          ?.removeListener(_onConversationListChanged);
+      if (widget.conversationListController != null) {
+        _conversationListController = widget.conversationListController!;
+        _ownsConversationListController = false;
+        _conversationListController.addListener(_onConversationListChanged);
+      }
+    }
     if (widget.conversationId != oldWidget.conversationId &&
         widget.conversationId != _activeConversationId) {
       _activeConversationId = widget.conversationId;
+      widget.historyCommands?.activeId.value = _activeConversationId;
       if (_activeConversationId != null) {
         _loadConversationMessages(_activeConversationId!);
       } else {
@@ -152,7 +187,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    final commands = widget.historyCommands;
+    if (commands != null) {
+      commands.openConversation = null;
+      commands.newChat = null;
+    }
     _chatController.removeListener(_onChatControllerChanged);
+    _conversationListController.removeListener(_onConversationListChanged);
     if (_ownsChatController) {
       _chatController.dispose();
     }
@@ -166,11 +207,17 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  void _onConversationListChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   void _onChatControllerChanged() {
     if (!mounted) return;
     if (_chatController.conversationId != null &&
         _chatController.conversationId != _activeConversationId) {
       _activeConversationId = _chatController.conversationId;
+      widget.historyCommands?.activeId.value = _activeConversationId;
       widget.onConversationChanged?.call(_activeConversationId);
       _conversationListController.refresh();
     }
@@ -187,7 +234,10 @@ class _ChatScreenState extends State<ChatScreen> {
         conversationId: null,
       );
       _chatController.addListener(_onChatControllerChanged);
+    } else {
+      _activeConversationId = null;
     }
+    widget.historyCommands?.activeId.value = null;
     widget.onConversationChanged?.call(null);
     _feedbackRatings.clear();
     _feedbackReasons.clear();
@@ -202,6 +252,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoadingMessages = true;
       _activeConversationId = conversationId;
     });
+    widget.historyCommands?.activeId.value = conversationId;
 
     if (_ownsChatController) {
       _chatController.stop();
@@ -352,35 +403,28 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildTopBar(BuildContext context) {
-    final isExpanded = WorkspaceSize.of(context) == WorkspaceSize.expanded;
-    if (isExpanded) {
-      return const SizedBox.shrink();
+  String get _activeConversationTitle {
+    final id = _activeConversationId;
+    if (id == null) return 'New chat';
+    for (final conv in _conversationListController.conversations) {
+      if (conv.id == id) {
+        final title = conv.title?.trim();
+        if (title != null && title.isNotEmpty) return title;
+        break;
+      }
     }
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: 'Conversation history',
-            onPressed: _openHistoryModal,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'New chat',
-            onPressed: _startNewChat,
-          ),
-          const Spacer(),
-          if (widget.onOpenPlans != null)
-            TextButton.icon(
-              icon: const Icon(Icons.star_outline, size: 16),
-              label: const Text('Plans'),
-              onPressed: widget.onOpenPlans,
-            ),
-        ],
-      ),
-    );
+    return 'New chat';
+  }
+
+  VoidCallback? _resolveOpenHistory(BuildContext context) {
+    final scope = HistoryPanelScope.maybeOf(context);
+    if (scope == null) {
+      return _openHistoryModal;
+    }
+    if (WorkspaceSize.of(context) == WorkspaceSize.expanded) {
+      return null;
+    }
+    return scope.openHistory;
   }
 
   void _submitComposer(ComposerSubmit submit) {
@@ -496,7 +540,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Column(
       children: [
-        _buildTopBar(context),
+        KarmiChatHeader(
+          title: _activeConversationTitle,
+          onOpenHistory: _resolveOpenHistory(context),
+          onNewChat: _startNewChat,
+          onOpenPlans: widget.onOpenPlans,
+        ),
         if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),
         Expanded(
           child: Stack(

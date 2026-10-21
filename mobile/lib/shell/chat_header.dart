@@ -10,13 +10,13 @@ class KarmiChatHeader extends StatelessWidget {
   const KarmiChatHeader({
     super.key,
     required this.title,
-    required this.onOpenHistory,
+    this.onOpenHistory,
     required this.onNewChat,
     this.onOpenPlans,
   });
 
   final String title;
-  final VoidCallback onOpenHistory;
+  final VoidCallback? onOpenHistory;
   final VoidCallback onNewChat;
   final VoidCallback? onOpenPlans;
 
@@ -31,16 +31,18 @@ class KarmiChatHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         children: [
-          IconButton(
-            key: const ValueKey('chat-header-history'),
-            icon: const Icon(Icons.history),
-            tooltip: 'Conversation history',
-            color: colors.actionIcon,
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            padding: const EdgeInsets.all(10),
-            onPressed: onOpenHistory,
-          ),
-          const SizedBox(width: 8),
+          if (onOpenHistory != null) ...[
+            IconButton(
+              key: const ValueKey('chat-header-history'),
+              icon: const Icon(Icons.history),
+              tooltip: 'Conversation history',
+              color: colors.actionIcon,
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              padding: const EdgeInsets.all(10),
+              onPressed: onOpenHistory,
+            ),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Semantics(
               header: true,

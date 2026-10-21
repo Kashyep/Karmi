@@ -16,6 +16,7 @@ import '../theme/karmi_motion.dart';
 import '../theme/karmi_theme.dart';
 import '../widgets/focus_ring.dart';
 import 'history_panel.dart';
+import 'chat_history_commands.dart';
 
 class _Destination {
   const _Destination(this.label, this.icon, this.selectedIcon);
@@ -43,6 +44,7 @@ class KarmiShell extends StatefulWidget {
     required this.session,
     required this.armory,
     this.historyRailBuilder,
+    this.historyCommands,
   });
 
   final KarmiApi api;
@@ -50,6 +52,7 @@ class KarmiShell extends StatefulWidget {
   final KarmiSession session;
   final ArmoryController armory;
   final WidgetBuilder? historyRailBuilder;
+  final ChatHistoryCommands? historyCommands;
 
   @override
   State<KarmiShell> createState() => _KarmiShellState();
@@ -61,6 +64,13 @@ class _KarmiShellState extends State<KarmiShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final Set<int> _visited = {0};
   final List<Widget?> _pages = [null, null, null, null];
+  @override
+  void didUpdateWidget(KarmiShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.historyCommands != oldWidget.historyCommands) {
+      _pages[0] = null;
+    }
+  }
   bool _isHistoryOverlayOpen = false;
 
   void _openHistory() {
@@ -128,6 +138,7 @@ class _KarmiShellState extends State<KarmiShell> {
           api: widget.api,
           onOpenPlans: _openPlans,
           draftStore: widget.session.draftStore,
+          historyCommands: widget.historyCommands,
         );
       case 1:
         return TasksScreen(api: widget.api);

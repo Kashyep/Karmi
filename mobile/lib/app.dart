@@ -13,6 +13,8 @@ import 'features/welcome/tester_notice.dart';
 import 'features/welcome/tester_notice_screen.dart';
 import 'settings/karmi_settings.dart';
 import 'shell/karmi_shell.dart';
+import 'shell/chat_history_commands.dart';
+import 'shell/history_panel.dart';
 import 'theme/karmi_glass.dart';
 import 'theme/karmi_motion.dart';
 import 'theme/karmi_theme.dart';
@@ -44,6 +46,7 @@ class KarmiApp extends StatefulWidget {
 class _KarmiAppState extends State<KarmiApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
   late bool _signedIn = widget.session.isSignedIn;
+  final _historyCommands = ChatHistoryCommands();
   ConversationsApi? _conversationsApi;
   ConversationListController? _conversationListController;
 
@@ -60,6 +63,7 @@ class _KarmiAppState extends State<KarmiApp> {
   @override
   void dispose() {
     widget.session.removeListener(_onSession);
+    _historyCommands.dispose();
     super.dispose();
     _conversationListController?.dispose();
     _conversationsApi?.close();
@@ -153,10 +157,36 @@ class _KarmiAppState extends State<KarmiApp> {
                     settings: widget.settings,
                     session: widget.session,
                     armory: widget.armory,
-                    historyRailBuilder: (context) => ConversationList(
-                      controller: _ensureConversationController(),
-                      onOpen: (_) {},
-                      onNewChat: () {},
+                    historyCommands: _historyCommands,
+                    historyRailBuilder: (context) => Builder(
+                      builder: (innerContext) =>
+                          ValueListenableBuilder<String?>(
+                            valueListenable: _historyCommands.activeId,
+                            builder: (_, activeId, __) => ConversationList(
+                              controller: _ensureConversationController(),
+                              activeConversationId: activeId,
+                              onOpen: (id) {
+                                _historyCommands.openConversation?.call(id);
+                                HistoryPanelScope.maybeOf(
+                                  innerContext,
+                                )?.closeHistory();
+                                final scaffold = Scaffold.maybeOf(innerContext);
+                                if (scaffold != null && scaffold.isDrawerOpen) {
+                                  scaffold.closeDrawer();
+                                }
+                              },
+                              onNewChat: () {
+                                _historyCommands.newChat?.call();
+                                HistoryPanelScope.maybeOf(
+                                  innerContext,
+                                )?.closeHistory();
+                                final scaffold = Scaffold.maybeOf(innerContext);
+                                if (scaffold != null && scaffold.isDrawerOpen) {
+                                  scaffold.closeDrawer();
+                                }
+                              },
+                            ),
+                          ),
                     ),
                   )
                 : WelcomeScreen(
