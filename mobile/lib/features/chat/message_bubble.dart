@@ -22,7 +22,10 @@ class MessageBubble extends StatelessWidget {
       onSelectReason = null,
       onRegenerate = null,
       onContinue = null,
-      onResume = null;
+      onResume = null,
+      feedbackRating = null,
+      feedbackReason = null,
+      isFeedbackInFlight = false;
 
   const MessageBubble.reply({
     super.key,
@@ -35,7 +38,10 @@ class MessageBubble extends StatelessWidget {
   })  : entry = null,
         chatMessage = null,
         onContinue = null,
-        onResume = null;
+        onResume = null,
+        feedbackRating = null,
+        feedbackReason = null,
+        isFeedbackInFlight = false;
 
   const MessageBubble.chatMessage({
     super.key,
@@ -47,6 +53,9 @@ class MessageBubble extends StatelessWidget {
     this.onRegenerate,
     this.onContinue,
     this.onResume,
+    this.feedbackRating,
+    this.feedbackReason,
+    this.isFeedbackInFlight = false,
   })  : entry = null,
         reply = null;
 
@@ -65,6 +74,9 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onRegenerate;
   final VoidCallback? onContinue;
   final VoidCallback? onResume;
+  final FeedbackRating? feedbackRating;
+  final String? feedbackReason;
+  final bool isFeedbackInFlight;
   @override
   Widget build(BuildContext context) {
     final colors = KarmiColors.of(context);
@@ -108,6 +120,11 @@ class MessageBubble extends StatelessWidget {
                         onContinue: onContinue,
                         onResume: onResume,
                         onRegenerate: onRegenerate,
+                        onFeedback: onFeedback,
+                        onSelectReason: onSelectReason,
+                        feedbackRating: feedbackRating,
+                        feedbackReason: feedbackReason,
+                        isFeedbackInFlight: isFeedbackInFlight,
                       ),
                     ],
                   ],
@@ -249,12 +266,22 @@ class _ChatMessageActions extends StatelessWidget {
     this.onContinue,
     this.onResume,
     this.onRegenerate,
+    this.onFeedback,
+    this.onSelectReason,
+    this.feedbackRating,
+    this.feedbackReason,
+    this.isFeedbackInFlight = false,
   });
 
   final ChatMessageView message;
   final VoidCallback? onContinue;
   final VoidCallback? onResume;
   final VoidCallback? onRegenerate;
+  final ValueChanged<FeedbackRating>? onFeedback;
+  final ValueChanged<String>? onSelectReason;
+  final FeedbackRating? feedbackRating;
+  final String? feedbackReason;
+  final bool isFeedbackInFlight;
 
   @override
   Widget build(BuildContext context) {
@@ -265,36 +292,89 @@ class _ChatMessageActions extends StatelessWidget {
             message.status == MessageStatus.interrupted) &&
         onResume != null;
 
-    if (!showContinue && !showResume && onRegenerate == null) {
-      return const SizedBox.shrink();
-    }
+    final isBusy = isFeedbackInFlight;
+    final isDown = feedbackRating == FeedbackRating.down;
+    final isUp = feedbackRating == FeedbackRating.up;
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        if (showContinue)
-          TextButton.icon(
-            onPressed: onContinue,
-            icon: const Icon(Icons.arrow_forward, size: 16),
-            label: const Text('Continue'),
+        if (showContinue || showResume) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (showContinue)
+                TextButton.icon(
+                  onPressed: onContinue,
+                  icon: const Icon(Icons.arrow_forward, size: 16),
+                  label: const Text('Continue'),
+                ),
+              if (showResume)
+                TextButton.icon(
+                  onPressed: onResume,
+                  icon: const Icon(Icons.play_arrow, size: 16),
+                  label: const Text('Resume'),
+                ),
+            ],
           ),
-        if (showResume)
-          TextButton.icon(
-            onPressed: onResume,
-            icon: const Icon(Icons.play_arrow, size: 16),
-            label: const Text('Resume'),
+          const SizedBox(height: 4),
+        ],
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              iconSize: 20,
+              tooltip: 'Thumbs up',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: Icon(isUp ? Icons.thumb_up : Icons.thumb_up_outlined),
+              color: isUp ? colors.primaryText : colors.mutedForeground,
+              isSelected: isUp,
+              onPressed: isBusy || onFeedback == null
+                  ? null
+                  : () => onFeedback!(FeedbackRating.up),
+            ),
+            IconButton(
+              iconSize: 20,
+              tooltip: 'Thumbs down',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: Icon(isDown ? Icons.thumb_down : Icons.thumb_down_outlined),
+              color: isDown ? colors.primaryText : colors.mutedForeground,
+              isSelected: isDown,
+              onPressed: isBusy || onFeedback == null
+                  ? null
+                  : () => onFeedback!(FeedbackRating.down),
+            ),
+            IconButton(
+              iconSize: 20,
+              tooltip: 'Regenerate response',
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: const Icon(Icons.refresh),
+              color: colors.mutedForeground,
+              onPressed: isBusy || onRegenerate == null ? null : onRegenerate,
+            ),
+          ],
+        ),
+        if (isDown) ...[
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final reason in FeedbackReason.values)
+                ChoiceChip(
+                  label: Text(reason.label),
+                  selected: feedbackReason == reason.wireName,
+                  onSelected: isBusy || onSelectReason == null
+                      ? null
+                      : (_) => onSelectReason!(reason.wireName),
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                ),
+            ],
           ),
-        if (onRegenerate != null)
-          IconButton(
-            iconSize: 20,
-            tooltip: 'Regenerate response',
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-            icon: const Icon(Icons.refresh),
-            color: colors.mutedForeground,
-            onPressed: onRegenerate,
-          ),
+        ],
       ],
     );
   }

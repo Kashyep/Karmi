@@ -64,6 +64,11 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoadingMessages = false;
   String? _activeConversationId;
 
+  final Map<String, FeedbackRating> _feedbackRatings = {};
+  final Map<String, String> _feedbackReasons = {};
+  final Set<String> _feedbackInFlight = {};
+  ErrorCategory? _feedbackError;
+  VoidCallback? _feedbackRetry;
   @override
   void initState() {
     super.initState();
@@ -156,9 +161,13 @@ class _ChatScreenState extends State<ChatScreen> {
       _chatController.addListener(_onChatControllerChanged);
     }
     widget.onConversationChanged?.call(null);
+    _feedbackRatings.clear();
+    _feedbackReasons.clear();
+    _feedbackInFlight.clear();
+    _feedbackError = null;
+    _feedbackRetry = null;
     setState(() {});
   }
-
   Future<void> _loadConversationMessages(String conversationId) async {
     setState(() {
       _isLoadingMessages = true;
@@ -188,8 +197,79 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
   }
+  Future<void> _onFeedback(ChatMessageView message, FeedbackRating rating) async {
+    final runId = message.runId ?? _chatController.currentRunId;
+    if (runId == null) return;
+
+    setState(() {
+      _feedbackRatings[message.id] = rating;
+      if (rating == FeedbackRating.up) {
+        _feedbackReasons.remove(message.id);
+      }
+      _feedbackInFlight.add(message.id);
+      _feedbackError = null;
+      _feedbackRetry = null;
+    });
+
+    try {
+      await widget.api.sendFeedback(
+        runId,
+        rating: rating,
+        reason: _feedbackReasons[message.id],
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _feedbackError = ErrorCategory.internal;
+        _feedbackRetry = () => _onFeedback(message, rating);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _feedbackInFlight.remove(message.id);
+        });
+      }
+    }
+  }
+
+  Future<void> _onSelectReason(ChatMessageView message, String reason) async {
+    final runId = message.runId ?? _chatController.currentRunId;
+    if (runId == null) return;
+
+    setState(() {
+      _feedbackReasons[message.id] = reason;
+      _feedbackInFlight.add(message.id);
+      _feedbackError = null;
+      _feedbackRetry = null;
+    });
+
+    try {
+      await widget.api.sendFeedback(
+        runId,
+        rating: _feedbackRatings[message.id] ?? FeedbackRating.down,
+        reason: reason,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _feedbackError = ErrorCategory.internal;
+        _feedbackRetry = () => _onSelectReason(message, reason);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _feedbackInFlight.remove(message.id);
+        });
+      }
+    }
+  }
 
   void _retryLast() {
+    if (_chatController.currentClientMessageId != null ||
+        _chatController.currentRunId != null) {
+      _chatController.resume();
+      return;
+    }
     final lastUser =
         _chatController.messages.where((m) => m.role == 'user').lastOrNull;
     if (lastUser != null) {
@@ -322,6 +402,15 @@ class _ChatScreenState extends State<ChatScreen> {
                         onRegenerate: isLastAssistant && !_isBusy
                             ? () => _chatController.regenerate(msg.id)
                             : null,
+                        onFeedback: msg.role == 'assistant'
+                            ? (rating) => _onFeedback(msg, rating)
+                            : null,
+                        onSelectReason: msg.role == 'assistant'
+                            ? (reason) => _onSelectReason(msg, reason)
+                            : null,
+                        feedbackRating: _feedbackRatings[msg.id],
+                        feedbackReason: _feedbackReasons[msg.id],
+                        isFeedbackInFlight: _feedbackInFlight.contains(msg.id),
                       );
                     },
                   );
@@ -349,12 +438,12 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         ProcessingPanel(phase: _chatController.phase),
-        if (_chatController.error != null)
+        if (_chatController.error != null || _feedbackError != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: ErrorCard(
-              category: _chatController.error!,
-              onRetry: _retryLast,
+              category: _chatController.error ?? _feedbackError!,
+              onRetry: _chatController.error != null ? _retryLast : _feedbackRetry,
               onContinue: _continueLast,
               onUpgrade: widget.onOpenPlans,
             ),
