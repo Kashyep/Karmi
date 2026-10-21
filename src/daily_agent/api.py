@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_for_code
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_session
+from daily_agent.deps import gateway_dependency, limited_principal, own_run
 from daily_agent.gateway import Gateway, build_gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
 from daily_agent.models import (
@@ -35,6 +36,8 @@ from daily_agent.models import (
 from daily_agent.parakh.routing import RunTiming, record_routing_evidence, route_for_action
 from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.ratelimit import SlidingWindowLimiter, install_log_redaction
+from daily_agent.routes.conversations import router as conversations_router
+from daily_agent.routes.stream import router as stream_router
 from daily_agent.schemas import (
     ARMORY_TIERS,
     AccessCodeRedeem,
@@ -105,30 +108,8 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Daily Agent", version="0.1.0", lifespan=lifespan)
 
-    def gateway_dependency(settings: Settings = Depends(get_settings)) -> Gateway:
-        # One gateway per app so circuit-breaker and cooldown state survive across requests.
-        gateway: Gateway | None = getattr(app.state, "gateway", None)
-        if gateway is None:
-            gateway = build_gateway(settings)
-            app.state.gateway = gateway
-        return gateway
-
-    def limited_principal(
-        principal: Principal = Depends(require_principal),
-        settings: Settings = Depends(get_settings),
-    ) -> Principal:
-        limiter: SlidingWindowLimiter | None = getattr(app.state, "limiter", None)
-        if limiter is None:
-            limiter = SlidingWindowLimiter(limit=settings.rate_limit_per_minute)
-            app.state.limiter = limiter
-        retry_after = limiter.check(principal.user_id)
-        if retry_after is not None:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={"code": "RATE_LIMITED", "message": "too many requests; slow down"},
-                headers={"Retry-After": str(retry_after)},
-            )
-        return principal
+    app.include_router(stream_router)
+    app.include_router(conversations_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -584,17 +565,6 @@ def create_app() -> FastAPI:
     ) -> MessageView:
         return execute_message(body, principal, session, settings, gateway)
 
-    def own_run(session: Session, principal: Principal, run_id: str) -> Run:
-        run = session.scalar(
-            select(Run).where(
-                Run.id == run_id,
-                Run.account_id == principal.account_id,
-                Run.user_id == principal.user_id,
-            )
-        )
-        if run is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="reply not found")
-        return run
 
     @app.post("/v1/access-code", response_model=AccessCodeView)
     def redeem_access_code(

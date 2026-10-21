@@ -27,6 +27,13 @@ def uuid_str() -> str:
     return str(uuid4())
 
 
+def conversation_id_str() -> str:
+    return f"conv_{uuid4().hex}"
+
+
+def chat_message_id_str() -> str:
+    return f"msg_{uuid4().hex}"
+
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
@@ -243,6 +250,11 @@ class Run(Base):
         ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True
     )
     regenerate_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    finish_reason: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    partial_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    continuation_of_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class MessageFeedback(Base):
@@ -379,3 +391,57 @@ class PolicyBundleEvent(Base):
     actor: Mapped[str] = mapped_column(String(120))
     reason: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    __table_args__ = (
+        Index("ix_conversations_user_deleted_updated", "user_id", "deleted_at", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=conversation_id_str)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    title_source: Mapped[str] = mapped_column(String(8), default="auto", server_default="auto")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    account: Mapped[Account] = relationship()
+    user: Mapped[User] = relationship()
+    messages: Mapped[list["ChatMessage"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="ChatMessage.created_at"
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id", "client_message_id", name="uq_chat_messages_conversation_client_message_id"
+        ),
+        Index("ix_chat_messages_conversation_created", "conversation_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=chat_message_id_str)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(12))
+    status: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text, default="", server_default="")
+    finish_reason: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    parent_message_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    variant_index: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    client_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")
+    account: Mapped[Account] = relationship()
