@@ -75,5 +75,56 @@ void main() {
         );
       }
     });
+
+    for (final tier in KarmiTier.values) {
+      for (final brightness in Brightness.values) {
+        final label = '${tier.name} ${brightness.name}';
+
+        test('$label obsidian text surfaces meet >= 4.5:1 for foreground and action icons', () {
+          final c = KarmiColors.forTier(tier, brightness);
+          final textPairs = <String, (Color, Color)>{
+            'foreground on sidebarSurface': (c.foreground, c.sidebarSurface),
+            'foreground on codeSurface': (c.foreground, c.codeSurface),
+            'foreground on codeHeaderSurface': (c.foreground, c.codeHeaderSurface),
+            'foreground on userBubble': (c.foreground, c.userBubble),
+            'foreground on warningSurface': (c.foreground, c.warningSurface),
+            'foreground on errorSurface': (c.foreground, c.errorSurface),
+            'actionIcon on background': (c.actionIcon, c.background),
+            'actionIcon on card': (c.actionIcon, c.card),
+          };
+
+          for (final entry in textPairs.entries) {
+            final ratio = contrastRatio(entry.value.$1, entry.value.$2);
+            expect(
+              ratio,
+              greaterThanOrEqualTo(4.5),
+              reason: '$label ${entry.key} had contrast ratio ${ratio.toStringAsFixed(2)} < 4.5',
+            );
+          }
+        });
+
+        test('$label depth order: sidebar at or below canvas; in dark, card lighter than canvas', () {
+          final c = KarmiColors.forTier(tier, brightness);
+          // Parth dark canvas is #000000, which cannot be darkened: sidebar equals canvas there.
+          expect(
+            c.sidebarSurface.computeLuminance(),
+            lessThanOrEqualTo(c.background.computeLuminance()),
+            reason: '$label sidebar must not be lighter than canvas',
+          );
+          if (brightness == Brightness.dark) {
+            expect(
+              c.background.computeLuminance(),
+              lessThan(c.card.computeLuminance()),
+              reason: '$label card must be lighter than canvas',
+            );
+          }
+        });
+
+        test('$label action icons meet >= 3:1 on sidebarSurface (non-text UI)', () {
+          final c = KarmiColors.forTier(tier, brightness);
+          expect(contrastRatio(c.actionIcon, c.sidebarSurface), greaterThanOrEqualTo(3.0));
+        });
+      }
+    }
   });
 }
