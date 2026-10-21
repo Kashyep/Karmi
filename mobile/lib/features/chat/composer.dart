@@ -341,65 +341,77 @@ class _ComposerState extends State<Composer> {
                   ],
                 ),
               ),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (widget.onPickAttachments != null) ...[
-                  IconButton(
-                    tooltip: 'Attach files',
-                    onPressed: widget.busy ? null : _pickAttachments,
-                    icon: const Icon(Icons.attach_file),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                Expanded(
-                  child: Focus(
-                    onKeyEvent: _handleKeyEvent,
-                    child: TextField(
-                      focusNode: _focusNode,
-                      controller: _controller,
-                      minLines: 1,
-                      maxLines: 6,
-                      keyboardType: TextInputType.multiline,
-                      decoration: const InputDecoration(
-                        hintText: 'Message Karmi',
-                        labelText: 'Message',
-                        floatingLabelBehavior: FloatingLabelBehavior.never,
+            FocusTraversalGroup(
+              policy: OrderedTraversalPolicy(),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (widget.onPickAttachments != null) ...[
+                    FocusTraversalOrder(
+                      order: const NumericFocusOrder(2),
+                      child: IconButton(
+                        tooltip: 'Attach files',
+                        onPressed: widget.busy ? null : _pickAttachments,
+                        icon: const Icon(Icons.attach_file),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: FocusTraversalOrder(
+                      order: const NumericFocusOrder(1),
+                      child: Focus(
+                        onKeyEvent: _handleKeyEvent,
+                        child: TextField(
+                          focusNode: _focusNode,
+                          controller: _controller,
+                          minLines: 1,
+                          maxLines: 6,
+                          keyboardType: TextInputType.multiline,
+                          decoration: const InputDecoration(
+                            hintText: 'Message Karmi',
+                            labelText: 'Message',
+                            floatingLabelBehavior: FloatingLabelBehavior.never,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Semantics(
-                  button: true,
-                  label: widget.busy ? 'Stop generating' : 'Send message',
-                  child: IconButton.filled(
-                    tooltip: widget.busy ? 'Stop generating' : 'Send message',
-                    style:
-                        IconButton.styleFrom(
-                          backgroundColor: colors.primary,
-                          foregroundColor: colors.primaryForeground,
-                          disabledBackgroundColor: colors.muted,
-                          disabledForegroundColor: colors.mutedForeground,
-                        ).copyWith(
-                          side: WidgetStateProperty.resolveWith(
-                            (states) => states.contains(WidgetState.focused)
-                                ? BorderSide(
-                                    color: colors.primaryForeground,
-                                    width: KarmiShape.of(
-                                      context,
-                                    ).focusRingWidth,
-                                  )
-                                : null,
-                          ),
-                        ),
-                    onPressed: widget.busy
-                        ? widget.onStop
-                        : (_canSend ? _send : null),
-                    icon: Icon(widget.busy ? Icons.stop : Icons.arrow_upward),
+                  const SizedBox(width: 8),
+                  FocusTraversalOrder(
+                    order: const NumericFocusOrder(3),
+                    child: Semantics(
+                      button: true,
+                      label: widget.busy ? 'Stop generating' : 'Send message',
+                      child: IconButton.filled(
+                        tooltip: widget.busy ? 'Stop generating' : 'Send message',
+                        style:
+                            IconButton.styleFrom(
+                              backgroundColor: colors.primary,
+                              foregroundColor: colors.primaryForeground,
+                              disabledBackgroundColor: colors.muted,
+                              disabledForegroundColor: colors.mutedForeground,
+                            ).copyWith(
+                              side: WidgetStateProperty.resolveWith(
+                                (states) => states.contains(WidgetState.focused)
+                                    ? BorderSide(
+                                        color: colors.primaryForeground,
+                                        width: KarmiShape.of(
+                                          context,
+                                        ).focusRingWidth,
+                                      )
+                                    : null,
+                              ),
+                            ),
+                        onPressed: widget.busy
+                            ? widget.onStop
+                            : (_canSend ? _send : null),
+                        icon: Icon(widget.busy ? Icons.stop : Icons.arrow_upward),
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
