@@ -322,7 +322,6 @@ void main() {
           find.byKey(const ValueKey('new-chat-empty-state')),
           findsOneWidget,
         );
-        final dockFinder = find.byKey(const ValueKey('chat-composer-dock'));
         final surfaceFinder = find.byKey(const ValueKey('composer-surface'));
         final screenHeight =
             tester.view.physicalSize.height / tester.view.devicePixelRatio;
