@@ -17,7 +17,7 @@ class KarmiApi {
   KarmiApi({
     this.baseUrl = defaultBaseUrl,
     http.Client? client,
-    this.timeout = const Duration(seconds: 30),
+    this.timeout = const Duration(seconds: 60),
     this.token,
     this.tokenProvider,
   }) : _client = client ?? http.Client();

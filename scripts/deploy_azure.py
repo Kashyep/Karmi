@@ -27,6 +27,8 @@ ENV_AZURE = ROOT / ".env.azure"
 PROD_ENV = ROOT / ".env.azure.prod"
 PRODUCTION_BUDGET_MICRO = "1000000"
 GLOBAL_BUDGET_MICRO = "1000000"
+# Two gateway attempts must finish inside the mobile client's request timeout.
+GATEWAY_TIMEOUT_SECONDS = "12"
 REGISTRY_IN_IMAGE = (
     "/usr/local/lib/python3.12/site-packages/daily_agent/gateway/data/model_registry.json"
 )
@@ -498,6 +500,7 @@ def deploy() -> int:
         "DAILY_AGENT_ALLOW_DEVELOPMENT_AUTH=false",
         "DAILY_AGENT_OPENROUTER_ENABLED=true",
         "DAILY_AGENT_GATEWAY_KILL_SWITCH=false",
+        f"DAILY_AGENT_GATEWAY_TIMEOUT_SECONDS={GATEWAY_TIMEOUT_SECONDS}",
         "DAILY_AGENT_PAID_CHECKOUT_ENABLED=false",
         "DAILY_AGENT_WHATSAPP_ENABLED=false",
         f"DAILY_AGENT_CLERK_ISSUER={clerk_issuer}",
@@ -697,6 +700,7 @@ def deploy() -> int:
         "DAILY_AGENT_OPENROUTER_ENABLED": "true",
         "DAILY_AGENT_OPENROUTER_API_KEY": openrouter_api_key,
         "DAILY_AGENT_GATEWAY_KILL_SWITCH": "false",
+        "DAILY_AGENT_GATEWAY_TIMEOUT_SECONDS": GATEWAY_TIMEOUT_SECONDS,
         "DAILY_AGENT_PAID_CHECKOUT_ENABLED": "false",
         "DAILY_AGENT_WHATSAPP_ENABLED": "false",
         "DAILY_AGENT_LIVE_MODELS_ENABLED": "false",
