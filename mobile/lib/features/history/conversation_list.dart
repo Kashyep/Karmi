@@ -185,16 +185,9 @@ class _ConversationListState extends State<ConversationList> {
                   vertical: 4,
                 ),
                 child: Wrap(
-<<<<<<< HEAD
                   alignment: WrapAlignment.spaceBetween,
                   spacing: 8,
                   runSpacing: 8,
-||||||| 6f40f48
-                child: Row(
-=======
-                  spacing: 8,
-                  runSpacing: 4,
->>>>>>> r1/fix-cB
                   children: [
                     FilledButton.icon(
                       key: const ValueKey('new-chat-button'),

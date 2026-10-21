@@ -62,10 +62,10 @@ abstract final class KarmiTypography {
   /// Speaker/model name in a message header: Exo 600 14px (§3.1 assistant header).
   static TextStyle messageHeaderName() => _exo(FontWeight.w600, 14, 1.43);
 
-  /// Toolbar caption: Proza Libre 500 12px / 1.35, +0.01em, tabular figures
+  /// Toolbar caption: Proza Libre 400 12px (Medium is not bundled) / 1.35, +0.01em, tabular figures
   /// (§5.2 `--text-xs`).
   static TextStyle toolbarCaption() =>
-      _proza(FontWeight.w500, 12, 1.35).copyWith(
+      _proza(FontWeight.w400, 12, 1.35).copyWith(
         letterSpacing: 0.12,
         fontFeatures: const [FontFeature.tabularFigures()],
       );
