@@ -28,11 +28,7 @@ Future<void> main() async {
           config: ClerkAuthConfig(publishableKey: publishableKey),
         );
 
-  await Future.wait<dynamic>([
-    glassInitFuture,
-    prefsFuture,
-    clerkAuthFuture,
-  ]);
+  await Future.wait<dynamic>([glassInitFuture, prefsFuture, clerkAuthFuture]);
 
   final prefs = await prefsFuture;
   final clerkAuth = await clerkAuthFuture;

@@ -37,18 +37,17 @@ class RunStartedEvent extends ChatStreamEvent {
     this.seq = 0,
   });
 
-  factory RunStartedEvent.fromJson(Map<String, dynamic> json) =>
-      RunStartedEvent(
-        runId: (json['run_id'] ?? json['runId']) as String,
-        conversationId:
-            (json['conversation_id'] ?? json['conversationId']) as String,
-        userMessageId:
-            (json['user_message_id'] ?? json['userMessageId']) as String,
-        assistantMessageId:
-            (json['assistant_message_id'] ?? json['assistantMessageId'])
-                as String,
-        seq: (json['seq'] as int?) ?? 0,
-      );
+  factory RunStartedEvent.fromJson(
+    Map<String, dynamic> json,
+  ) => RunStartedEvent(
+    runId: (json['run_id'] ?? json['runId']) as String,
+    conversationId:
+        (json['conversation_id'] ?? json['conversationId']) as String,
+    userMessageId: (json['user_message_id'] ?? json['userMessageId']) as String,
+    assistantMessageId:
+        (json['assistant_message_id'] ?? json['assistantMessageId']) as String,
+    seq: (json['seq'] as int?) ?? 0,
+  );
 
   final String runId;
   final String conversationId;
@@ -58,15 +57,9 @@ class RunStartedEvent extends ChatStreamEvent {
 }
 
 class MessageDeltaEvent extends ChatStreamEvent {
-  const MessageDeltaEvent({
-    required this.text,
-    this.seq,
-  });
+  const MessageDeltaEvent({required this.text, this.seq});
 
-  factory MessageDeltaEvent.fromJson(
-    Map<String, dynamic> json, {
-    int? seq,
-  }) =>
+  factory MessageDeltaEvent.fromJson(Map<String, dynamic> json, {int? seq}) =>
       MessageDeltaEvent(
         text: (json['text'] as String?) ?? '',
         seq: seq ?? (json['seq'] as int?),
@@ -77,15 +70,13 @@ class MessageDeltaEvent extends ChatStreamEvent {
 }
 
 class HeartbeatEvent extends ChatStreamEvent {
-  const HeartbeatEvent({
-    required this.at,
-  });
+  const HeartbeatEvent({required this.at});
 
   factory HeartbeatEvent.fromJson(Map<String, dynamic> json) => HeartbeatEvent(
-        at: json['at'] != null
-            ? DateTime.parse(json['at'] as String)
-            : DateTime.now(),
-      );
+    at: json['at'] != null
+        ? DateTime.parse(json['at'] as String)
+        : DateTime.now(),
+  );
 
   final DateTime at;
 }
@@ -99,18 +90,18 @@ class RunFinishedEvent extends ChatStreamEvent {
     this.assistantMessageId,
   });
 
-  factory RunFinishedEvent.fromJson(Map<String, dynamic> json) =>
-      RunFinishedEvent(
-        finishReason: FinishReason.fromWire(
-                json['finish_reason'] ?? json['finishReason']) ??
-            FinishReason.stop,
-        outcome: json['outcome'] as String?,
-        inputTokens: (json['input_tokens'] ?? json['inputTokens']) as int?,
-        outputTokens: (json['output_tokens'] ?? json['outputTokens']) as int?,
-        assistantMessageId:
-            (json['assistant_message_id'] ?? json['assistantMessageId'])
-                as String?,
-      );
+  factory RunFinishedEvent.fromJson(
+    Map<String, dynamic> json,
+  ) => RunFinishedEvent(
+    finishReason:
+        FinishReason.fromWire(json['finish_reason'] ?? json['finishReason']) ??
+        FinishReason.stop,
+    outcome: json['outcome'] as String?,
+    inputTokens: (json['input_tokens'] ?? json['inputTokens']) as int?,
+    outputTokens: (json['output_tokens'] ?? json['outputTokens']) as int?,
+    assistantMessageId:
+        (json['assistant_message_id'] ?? json['assistantMessageId']) as String?,
+  );
 
   final FinishReason finishReason;
   final String? outcome;
@@ -128,15 +119,14 @@ class RunErrorEvent extends ChatStreamEvent {
   });
 
   factory RunErrorEvent.fromJson(Map<String, dynamic> json) => RunErrorEvent(
-        category: ErrorCategory.fromWire(json['category']) ??
-            ErrorCategory.internal,
-        retryable: (json['retryable'] as bool?) ?? false,
-        retryAfterSeconds:
-            (json['retry_after_s'] ?? json['retryAfterSeconds']) as int?,
-        assistantMessageId:
-            (json['assistant_message_id'] ?? json['assistantMessageId'])
-                as String?,
-      );
+    category:
+        ErrorCategory.fromWire(json['category']) ?? ErrorCategory.internal,
+    retryable: (json['retryable'] as bool?) ?? false,
+    retryAfterSeconds:
+        (json['retry_after_s'] ?? json['retryAfterSeconds']) as int?,
+    assistantMessageId:
+        (json['assistant_message_id'] ?? json['assistantMessageId']) as String?,
+  );
 
   final ErrorCategory category;
   final bool retryable;

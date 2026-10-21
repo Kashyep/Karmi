@@ -15,10 +15,10 @@ class EndAnchoredScrollController extends ChangeNotifier {
     ScrollController? scrollController,
     this.bottomThreshold = 48.0,
     bool initialPinned = true,
-  })  : _scrollController = scrollController ?? ScrollController(),
-        _ownsScrollController = scrollController == null,
-        _isAtBottom = ValueNotifier<bool>(initialPinned),
-        _hasNewContent = ValueNotifier<bool>(false);
+  }) : _scrollController = scrollController ?? ScrollController(),
+       _ownsScrollController = scrollController == null,
+       _isAtBottom = ValueNotifier<bool>(initialPinned),
+       _hasNewContent = ValueNotifier<bool>(false);
 
   final ScrollController _scrollController;
   final bool _ownsScrollController;
@@ -79,7 +79,8 @@ class EndAnchoredScrollController extends ChangeNotifier {
     final position = _scrollController.position;
     final target = position.maxScrollExtent;
 
-    final resolvedDuration = duration ??
+    final resolvedDuration =
+        duration ??
         (context != null
             ? KarmiMotion.duration(context, KarmiTokens.standard)
             : null) ??
@@ -133,9 +134,9 @@ class EndAnchoredScroll extends StatefulWidget {
     this.pinned,
     this.bottomThreshold,
   }) : assert(
-          builder != null || child != null,
-          'Either builder or child must be provided to EndAnchoredScroll',
-        );
+         builder != null || child != null,
+         'Either builder or child must be provided to EndAnchoredScroll',
+       );
 
   /// Controller managing scroll metrics and bottom anchoring.
   final EndAnchoredScrollController controller;
@@ -146,7 +147,8 @@ class EndAnchoredScroll extends StatefulWidget {
     BuildContext context,
     ScrollController scrollController,
     ScrollPhysics physics,
-  )? builder;
+  )?
+  builder;
 
   /// Direct scrollable child, fallback if [builder] is not provided.
   final Widget? child;

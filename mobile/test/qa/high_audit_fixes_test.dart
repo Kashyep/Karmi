@@ -3,13 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/api/conversations/conversations_api.dart';
-import 'package:karmi_app/api/errors.dart';
 import 'package:karmi_app/api/karmi_api.dart';
 import 'package:karmi_app/api/stream/run_stream_client.dart';
 import 'package:karmi_app/auth/session.dart';
 import 'package:karmi_app/features/chat/chat_screen.dart';
 import 'package:karmi_app/features/chat/composer/draft_store.dart';
-import 'package:karmi_app/features/chat/state/chat_controller.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -63,12 +61,11 @@ class _FakeRunStreamClient extends RunStreamClient {
 
 class _FakeConversationsApi implements ConversationsApi {
   _FakeConversationsApi({
-    this.conversations = const [],
     this.messageItems = const [],
     this.throwOnMessages = false,
   });
 
-  final List<ConversationView> conversations;
+  final List<ConversationView> conversations = const [];
   final List<ChatMessageView> messageItems;
   bool throwOnMessages;
   final List<String> callLog = [];

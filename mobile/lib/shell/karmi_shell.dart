@@ -128,10 +128,7 @@ class _KarmiShellState extends State<KarmiShell> {
         destinations: [
           for (final d in _destinations)
             NavigationRailDestination(
-              icon: Semantics(
-                label: '${d.label} tab',
-                child: Icon(d.icon),
-              ),
+              icon: Semantics(label: '${d.label} tab', child: Icon(d.icon)),
               selectedIcon: Semantics(
                 label: '${d.label} tab',
                 child: Icon(d.selectedIcon),
@@ -166,9 +163,7 @@ class _KarmiShellState extends State<KarmiShell> {
     final body = IndexedStack(
       key: _bodyKey,
       index: _index,
-      children: [
-        for (var i = 0; i < 4; i++) _pageFor(i),
-      ],
+      children: [for (var i = 0; i < 4; i++) _pageFor(i)],
     );
 
     final workspaceSize = workspaceSizeOfContext(context);

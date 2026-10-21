@@ -9,11 +9,7 @@ import 'breakpoints.dart';
 /// - Expanded (>1024): [Row] of fixed-width history rail slot (300) with a
 ///   [VerticalDivider] using [ColorScheme.outline] + [Expanded] [main].
 class WorkspaceLayout extends StatelessWidget {
-  const WorkspaceLayout({
-    super.key,
-    required this.rail,
-    required this.main,
-  });
+  const WorkspaceLayout({super.key, required this.rail, required this.main});
 
   final Widget rail;
   final Widget main;
@@ -28,10 +24,7 @@ class WorkspaceLayout extends StatelessWidget {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              width: 80,
-              child: rail,
-            ),
+            SizedBox(width: 80, child: rail),
             Expanded(child: main),
           ],
         );
@@ -39,10 +32,7 @@ class WorkspaceLayout extends StatelessWidget {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              width: 300,
-              child: rail,
-            ),
+            SizedBox(width: 300, child: rail),
             VerticalDivider(
               width: 1,
               thickness: 1,

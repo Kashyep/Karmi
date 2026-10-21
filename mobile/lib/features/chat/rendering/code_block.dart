@@ -10,11 +10,7 @@ import 'long_output_fold.dart';
 /// Renders a code block with language indicator, copy-to-clipboard,
 /// wrap toggle, and folding for outputs over 40 lines.
 class CodeBlock extends StatefulWidget {
-  const CodeBlock({
-    super.key,
-    required this.code,
-    this.language,
-  });
+  const CodeBlock({super.key, required this.code, this.language});
 
   final String code;
   final String? language;
@@ -65,8 +61,8 @@ class _CodeBlockState extends State<CodeBlock> {
 
     final langLabel =
         (widget.language != null && widget.language!.trim().isNotEmpty)
-            ? widget.language!.trim()
-            : 'text';
+        ? widget.language!.trim()
+        : 'text';
 
     final lineCount = const LineSplitter().convert(widget.code).length;
     final isLong = lineCount > 40;
@@ -76,10 +72,7 @@ class _CodeBlockState extends State<CodeBlock> {
       color: fgColor,
     );
 
-    Widget codeDisplay = SelectableText(
-      widget.code,
-      style: monoStyle,
-    );
+    Widget codeDisplay = SelectableText(widget.code, style: monoStyle);
 
     if (!_isWrapped) {
       codeDisplay = SingleChildScrollView(
@@ -144,21 +137,14 @@ class _CodeBlockState extends State<CodeBlock> {
                   button: true,
                   child: TextButton.icon(
                     onPressed: _handleCopy,
-                    icon: Icon(
-                      _copied ? Icons.check : Icons.copy,
-                      size: 16,
-                    ),
+                    icon: Icon(_copied ? Icons.check : Icons.copy, size: 16),
                     label: Text(_copied ? 'Copied' : 'Copy'),
                   ),
                 ),
               ],
             ),
           ),
-          Divider(
-            height: 1,
-            thickness: 0.5,
-            color: borderColor,
-          ),
+          Divider(height: 1, thickness: 0.5, color: borderColor),
           content,
         ],
       ),

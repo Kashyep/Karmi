@@ -70,7 +70,8 @@ class _KarmiAppState extends State<KarmiApp> {
     if (existing != null) return existing;
     final api = _conversationsApi ??= ConversationsApi(
       baseUrl: widget.session.api.baseUrl,
-      tokenProvider: widget.session.api.tokenProvider ??
+      tokenProvider:
+          widget.session.api.tokenProvider ??
           () async => widget.session.api.token,
     );
     final controller = ConversationListController(api: api);

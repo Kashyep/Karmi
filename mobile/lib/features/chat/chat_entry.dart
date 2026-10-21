@@ -77,10 +77,8 @@ final class ReplyEntry extends ChatEntry {
 
 /// A server-streamed chat message (`ChatMessageView`).
 final class StreamMessageEntry extends ChatEntry {
-  const StreamMessageEntry({
-    required String id,
-    required this.message,
-  }) : super(id);
+  const StreamMessageEntry({required String id, required this.message})
+    : super(id);
 
   final ChatMessageView message;
 }

@@ -4,11 +4,7 @@ import '../../../theme/karmi_colors.dart';
 
 /// Renders a markdown table with horizontal scroll, cell padding, and borders.
 class TableView extends StatelessWidget {
-  const TableView({
-    super.key,
-    required this.rows,
-    required this.alignments,
-  });
+  const TableView({super.key, required this.rows, required this.alignments});
 
   /// The rows of table cells. The first row is the table header.
   final List<List<Widget>> rows;
@@ -64,21 +60,14 @@ class TableView extends StatelessWidget {
                     textAlign: align,
                     child: cell,
                   )
-                : DefaultTextStyle.merge(
-                    textAlign: align,
-                    child: cell,
-                  ),
+                : DefaultTextStyle.merge(textAlign: align, child: cell),
           ),
         );
       }
 
       tableRows.add(
         TableRow(
-          decoration: isHeader
-              ? BoxDecoration(
-                  color: headerBg,
-                )
-              : null,
+          decoration: isHeader ? BoxDecoration(color: headerBg) : null,
           children: cellWidgets,
         ),
       );
@@ -92,10 +81,7 @@ class TableView extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           child: Table(
             defaultColumnWidth: const IntrinsicColumnWidth(),
-            border: TableBorder.all(
-              color: borderColor,
-              width: 0.5,
-            ),
+            border: TableBorder.all(color: borderColor, width: 0.5),
             children: tableRows,
           ),
         ),

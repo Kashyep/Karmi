@@ -384,7 +384,9 @@ class _ComposerState extends State<Composer> {
                       button: true,
                       label: widget.busy ? 'Stop generating' : 'Send message',
                       child: IconButton.filled(
-                        tooltip: widget.busy ? 'Stop generating' : 'Send message',
+                        tooltip: widget.busy
+                            ? 'Stop generating'
+                            : 'Send message',
                         style:
                             IconButton.styleFrom(
                               backgroundColor: colors.primary,
@@ -406,7 +408,9 @@ class _ComposerState extends State<Composer> {
                         onPressed: widget.busy
                             ? widget.onStop
                             : (_canSend ? _send : null),
-                        icon: Icon(widget.busy ? Icons.stop : Icons.arrow_upward),
+                        icon: Icon(
+                          widget.busy ? Icons.stop : Icons.arrow_upward,
+                        ),
                       ),
                     ),
                   ),

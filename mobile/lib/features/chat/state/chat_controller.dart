@@ -6,14 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../../../api/stream/run_stream_client.dart';
 
 /// Phase of a chat run in the controller state machine.
-enum ChatRunPhase {
-  idle,
-  sending,
-  streaming,
-  stalled,
-  finished,
-  error,
-}
+enum ChatRunPhase { idle, sending, streaming, stalled, finished, error }
 
 /// State controller managing chat message streams, delta batching, stall recovery,
 /// and continuation/regeneration per Karmi execution contract §7.
@@ -27,16 +20,16 @@ class ChatController extends ChangeNotifier {
     int maxResumeRetries = 3,
     Duration retryDelay = const Duration(milliseconds: 500),
     String Function()? idGenerator,
-  })  : _client = client,
-        _conversationId = conversationId,
-        _messages = initialMessages != null
-            ? List<ChatMessageView>.of(initialMessages)
-            : <ChatMessageView>[],
-        _stallTimeout = stallTimeout,
-        _deltaFlushInterval = deltaFlushInterval,
-        _maxResumeRetries = maxResumeRetries,
-        _retryDelay = retryDelay,
-        _idGenerator = idGenerator;
+  }) : _client = client,
+       _conversationId = conversationId,
+       _messages = initialMessages != null
+           ? List<ChatMessageView>.of(initialMessages)
+           : <ChatMessageView>[],
+       _stallTimeout = stallTimeout,
+       _deltaFlushInterval = deltaFlushInterval,
+       _maxResumeRetries = maxResumeRetries,
+       _retryDelay = retryDelay,
+       _idGenerator = idGenerator;
 
   final RunStreamClient _client;
   final Duration _stallTimeout;
@@ -120,8 +113,8 @@ class ChatController extends ChangeNotifier {
     final prompt = attachmentTexts.isEmpty
         ? text
         : (text.isEmpty
-            ? attachmentTexts.join('\n\n')
-            : '$text\n\n${attachmentTexts.join('\n\n')}');
+              ? attachmentTexts.join('\n\n')
+              : '$text\n\n${attachmentTexts.join('\n\n')}');
     _currentSendText = prompt;
 
     final now = DateTime.now();
@@ -521,8 +514,9 @@ class ChatController extends ChangeNotifier {
 
   void _appendAssistantText(String chunk) {
     if (chunk.isEmpty) return;
-    final index =
-        _messages.indexWhere((m) => m.id == _currentAssistantMessageId);
+    final index = _messages.indexWhere(
+      (m) => m.id == _currentAssistantMessageId,
+    );
     if (index != -1) {
       final current = _messages[index];
       _messages[index] = current.copyWith(

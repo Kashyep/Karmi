@@ -39,7 +39,6 @@ class ChatScreen extends StatefulWidget {
   final RunStreamClient? runStreamClient;
   final ConversationsApi? conversationsApi;
 
-
   /// Builds a history rail widget for wide layouts.
   static Widget historyRailBuilder({
     required BuildContext context,
@@ -178,6 +177,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _feedbackRetry = null;
     setState(() {});
   }
+
   Future<void> _loadConversationMessages(String conversationId) async {
     setState(() {
       _isLoadingMessages = true;
@@ -212,7 +212,11 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
   }
-  Future<void> _onFeedback(ChatMessageView message, FeedbackRating rating) async {
+
+  Future<void> _onFeedback(
+    ChatMessageView message,
+    FeedbackRating rating,
+  ) async {
     final runId = message.runId ?? _chatController.currentRunId;
     if (runId == null) return;
 
@@ -285,16 +289,18 @@ class _ChatScreenState extends State<ChatScreen> {
       _chatController.resume();
       return;
     }
-    final lastUser =
-        _chatController.messages.where((m) => m.role == 'user').lastOrNull;
+    final lastUser = _chatController.messages
+        .where((m) => m.role == 'user')
+        .lastOrNull;
     if (lastUser != null) {
       _chatController.send(lastUser.content);
     }
   }
 
   void _continueLast() {
-    final lastAssistant =
-        _chatController.messages.where((m) => m.role == 'assistant').lastOrNull;
+    final lastAssistant = _chatController.messages
+        .where((m) => m.role == 'assistant')
+        .lastOrNull;
     if (lastAssistant != null) {
       _chatController.continueMessage(lastAssistant.id);
     }
@@ -369,8 +375,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Column(
       children: [
         _buildTopBar(context),
-        if (_isLoadingMessages)
-          const LinearProgressIndicator(minHeight: 2),
+        if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),
         Expanded(
           child: Stack(
             children: [
@@ -405,12 +410,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       return MessageBubble.chatMessage(
                         key: ValueKey(msg.id),
                         chatMessage: msg,
-                        announce: index == messages.length - 1 &&
+                        announce:
+                            index == messages.length - 1 &&
                             msg.role == 'assistant',
                         onContinue: msg.finishReason == FinishReason.length
                             ? () => _chatController.continueMessage(msg.id)
                             : null,
-                        onResume: (msg.finishReason == FinishReason.interrupted ||
+                        onResume:
+                            (msg.finishReason == FinishReason.interrupted ||
                                 msg.status == MessageStatus.interrupted)
                             ? _chatController.resume
                             : null,
@@ -442,6 +449,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       builder: (context, hasNewContent, _) {
                         return JumpToLatestButton(
                           visible: !isAtBottom,
+                          hasNewContent: hasNewContent,
                           onTap: _scrollController.jumpToLatest,
                         );
                       },
@@ -458,7 +466,9 @@ class _ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: ErrorCard(
               category: _chatController.error ?? _feedbackError!,
-              onRetry: _chatController.error != null ? _retryLast : _feedbackRetry,
+              onRetry: _chatController.error != null
+                  ? _retryLast
+                  : _feedbackRetry,
               onContinue: _continueLast,
               onUpgrade: widget.onOpenPlans,
             ),

@@ -6,11 +6,7 @@ import '../../../theme/karmi_colors.dart';
 
 /// Card showing file attachment metadata with a lazy monospace content preview.
 class FileCard extends StatefulWidget {
-  const FileCard({
-    super.key,
-    required this.name,
-    required this.content,
-  });
+  const FileCard({super.key, required this.name, required this.content});
 
   final String name;
   final String content;
@@ -55,11 +51,7 @@ class _FileCardState extends State<FileCard> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.description_outlined,
-                    size: 20,
-                    color: fgColor,
-                  ),
+                  Icon(Icons.description_outlined, size: 20, color: fgColor),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
@@ -68,18 +60,18 @@ class _FileCardState extends State<FileCard> {
                       children: [
                         Text(
                           widget.name,
-                          style: (textTheme.titleSmall ?? const TextStyle()).copyWith(
-                            color: fgColor,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: (textTheme.titleSmall ?? const TextStyle())
+                              .copyWith(
+                                color: fgColor,
+                                fontWeight: FontWeight.w600,
+                              ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           '$lineCount lines · $charCount chars',
-                          style: (textTheme.bodySmall ?? const TextStyle()).copyWith(
-                            color: mutedFg,
-                          ),
+                          style: (textTheme.bodySmall ?? const TextStyle())
+                              .copyWith(color: mutedFg),
                         ),
                       ],
                     ),
@@ -100,11 +92,7 @@ class _FileCardState extends State<FileCard> {
               ),
             ),
             if (_expanded) ...[
-              Divider(
-                height: 1,
-                thickness: 0.5,
-                color: borderColor,
-              ),
+              Divider(height: 1, thickness: 0.5, color: borderColor),
               Container(
                 color: previewBg,
                 padding: const EdgeInsets.all(12),
@@ -114,10 +102,8 @@ class _FileCardState extends State<FileCard> {
                     child: SingleChildScrollView(
                       child: SelectableText(
                         widget.content,
-                        style: (textTheme.bodySmall ?? const TextStyle()).copyWith(
-                          fontFamily: 'monospace',
-                          color: fgColor,
-                        ),
+                        style: (textTheme.bodySmall ?? const TextStyle())
+                            .copyWith(fontFamily: 'monospace', color: fgColor),
                       ),
                     ),
                   ),

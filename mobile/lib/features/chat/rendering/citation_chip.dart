@@ -4,10 +4,7 @@ import '../../../theme/karmi_colors.dart';
 
 /// Small rounded pill displaying an inline citation index.
 class CitationChip extends StatelessWidget {
-  const CitationChip({
-    super.key,
-    required this.index,
-  });
+  const CitationChip({super.key, required this.index});
 
   final int index;
 
@@ -17,12 +14,10 @@ class CitationChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    final backgroundColor =
-        colors?.secondary ?? colorScheme.primaryContainer;
+    final backgroundColor = colors?.secondary ?? colorScheme.primaryContainer;
     final textColor =
         colors?.secondaryForeground ?? colorScheme.onPrimaryContainer;
-    final borderColor =
-        colors?.borderSubtle ?? colorScheme.outlineVariant;
+    final borderColor = colors?.borderSubtle ?? colorScheme.outlineVariant;
 
     final labelStyle = (textTheme.labelSmall ?? const TextStyle()).copyWith(
       color: textColor,
@@ -39,15 +34,9 @@ class CitationChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: backgroundColor,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: borderColor,
-            width: 0.5,
-          ),
+          border: Border.all(color: borderColor, width: 0.5),
         ),
-        child: Text(
-          '[$index]',
-          style: labelStyle,
-        ),
+        child: Text('[$index]', style: labelStyle),
       ),
     );
   }

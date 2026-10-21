@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
-import 'package:karmi_app/api/chat/chat_models.dart';
 import 'package:karmi_app/api/conversations/conversations_api.dart';
 import 'package:karmi_app/api/karmi_api.dart';
 import 'package:karmi_app/api/stream/run_stream_client.dart';

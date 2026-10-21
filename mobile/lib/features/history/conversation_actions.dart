@@ -88,50 +88,56 @@ Future<void> showRenameDialog(
 }) async {
   final textController = TextEditingController(text: conversation.title ?? '');
 
-  await showDialog<void>(
-    context: context,
-    builder: (dialogContext) {
-      return StatefulBuilder(
-        builder: (context, setState) {
-          final trimmed = textController.text.trim();
-          final isValid = trimmed.isNotEmpty && trimmed.length <= 200;
+  try {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final trimmed = textController.text.trim();
+            final isValid = trimmed.isNotEmpty && trimmed.length <= 200;
 
-          return AlertDialog(
-            title: const Text('Rename conversation'),
-            content: TextField(
-              controller: textController,
-              autofocus: true,
-              maxLength: 200,
-              decoration: const InputDecoration(hintText: 'Conversation title'),
-              onChanged: (_) => setState(() {}),
-              onSubmitted: isValid
-                  ? (value) {
-                      final title = value.trim();
-                      if (title.isNotEmpty && title.length <= 200) {
-                        Navigator.of(dialogContext).pop();
-                        controller.rename(conversation.id, title);
-                      }
-                    }
-                  : null,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: isValid
-                    ? () {
-                        Navigator.of(dialogContext).pop();
-                        controller.rename(conversation.id, trimmed);
+            return AlertDialog(
+              title: const Text('Rename conversation'),
+              content: TextField(
+                controller: textController,
+                autofocus: true,
+                maxLength: 200,
+                decoration: const InputDecoration(
+                  hintText: 'Conversation title',
+                ),
+                onChanged: (_) => setState(() {}),
+                onSubmitted: isValid
+                    ? (value) {
+                        final title = value.trim();
+                        if (title.isNotEmpty && title.length <= 200) {
+                          Navigator.of(dialogContext).pop();
+                          controller.rename(conversation.id, title);
+                        }
                       }
                     : null,
-                child: const Text('Save'),
               ),
-            ],
-          );
-        },
-      );
-    },
-  );
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isValid
+                      ? () {
+                          Navigator.of(dialogContext).pop();
+                          controller.rename(conversation.id, trimmed);
+                        }
+                      : null,
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } finally {
+    textController.dispose();
+  }
 }

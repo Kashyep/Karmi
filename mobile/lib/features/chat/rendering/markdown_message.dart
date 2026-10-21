@@ -15,7 +15,7 @@ import 'table_view.dart';
 /// Inline syntax that detects citation patterns like `[^1]`, `[1]`, or `[citation:1]`.
 class CitationSyntax extends md.InlineSyntax {
   CitationSyntax()
-      : super(r'\[(?:\^|citation:)?(\d+)\](?![\[\(])', startCharacter: 91);
+    : super(r'\[(?:\^|citation:)?(\d+)\](?![\[\(])', startCharacter: 91);
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {
@@ -100,10 +100,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     if (node is md.Text) {
-      return TextSpan(
-        text: _decodeText(node.text),
-        style: baseStyle,
-      );
+      return TextSpan(text: _decodeText(node.text), style: baseStyle);
     }
 
     if (node is md.Element) {
@@ -192,13 +189,11 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
 
         case 'img':
           final alt = node.attributes['alt'] ?? '';
-          return TextSpan(
-            text: alt.isNotEmpty ? alt : '',
-            style: baseStyle,
-          );
+          return TextSpan(text: alt.isNotEmpty ? alt : '', style: baseStyle);
 
         case 'citation':
-          final index = int.tryParse(node.attributes['index'] ?? '') ??
+          final index =
+              int.tryParse(node.attributes['index'] ?? '') ??
               int.tryParse(node.textContent) ??
               0;
           return WidgetSpan(
@@ -228,10 +223,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Text.rich(
-          TextSpan(
-            text: _decodeText(node.text),
-            style: bodyStyle,
-          ),
+          TextSpan(text: _decodeText(node.text), style: bodyStyle),
         ),
       );
     }
@@ -239,9 +231,8 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     if (node is md.Element) {
       switch (node.tag) {
         case 'h1':
-          final style = (textTheme.headlineMedium ?? const TextStyle()).copyWith(
-            fontWeight: FontWeight.bold,
-          );
+          final style = (textTheme.headlineMedium ?? const TextStyle())
+              .copyWith(fontWeight: FontWeight.bold);
           return Padding(
             padding: const EdgeInsets.only(top: 16, bottom: 8),
             child: Text.rich(
@@ -412,7 +403,8 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
       if (tr.children != null) {
         for (final cell in tr.children!) {
           if (cell is md.Element) {
-            final spans = cell.children
+            final spans =
+                cell.children
                     ?.map((c) => _buildInlineSpan(c, context, bodyStyle))
                     .toList() ??
                 [];
@@ -427,10 +419,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: TableView(
-        rows: rows,
-        alignments: alignments,
-      ),
+      child: TableView(rows: rows, alignments: alignments),
     );
   }
 
@@ -466,8 +455,9 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
       }
     }
 
-    var codeText =
-        codeElement != null ? codeElement.textContent : preElement.textContent;
+    var codeText = codeElement != null
+        ? codeElement.textContent
+        : preElement.textContent;
     if (codeText.endsWith('\n')) {
       codeText = codeText.substring(0, codeText.length - 1);
     }
@@ -482,19 +472,13 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
       final fileName = language.substring('file:'.length).trim();
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
-        child: FileCard(
-          name: fileName,
-          content: codeText,
-        ),
+        child: FileCard(name: fileName, content: codeText),
       );
     }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: CodeBlock(
-        code: codeText,
-        language: language,
-      ),
+      child: CodeBlock(code: codeText, language: language),
     );
   }
 
@@ -502,7 +486,8 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     final colors = Theme.of(context).extension<KarmiColors>();
     final colorScheme = Theme.of(context).colorScheme;
     final borderColor = colors?.border ?? colorScheme.outlineVariant;
-    final bgTint = colors?.muted ??
+    final bgTint =
+        colors?.muted ??
         colorScheme.surfaceContainerHighest.withValues(alpha: 0.3);
 
     final innerWidgets = <Widget>[];
@@ -517,9 +502,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
       padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4, right: 8),
       decoration: BoxDecoration(
         color: bgTint,
-        border: Border(
-          left: BorderSide(color: borderColor, width: 3),
-        ),
+        border: Border(left: BorderSide(color: borderColor, width: 3)),
         borderRadius: const BorderRadius.only(
           topRight: Radius.circular(4),
           bottomRight: Radius.circular(4),
@@ -610,8 +593,9 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
                       bulletText,
                       style: bodyStyle.copyWith(
                         color: fgColor,
-                        fontWeight:
-                            isOrdered ? FontWeight.w500 : FontWeight.bold,
+                        fontWeight: isOrdered
+                            ? FontWeight.w500
+                            : FontWeight.bold,
                       ),
                     ),
                   ),
@@ -674,9 +658,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     return Semantics(
       container: true,
       label: 'Assistant message',
-      child: SelectionArea(
-        child: content,
-      ),
+      child: SelectionArea(child: content),
     );
   }
 }

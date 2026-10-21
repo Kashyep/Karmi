@@ -76,26 +76,27 @@ class ConversationView {
     this.messageCount = 0,
   });
 
-  factory ConversationView.fromJson(Map<String, dynamic> json) =>
-      ConversationView(
-        id: json['id'] as String,
-        title: json['title'] as String?,
-        titleSource:
-            (json['titleSource'] ?? json['title_source'] as String?) ?? 'auto',
-        pinned: (json['pinned'] as bool?) ?? false,
-        archivedAt: (json['archivedAt'] ?? json['archived_at']) != null
-            ? DateTime.parse(
-                (json['archivedAt'] ?? json['archived_at']) as String)
-            : null,
-        updatedAt: DateTime.parse(
-            (json['updatedAt'] ?? json['updated_at']) as String),
-        lastMessageAt: (json['lastMessageAt'] ?? json['last_message_at']) != null
-            ? DateTime.parse(
-                (json['lastMessageAt'] ?? json['last_message_at']) as String)
-            : null,
-        messageCount:
-            (json['messageCount'] ?? json['message_count'] as int?) ?? 0,
-      );
+  factory ConversationView.fromJson(
+    Map<String, dynamic> json,
+  ) => ConversationView(
+    id: json['id'] as String,
+    title: json['title'] as String?,
+    titleSource:
+        (json['titleSource'] ?? json['title_source'] as String?) ?? 'auto',
+    pinned: (json['pinned'] as bool?) ?? false,
+    archivedAt: (json['archivedAt'] ?? json['archived_at']) != null
+        ? DateTime.parse((json['archivedAt'] ?? json['archived_at']) as String)
+        : null,
+    updatedAt: DateTime.parse(
+      (json['updatedAt'] ?? json['updated_at']) as String,
+    ),
+    lastMessageAt: (json['lastMessageAt'] ?? json['last_message_at']) != null
+        ? DateTime.parse(
+            (json['lastMessageAt'] ?? json['last_message_at']) as String,
+          )
+        : null,
+    messageCount: (json['messageCount'] ?? json['message_count'] as int?) ?? 0,
+  );
 
   final String id;
   final String? title;
@@ -107,16 +108,16 @@ class ConversationView {
   final int messageCount;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        if (title != null) 'title': title,
-        'titleSource': titleSource,
-        'pinned': pinned,
-        if (archivedAt != null) 'archivedAt': archivedAt!.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
-        if (lastMessageAt != null)
-          'lastMessageAt': lastMessageAt!.toIso8601String(),
-        'messageCount': messageCount,
-      };
+    'id': id,
+    if (title != null) 'title': title,
+    'titleSource': titleSource,
+    'pinned': pinned,
+    if (archivedAt != null) 'archivedAt': archivedAt!.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    if (lastMessageAt != null)
+      'lastMessageAt': lastMessageAt!.toIso8601String(),
+    'messageCount': messageCount,
+  };
 
   ConversationView copyWith({
     String? id,
@@ -127,17 +128,16 @@ class ConversationView {
     DateTime? updatedAt,
     DateTime? lastMessageAt,
     int? messageCount,
-  }) =>
-      ConversationView(
-        id: id ?? this.id,
-        title: title ?? this.title,
-        titleSource: titleSource ?? this.titleSource,
-        pinned: pinned ?? this.pinned,
-        archivedAt: archivedAt ?? this.archivedAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-        lastMessageAt: lastMessageAt ?? this.lastMessageAt,
-        messageCount: messageCount ?? this.messageCount,
-      );
+  }) => ConversationView(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    titleSource: titleSource ?? this.titleSource,
+    pinned: pinned ?? this.pinned,
+    archivedAt: archivedAt ?? this.archivedAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    lastMessageAt: lastMessageAt ?? this.lastMessageAt,
+    messageCount: messageCount ?? this.messageCount,
+  );
 }
 
 class ChatMessageView {
@@ -165,7 +165,8 @@ class ChatMessageView {
         status: MessageStatus.fromWire(json['status']),
         content: (json['content'] as String?) ?? '',
         finishReason: FinishReason.fromWire(
-            json['finishReason'] ?? json['finish_reason']),
+          json['finishReason'] ?? json['finish_reason'],
+        ),
         runId: (json['runId'] ?? json['run_id']) as String?,
         parentMessageId:
             (json['parentMessageId'] ?? json['parent_message_id']) as String?,
@@ -174,9 +175,11 @@ class ChatMessageView {
         clientMessageId:
             (json['clientMessageId'] ?? json['client_message_id']) as String?,
         createdAt: DateTime.parse(
-            (json['createdAt'] ?? json['created_at']) as String),
+          (json['createdAt'] ?? json['created_at']) as String,
+        ),
         updatedAt: DateTime.parse(
-            (json['updatedAt'] ?? json['updated_at']) as String),
+          (json['updatedAt'] ?? json['updated_at']) as String,
+        ),
       );
 
   final String id;
@@ -193,19 +196,19 @@ class ChatMessageView {
   final DateTime updatedAt;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'conversationId': conversationId,
-        'role': role,
-        'status': status.wireName,
-        'content': content,
-        if (finishReason != null) 'finishReason': finishReason!.wireName,
-        if (runId != null) 'runId': runId,
-        if (parentMessageId != null) 'parentMessageId': parentMessageId,
-        'variantIndex': variantIndex,
-        if (clientMessageId != null) 'clientMessageId': clientMessageId,
-        'createdAt': createdAt.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
-      };
+    'id': id,
+    'conversationId': conversationId,
+    'role': role,
+    'status': status.wireName,
+    'content': content,
+    if (finishReason != null) 'finishReason': finishReason!.wireName,
+    if (runId != null) 'runId': runId,
+    if (parentMessageId != null) 'parentMessageId': parentMessageId,
+    'variantIndex': variantIndex,
+    if (clientMessageId != null) 'clientMessageId': clientMessageId,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+  };
 
   ChatMessageView copyWith({
     String? id,
@@ -220,28 +223,24 @@ class ChatMessageView {
     String? clientMessageId,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) =>
-      ChatMessageView(
-        id: id ?? this.id,
-        conversationId: conversationId ?? this.conversationId,
-        role: role ?? this.role,
-        status: status ?? this.status,
-        content: content ?? this.content,
-        finishReason: finishReason ?? this.finishReason,
-        runId: runId ?? this.runId,
-        parentMessageId: parentMessageId ?? this.parentMessageId,
-        variantIndex: variantIndex ?? this.variantIndex,
-        clientMessageId: clientMessageId ?? this.clientMessageId,
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => ChatMessageView(
+    id: id ?? this.id,
+    conversationId: conversationId ?? this.conversationId,
+    role: role ?? this.role,
+    status: status ?? this.status,
+    content: content ?? this.content,
+    finishReason: finishReason ?? this.finishReason,
+    runId: runId ?? this.runId,
+    parentMessageId: parentMessageId ?? this.parentMessageId,
+    variantIndex: variantIndex ?? this.variantIndex,
+    clientMessageId: clientMessageId ?? this.clientMessageId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
 
 class ConversationPage {
-  const ConversationPage({
-    required this.items,
-    this.nextCursor,
-  });
+  const ConversationPage({required this.items, this.nextCursor});
 
   factory ConversationPage.fromJson(Map<String, dynamic> json) =>
       ConversationPage(
@@ -256,18 +255,15 @@ class ConversationPage {
 }
 
 class MessagePage {
-  const MessagePage({
-    required this.items,
-    this.hasMoreBefore = false,
-  });
+  const MessagePage({required this.items, this.hasMoreBefore = false});
 
   factory MessagePage.fromJson(Map<String, dynamic> json) => MessagePage(
-        items: ((json['items'] as List<dynamic>?) ?? [])
-            .map((e) => ChatMessageView.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        hasMoreBefore:
-            (json['hasMoreBefore'] ?? json['has_more_before'] as bool?) ?? false,
-      );
+    items: ((json['items'] as List<dynamic>?) ?? [])
+        .map((e) => ChatMessageView.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    hasMoreBefore:
+        (json['hasMoreBefore'] ?? json['has_more_before'] as bool?) ?? false,
+  );
 
   final List<ChatMessageView> items;
   final bool hasMoreBefore;
@@ -283,7 +279,8 @@ class ConversationSearchResult {
   factory ConversationSearchResult.fromJson(Map<String, dynamic> json) =>
       ConversationSearchResult(
         conversation: ConversationView.fromJson(
-            json['conversation'] as Map<String, dynamic>),
+          json['conversation'] as Map<String, dynamic>,
+        ),
         snippet: (json['snippet'] as String?) ?? '',
         matched: (json['matched'] as String?) ?? 'content',
       );

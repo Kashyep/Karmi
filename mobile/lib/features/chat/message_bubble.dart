@@ -35,13 +35,13 @@ class MessageBubble extends StatelessWidget {
     this.onFeedback,
     this.onSelectReason,
     this.onRegenerate,
-  })  : entry = null,
-        chatMessage = null,
-        onContinue = null,
-        onResume = null,
-        feedbackRating = null,
-        feedbackReason = null,
-        isFeedbackInFlight = false;
+  }) : entry = null,
+       chatMessage = null,
+       onContinue = null,
+       onResume = null,
+       feedbackRating = null,
+       feedbackReason = null,
+       isFeedbackInFlight = false;
 
   const MessageBubble.chatMessage({
     super.key,
@@ -56,8 +56,8 @@ class MessageBubble extends StatelessWidget {
     this.feedbackRating,
     this.feedbackReason,
     this.isFeedbackInFlight = false,
-  })  : entry = null,
-        reply = null;
+  }) : entry = null,
+       reply = null;
 
   final UserEntry? entry;
   final ReplyEntry? reply;
@@ -81,7 +81,8 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = KarmiColors.of(context);
     final text = Theme.of(context).textTheme;
-    final isUser = entry != null || (chatMessage != null && chatMessage!.role == 'user');
+    final isUser =
+        entry != null || (chatMessage != null && chatMessage!.role == 'user');
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -288,7 +289,8 @@ class _ChatMessageActions extends StatelessWidget {
     final colors = KarmiColors.of(context);
     final showContinue =
         message.finishReason == FinishReason.length && onContinue != null;
-    final showResume = (message.finishReason == FinishReason.interrupted ||
+    final showResume =
+        (message.finishReason == FinishReason.interrupted ||
             message.status == MessageStatus.interrupted) &&
         onResume != null;
 

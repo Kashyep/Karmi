@@ -35,8 +35,9 @@ class JumpToLatestButton extends StatelessWidget {
         ? 'New messages, jump to latest'
         : 'Jump to latest message';
     final labelText = hasNewContent ? 'New messages' : 'Jump to latest';
-    final tooltipMessage =
-        hasNewContent ? 'New messages, jump to latest' : 'Jump to latest';
+    final tooltipMessage = hasNewContent
+        ? 'New messages, jump to latest'
+        : 'Jump to latest';
 
     final karmiColors = Theme.of(context).extension<KarmiColors>();
     final colorScheme = Theme.of(context).colorScheme;
@@ -75,10 +76,7 @@ class JumpToLatestButton extends StatelessWidget {
             ],
           ),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              minWidth: 48,
-              minHeight: 48,
-            ),
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: KarmiTokens.s16,
@@ -87,15 +85,12 @@ class JumpToLatestButton extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.arrow_downward,
-                    size: 18,
-                    color: foregroundColor,
-                  ),
+                  Icon(Icons.arrow_downward, size: 18, color: foregroundColor),
                   const SizedBox(width: KarmiTokens.s8),
                   Text(
                     labelText,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    style:
+                        Theme.of(context).textTheme.labelMedium?.copyWith(
                           color: foregroundColor,
                           fontWeight: FontWeight.w600,
                         ) ??
@@ -113,14 +108,12 @@ class JumpToLatestButton extends StatelessWidget {
       ),
     );
 
-    final hasKarmiTheme = Theme.of(context).extension<KarmiColors>() != null &&
+    final hasKarmiTheme =
+        Theme.of(context).extension<KarmiColors>() != null &&
         Theme.of(context).extension<KarmiShape>() != null;
 
     if (hasKarmiTheme) {
-      innerContent = KarmiFocusRing(
-        radius: 999,
-        child: innerContent,
-      );
+      innerContent = KarmiFocusRing(radius: 999, child: innerContent);
     }
 
     final button = Semantics(
@@ -128,10 +121,7 @@ class JumpToLatestButton extends StatelessWidget {
       label: semanticsLabel,
       container: true,
       excludeSemantics: true,
-      child: Tooltip(
-        message: tooltipMessage,
-        child: innerContent,
-      ),
+      child: Tooltip(message: tooltipMessage, child: innerContent),
     );
 
     return IgnorePointer(

@@ -57,7 +57,7 @@ class AttachmentChip extends StatelessWidget {
                 icon: const Icon(Icons.close, size: 14),
                 tooltip: 'Remove $name',
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 splashRadius: 14,
                 onPressed: onRemove,
               ),

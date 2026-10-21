@@ -21,7 +21,8 @@ class UsageWarningPill extends StatelessWidget {
 
     final brightness = Theme.of(context).brightness;
     final label = fraction >= 1 ? 'Allowance reached' : 'Near limit';
-    final baseStyle = Theme.of(context).textTheme.labelMedium ?? const TextStyle();
+    final baseStyle =
+        Theme.of(context).textTheme.labelMedium ?? const TextStyle();
 
     return Container(
       key: const ValueKey('usage-warning-pill'),

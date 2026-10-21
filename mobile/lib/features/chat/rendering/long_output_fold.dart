@@ -82,10 +82,7 @@ class _LongOutputFoldState extends State<LongOutputFold> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      surfaceColor.withValues(alpha: 0.0),
-                      surfaceColor,
-                    ],
+                    colors: [surfaceColor.withValues(alpha: 0.0), surfaceColor],
                   ),
                 ),
               ),
