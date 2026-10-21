@@ -184,7 +184,10 @@ class _ConversationListState extends State<ConversationList> {
                   horizontal: 16,
                   vertical: 4,
                 ),
-                child: Row(
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     FilledButton.icon(
                       key: const ValueKey('new-chat-button'),
@@ -192,7 +195,6 @@ class _ConversationListState extends State<ConversationList> {
                       label: const Text('New chat'),
                       onPressed: widget.onNewChat,
                     ),
-                    const Spacer(),
                     FilterChip(
                       key: const ValueKey('archived-filter-chip'),
                       label: const Text('Archived'),
