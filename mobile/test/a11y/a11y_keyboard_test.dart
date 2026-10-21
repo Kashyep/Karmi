@@ -91,6 +91,9 @@ void main() {
       final textField = find.byType(TextField);
       await tester.tap(textField);
       await tester.pump();
+      // Send is disabled (and unfocusable) on an empty draft.
+      await tester.enterText(textField, 'draft');
+      await tester.pump();
 
       // Composer (TextField) currently has focus
       final textNode = FocusManager.instance.primaryFocus;
@@ -105,8 +108,7 @@ void main() {
       expect(attachNode, isNotNull);
       expect(attachNode, isNot(equals(textNode)));
       expect(
-        find.descendant(of: find.byWidget(attachNode!.context!.widget), matching: attachFinder).evaluate().isNotEmpty ||
-            find.ancestor(of: attachFinder, matching: find.byWidget(attachNode.context!.widget)).evaluate().isNotEmpty,
+        attachNode!.context!.findAncestorWidgetOfExactType<IconButton>()?.tooltip == 'Attach files',
         isTrue,
         reason: 'Focus should be on Attach button',
       );
@@ -120,8 +122,7 @@ void main() {
       expect(sendNode, isNotNull);
       expect(sendNode, isNot(equals(attachNode)));
       expect(
-        find.descendant(of: find.byWidget(sendNode!.context!.widget), matching: sendFinder).evaluate().isNotEmpty ||
-            find.ancestor(of: sendFinder, matching: find.byWidget(sendNode.context!.widget)).evaluate().isNotEmpty,
+        sendNode!.context!.findAncestorWidgetOfExactType<IconButton>()?.tooltip == 'Send message',
         isTrue,
         reason: 'Focus should be on Send button',
       );

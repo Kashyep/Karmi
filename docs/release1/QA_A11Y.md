@@ -12,18 +12,22 @@ Branch `r1/a11y` (worktree `/tmp/wt-a11y`, based on `release1/chat-redesign`). N
 | Suite | Tests | Pass | Fail |
 |---|---|---|---|
 | a11y_golden_test.dart | 19 | 19 | 0 |
-| a11y_semantics_test.dart | (shared run) | — | 1 |
-| a11y_keyboard_test.dart | (shared run) | — | 1 |
-| **Total (`test/a11y/`)** | **24** | **22** | **2** |
+| a11y_semantics_test.dart | 1 | 0 | 1 |
+| a11y_keyboard_test.dart | 4 | 4 | 0 |
+| **Total (`test/a11y/`)** | **24** | **23** | **1** |
+
+`test/features/chat` (regression, after lib edits): 79 pass, 0 fail. `flutter analyze lib/features/chat lib/theme lib/widgets test/a11y`: no issues.
 
 ## Lib edits (minimal a11y fixes)
-- `mobile/lib/features/chat/error_card.dart`: contrast adjustment for error-card text/action colors (attempted fix for WCAG).
+- `mobile/lib/theme/karmi_theme.dart`: explicit `errorContainer` / `onErrorContainer` tokens in the light and dark ColorSchemes (light #FDE8E8 / #7A141E, dark #4A0E14 / #FFDAD6), replacing Material's default error container pair that measured 4.40:1 for ErrorCard Retry text. Error-card goldens regenerated.
+- `mobile/lib/features/chat/error_card.dart`: no net change (earlier luminance hack reverted).
 - `mobile/lib/widgets/usage_warning_pill.dart`: narrowed `ExcludeSemantics` so the label text (not the whole container) is the semantic node.
 - `mobile/lib/features/chat/composer.dart`: `FocusTraversalGroup` with `OrderedTraversalPolicy` for composer -> attach -> send order. The diff is larger than a single wrap (~120 lines changed in the file); review before merge.
 
 ## Open defects (failing tests)
-1. **Error-card contrast (WCAG 1.4.3)**: `ErrorCard and UsageWarningPill pass contrast in light and dark` fails. Retry label measures 4.40:1 (need 4.5:1) at 14sp on the light error container. The `error_card.dart` change did not close the gap; fix the foreground/background token pair.
-2. **Tab focus order**: `Tab traversal across composer -> attach -> send is in order` fails: after the expected Tab step, focus is not on the Attach button. The composer traversal group change does not yet reach the attach control; needs a focus-node trace.
+1. **Error-card contrast (WCAG 1.4.3)**: `ErrorCard and UsageWarningPill pass contrast in light and dark` still fails with the sampled light pair #EECCD0 at 4.40:1 for the Retry button, even after the token change (which applies through `KarmiTheme.of`). The sampled colour does not match the token, so the guideline is likely sampling the card surface blended with the glass/tint layer or the 0.3-alpha button border. Needs a pixel-level trace; not fixed.
+
+Resolved this round: Tab traversal composer -> attach -> send now passes (the test had an invalid focus assertion and used an empty draft, where Send is disabled and unfocusable).
 
 No Esc dismiss handling exists in lib; the Esc test asserts focus retention only.
 

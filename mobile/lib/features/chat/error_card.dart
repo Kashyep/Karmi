@@ -77,18 +77,7 @@ class ErrorCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final message = messageFor(category);
     final action = _actionFor(category);
-    final errorContainer = colorScheme.errorContainer;
-    final onErrorContainer = colorScheme.onErrorContainer;
-    final lBg = errorContainer.computeLuminance();
-    final lFg = onErrorContainer.computeLuminance();
-    final ratio = (lBg > lFg ? lBg + 0.05 : lFg + 0.05) /
-        (lBg > lFg ? lFg + 0.05 : lBg + 0.05);
-    final bg = ratio < 4.5
-        ? (lBg > 0.5 ? const Color(0xFFFDE8E8) : const Color(0xFF4A0E14))
-        : errorContainer;
-    final foreground = ratio < 4.5
-        ? (lBg > 0.5 ? const Color(0xFF7A141E) : const Color(0xFFFFDAD6))
-        : onErrorContainer;
+
     return Semantics(
       container: true,
       liveRegion: true,
@@ -96,7 +85,7 @@ class ErrorCard extends StatelessWidget {
       child: Card(
         elevation: 0,
         margin: EdgeInsets.zero,
-        color: bg,
+        color: colorScheme.errorContainer,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -105,14 +94,14 @@ class ErrorCard extends StatelessWidget {
               Icon(
                 iconFor(category),
                 size: 20,
-                color: foreground,
+                color: colorScheme.onErrorContainer,
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   message,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: foreground,
+                    color: colorScheme.onErrorContainer,
                   ),
                 ),
               ),
@@ -120,15 +109,10 @@ class ErrorCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Tooltip(
                   message: action.$2,
-                  textStyle: const TextStyle(color: Colors.white, fontSize: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF202020),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
                   child: TextButton(
                     onPressed: action.$1,
                     style: TextButton.styleFrom(
-                      foregroundColor: foreground,
+                      foregroundColor: colorScheme.onErrorContainer,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 8,
@@ -137,7 +121,7 @@ class ErrorCard extends StatelessWidget {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                         side: BorderSide(
-                          color: foreground.withValues(
+                          color: colorScheme.onErrorContainer.withValues(
                             alpha: 0.3,
                           ),
                         ),
