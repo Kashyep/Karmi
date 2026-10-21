@@ -26,6 +26,8 @@ class ChatScreen extends StatefulWidget {
     this.chatController,
     this.conversationListController,
     this.onConversationChanged,
+    this.runStreamClient,
+    this.conversationsApi,
   });
 
   final KarmiApi api;
@@ -34,6 +36,9 @@ class ChatScreen extends StatefulWidget {
   final ChatController? chatController;
   final ConversationListController? conversationListController;
   final ValueChanged<String?>? onConversationChanged;
+  final RunStreamClient? runStreamClient;
+  final ConversationsApi? conversationsApi;
+
 
   /// Builds a history rail widget for wide layouts.
   static Widget historyRailBuilder({
@@ -73,12 +78,15 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _activeConversationId = widget.conversationId;
-    _runStreamClient = RunStreamClient.fromApi(widget.api);
-    _conversationsApi = ConversationsApi(
-      baseUrl: widget.api.baseUrl,
-      tokenProvider: widget.api.tokenProvider,
-      client: widget.api.client,
-    );
+    _runStreamClient =
+        widget.runStreamClient ?? RunStreamClient.fromApi(widget.api);
+    _conversationsApi =
+        widget.conversationsApi ??
+        ConversationsApi(
+          baseUrl: widget.api.baseUrl,
+          tokenProvider: widget.api.tokenProvider,
+          client: widget.api.client,
+        );
 
     _scrollController = EndAnchoredScrollController();
 
@@ -134,7 +142,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _conversationListController.dispose();
     }
     _scrollController.dispose();
-    _conversationsApi.close();
+    if (widget.conversationsApi == null) {
+      _conversationsApi.close();
+    }
     super.dispose();
   }
 
@@ -174,9 +184,21 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeConversationId = conversationId;
     });
 
+    if (_ownsChatController) {
+      _chatController.removeListener(_onChatControllerChanged);
+      _chatController.stop();
+      _chatController.dispose();
+      _chatController = ChatController(
+        client: _runStreamClient,
+        conversationId: conversationId,
+      );
+      _chatController.addListener(_onChatControllerChanged);
+    }
+
     try {
       final page = await _conversationsApi.messages(conversationId);
       if (!mounted) return;
+      if (_activeConversationId != conversationId) return;
 
       if (_ownsChatController) {
         _chatController.removeListener(_onChatControllerChanged);
@@ -192,7 +214,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       // In case of error loading messages, retain state
     } finally {
-      if (mounted) {
+      if (mounted && _activeConversationId == conversationId) {
         setState(() => _isLoadingMessages = false);
       }
     }

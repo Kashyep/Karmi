@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
 
 import '../api/karmi_api.dart';
+import '../features/chat/composer/draft_store.dart';
 
 /// `--dart-define=KARMI_DEV_AUTH=false` hides the local development sign-in.
 /// Defaults on outside release mode.
@@ -64,6 +65,7 @@ class KarmiSession extends ChangeNotifier {
     final signedIn = clerkAuth?.isSignedIn == true;
     if (_wasClerkSignedIn && !signedIn) {
       _lastEnd = SessionEnd.signedOut;
+      unawaited(SharedPrefsDraftStore.clearAllDrafts(_prefs));
     }
     _wasClerkSignedIn = signedIn;
     notifyListeners();
@@ -90,6 +92,7 @@ class KarmiSession extends ChangeNotifier {
     _lastEnd = reason;
     notifyListeners();
     await _prefs.remove(_key);
+    await SharedPrefsDraftStore.clearAllDrafts(_prefs);
     if (clerkAuth?.isSignedIn == true) {
       await clerkAuth!.signOut();
     }

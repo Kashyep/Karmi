@@ -33,4 +33,19 @@ class SharedPrefsDraftStore implements DraftStore {
     final sp = await _getPrefs();
     await sp.remove(storageKey(key));
   }
+
+  /// Clears all stored drafts prefixed with 'draft.v1.'.
+  Future<void> clearAll() async {
+    final sp = await _getPrefs();
+    await clearAllDrafts(sp);
+  }
+
+  /// Clears all draft keys from [prefs] prefixed with 'draft.v1.'.
+  static Future<void> clearAllDrafts([SharedPreferences? prefs]) async {
+    final sp = prefs ?? await SharedPreferences.getInstance();
+    final keys = sp.getKeys().where((k) => k.startsWith('draft.v1.')).toList();
+    for (final k in keys) {
+      await sp.remove(k);
+    }
+  }
 }
