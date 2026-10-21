@@ -301,7 +301,7 @@ class _ComposerState extends State<Composer> {
         ? colors.glassSpecularRimFocused
         : colors.glassSpecularRim;
     final hasAttachments = _attachments.isNotEmpty || _pasteChips.isNotEmpty;
-
+    final actionLabel = widget.busy ? 'Stop generating' : 'Send message';
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Stack(
@@ -363,8 +363,8 @@ class _ComposerState extends State<Composer> {
                             tooltip: 'Dismiss error',
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(
-                              minWidth: 24,
-                              minHeight: 24,
+                              minWidth: 44,
+                              minHeight: 44,
                             ),
                             onPressed: () => setState(() => _limitError = null),
                           ),
@@ -475,78 +475,82 @@ class _ComposerState extends State<Composer> {
                         order: const NumericFocusOrder(3),
                         child: Semantics(
                           button: true,
-                          label: widget.busy ? 'Stop response' : 'Send',
-                          child: AnimatedContainer(
-                            duration: KarmiMotion.duration(
-                              context,
-                              KarmiMotion.composerDuration,
-                            ),
-                            curve: KarmiMotion.composerCurve,
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(
-                                widget.busy ? 8 : 17,
-                              ),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: IconButton.filled(
-                              key: const ValueKey('composer-send-button'),
-                              tooltip: widget.busy
-                                  ? 'Stop generating'
-                                  : 'Send message',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints.tightFor(
-                                width: 34,
-                                height: 34,
-                              ),
-                              style: IconButton.styleFrom(
-                                backgroundColor: colors.primary,
-                                foregroundColor: colors.primaryForeground,
-                                disabledBackgroundColor: colors.muted,
-                                disabledForegroundColor: colors.mutedForeground,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    widget.busy ? 8 : 17,
-                                  ),
-                                ),
-                                minimumSize: const Size(34, 34),
-                                fixedSize: const Size(34, 34),
-                                padding: EdgeInsets.zero,
-                              ).copyWith(
-                                side: WidgetStateProperty.resolveWith(
-                                  (states) =>
-                                      states.contains(WidgetState.focused)
-                                          ? BorderSide(
-                                              color: colors.primaryForeground,
-                                              width: KarmiShape.of(
-                                                context,
-                                              ).focusRingWidth,
-                                            )
-                                          : null,
-                                ),
-                              ),
-                              onPressed: widget.busy
-                                  ? widget.onStop
-                                  : (_canSend ? _send : null),
-                              icon: AnimatedSwitcher(
+                          label: actionLabel,
+                          child: SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Center(
+                              child: AnimatedContainer(
                                 duration: KarmiMotion.duration(
                                   context,
                                   KarmiMotion.composerDuration,
                                 ),
-                                switchInCurve: KarmiMotion.composerCurve,
-                                switchOutCurve: KarmiMotion.composerCurve,
-                                child: widget.busy
-                                    ? const Icon(
-                                        Icons.stop,
-                                        key: ValueKey('composer-stop-icon'),
-                                        size: 20,
-                                      )
-                                    : const Icon(
-                                        Icons.arrow_upward,
-                                        key: ValueKey('composer-send-icon'),
-                                        size: 20,
+                                curve: KarmiMotion.composerCurve,
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(
+                                    widget.busy ? 8 : 17,
+                                  ),
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: IconButton.filled(
+                                  key: const ValueKey('composer-send-button'),
+                                  tooltip: actionLabel,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints.tightFor(
+                                    width: 34,
+                                    height: 34,
+                                  ),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: colors.primary,
+                                    foregroundColor: colors.primaryForeground,
+                                    disabledBackgroundColor: colors.muted,
+                                    disabledForegroundColor: colors.mutedForeground,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(
+                                        widget.busy ? 8 : 17,
                                       ),
+                                    ),
+                                    minimumSize: const Size(34, 34),
+                                    fixedSize: const Size(34, 34),
+                                    padding: EdgeInsets.zero,
+                                  ).copyWith(
+                                    side: WidgetStateProperty.resolveWith(
+                                      (states) =>
+                                          states.contains(WidgetState.focused)
+                                              ? BorderSide(
+                                                  color: colors.primaryForeground,
+                                                  width: KarmiShape.of(
+                                                    context,
+                                                  ).focusRingWidth,
+                                                )
+                                              : null,
+                                    ),
+                                  ),
+                                  onPressed: widget.busy
+                                      ? widget.onStop
+                                      : (_canSend ? _send : null),
+                                  icon: AnimatedSwitcher(
+                                    duration: KarmiMotion.duration(
+                                      context,
+                                      KarmiMotion.composerDuration,
+                                    ),
+                                    switchInCurve: KarmiMotion.composerCurve,
+                                    switchOutCurve: KarmiMotion.composerCurve,
+                                    child: widget.busy
+                                        ? const Icon(
+                                            Icons.stop,
+                                            key: ValueKey('composer-stop-icon'),
+                                            size: 20,
+                                          )
+                                        : const Icon(
+                                            Icons.arrow_upward,
+                                            key: ValueKey('composer-send-icon'),
+                                            size: 20,
+                                          ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),

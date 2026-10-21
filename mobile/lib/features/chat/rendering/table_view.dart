@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../theme/karmi_colors.dart';
 import '../../../theme/karmi_theme.dart';
@@ -35,11 +36,41 @@ class TableView extends StatefulWidget {
 
 class _TableViewState extends State<TableView> {
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode(debugLabel: 'TableView');
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollBy(double delta) {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (!position.hasContentDimensions) return;
+    final target = (position.pixels + delta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 100),
+      curve: Curves.easeOut,
+    );
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        _scrollBy(-48.0);
+        return KeyEventResult.handled;
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        _scrollBy(48.0);
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -107,16 +138,33 @@ class _TableViewState extends State<TableView> {
         constraints: const BoxConstraints(
           maxWidth: KarmiShape.readableColumnMaxWidth,
         ),
-        child: Scrollbar(
-          controller: _scrollController,
-          thumbVisibility: true,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            scrollDirection: Axis.horizontal,
-            child: Table(
-              defaultColumnWidth: const IntrinsicColumnWidth(),
-              border: TableBorder.all(color: hairline, width: 0.5),
-              children: tableRows,
+        child: Focus(
+          focusNode: _focusNode,
+          onFocusChange: (_) => setState(() {}),
+          onKeyEvent: _handleKeyEvent,
+          child: Container(
+            decoration: _focusNode.hasFocus
+                ? BoxDecoration(
+                    borderRadius:
+                        BorderRadius.circular(KarmiShape.controlRadius),
+                    border: Border.all(
+                      color: colors?.ring ?? colorScheme.primary,
+                      width: 2,
+                    ),
+                  )
+                : null,
+            child: Scrollbar(
+              controller: _scrollController,
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                scrollDirection: Axis.horizontal,
+                child: Table(
+                  defaultColumnWidth: const IntrinsicColumnWidth(),
+                  border: TableBorder.all(color: hairline, width: 0.5),
+                  children: tableRows,
+                ),
+              ),
             ),
           ),
         ),
