@@ -158,16 +158,17 @@ class _ChatScreenState extends State<ChatScreen> {
         oldWidget.historyCommands!.newChat = null;
       }
       if (widget.historyCommands != null) {
-        widget.historyCommands!.openConversation =
-            (id) => _loadConversationMessages(id);
+        widget.historyCommands!.openConversation = (id) =>
+            _loadConversationMessages(id);
         widget.historyCommands!.newChat = _startNewChat;
         widget.historyCommands!.activeId.value = _activeConversationId;
       }
     }
     if (widget.conversationListController !=
         oldWidget.conversationListController) {
-      oldWidget.conversationListController
-          ?.removeListener(_onConversationListChanged);
+      oldWidget.conversationListController?.removeListener(
+        _onConversationListChanged,
+      );
       if (widget.conversationListController != null) {
         _conversationListController = widget.conversationListController!;
         _ownsConversationListController = false;
@@ -557,81 +558,92 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),
             Expanded(
-              child: Stack(
-                children: [
-                  EndAnchoredScroll(
-                    controller: _scrollController,
-                    builder: (context, scrollController, physics) {
-                      if (messages.isEmpty) {
-                        return ListView(
-                          controller: scrollController,
-                          physics: physics,
-                          padding: insets.copyWith(bottom: 16),
-                          children: [
-                            ChatEmptyState(
-                              key: const ValueKey('new-chat-empty-state'),
-                              clock: widget.clock,
-                              onStarterPicked: (prompt) =>
-                                  _chatController.send(prompt),
+              child: messages.isEmpty
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: constraints.maxHeight,
                             ),
-                          ],
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                ChatEmptyState(
+                                  key: const ValueKey('new-chat-empty-state'),
+                                  clock: widget.clock,
+                                  onStarterPicked: (prompt) =>
+                                      _chatController.send(prompt),
+                                ),
+                              ],
+                            ),
+                          ),
                         );
-                      }
-
-                      return ListView.builder(
-                        controller: scrollController,
-                        physics: physics,
-                        padding: insets.copyWith(bottom: 16),
-                        itemCount: messages.length,
-                        itemBuilder: (context, index) {
-                          final msg = messages[index];
-                          if (msg.status != MessageStatus.streaming) {
-                            return _memoBubble(
-                              msg,
-                              index,
-                              messages.length,
-                              lastAssistantIndex,
+                      },
+                    )
+                  : Stack(
+                      children: [
+                        EndAnchoredScroll(
+                          controller: _scrollController,
+                          builder: (context, scrollController, physics) {
+                            return ListView.builder(
+                              controller: scrollController,
+                              physics: physics,
+                              padding: insets.copyWith(bottom: 16),
+                              itemCount: messages.length,
+                              itemBuilder: (context, index) {
+                                final msg = messages[index];
+                                if (msg.status != MessageStatus.streaming) {
+                                  return _memoBubble(
+                                    msg,
+                                    index,
+                                    messages.length,
+                                    lastAssistantIndex,
+                                  );
+                                }
+                                // Only the streaming bubble rebuilds on each delta flush.
+                                return ValueListenableBuilder<int>(
+                                  valueListenable:
+                                      _chatController.streamRevision,
+                                  builder: (context, _, child) =>
+                                      _buildChatBubble(
+                                        _chatController.messageById(msg.id) ??
+                                            msg,
+                                        index,
+                                        messages.length,
+                                        lastAssistantIndex,
+                                      ),
+                                );
+                              },
                             );
-                          }
-                          // Only the streaming bubble rebuilds on each delta flush.
-                          return ValueListenableBuilder<int>(
-                            valueListenable: _chatController.streamRevision,
-                            builder: (context, _, child) => _buildChatBubble(
-                              _chatController.messageById(msg.id) ?? msg,
-                              index,
-                              messages.length,
-                              lastAssistantIndex,
+                          },
+                        ),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: KarmiShape.jumpPillGap,
                             ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: KarmiShape.jumpPillGap,
-                      ),
-                      child: ValueListenableBuilder<bool>(
-                        valueListenable: _scrollController.isAtBottom,
-                        builder: (context, isAtBottom, _) {
-                          return ValueListenableBuilder<bool>(
-                            valueListenable: _scrollController.hasNewContent,
-                            builder: (context, hasNewContent, _) {
-                              return JumpToLatestButton(
-                                visible: !isAtBottom,
-                                hasNewContent: hasNewContent,
-                                onTap: _scrollController.jumpToLatest,
-                              );
-                            },
-                          );
-                        },
-                      ),
+                            child: ValueListenableBuilder<bool>(
+                              valueListenable: _scrollController.isAtBottom,
+                              builder: (context, isAtBottom, _) {
+                                return ValueListenableBuilder<bool>(
+                                  valueListenable:
+                                      _scrollController.hasNewContent,
+                                  builder: (context, hasNewContent, _) {
+                                    return JumpToLatestButton(
+                                      visible: !isAtBottom,
+                                      hasNewContent: hasNewContent,
+                                      onTap: _scrollController.jumpToLatest,
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
             ),
             ProcessingPanel(phase: _chatController.phase),
             if (_chatController.error != null || _feedbackError != null)
@@ -677,9 +689,7 @@ class _ChatScreenState extends State<ChatScreen> {
     double paneWidth,
   ) {
     if (!_isReadingColumnCapped(paneWidth)) return insets;
-    final gutter =
-        (paneWidth - KarmiShape.readableColumnMaxWidth) /
-        2;
+    final gutter = (paneWidth - KarmiShape.readableColumnMaxWidth) / 2;
     return insets.copyWith(
       left: gutter > insets.left ? gutter : insets.left,
       right: gutter > insets.right ? gutter : insets.right,
@@ -700,7 +710,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   double _composerDockBottomPadding(BuildContext context, bool isDocked) {
-    final bottomInset = MediaQuery.paddingOf(context).bottom +
+    final bottomInset =
+        MediaQuery.paddingOf(context).bottom +
         MediaQuery.viewInsetsOf(context).bottom;
     if (isDocked) {
       return bottomInset;
@@ -709,7 +720,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final isDesktop = WorkspaceSize.of(context) == WorkspaceSize.expanded;
     // On desktop, composer is centered slightly above midpoint (~42-45% from top).
     // On mobile, centered vertically (~48-50%).
-    final factor = isDesktop ? 0.55 : 0.50;
+    final factor = isDesktop ? 0.55 : 0.36;
     final computed = (height * factor - 35).clamp(bottomInset, height * 0.55);
     return computed;
   }

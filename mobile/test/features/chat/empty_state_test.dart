@@ -134,7 +134,7 @@ void main() {
         ),
       );
       expect(find.text('Good morning'), findsOneWidget);
-      expect(find.text('Karmi · Study & code'), findsOneWidget);
+      expect(find.textContaining('Ask a study question'), findsOneWidget);
       expect(
         find.text('Ask a study question, or get help with maths or code.'),
         findsOneWidget,

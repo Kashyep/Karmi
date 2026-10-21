@@ -12,7 +12,6 @@ class ChatEmptyState extends StatelessWidget {
     this.clock = _defaultClock,
     this.onPromptTap,
     this.name,
-    this.capabilityPillText,
     this.prompts = starterPrompts,
   });
 
@@ -29,9 +28,6 @@ class ChatEmptyState extends StatelessWidget {
 
   /// Optional user name for personalized greeting.
   final String? name;
-
-  /// Optional capability pill text (defaults to 'Karmi · Study & code').
-  final String? capabilityPillText;
 
   /// List of starter prompts to show (defaults to [starterPrompts]).
   final List<String> prompts;
@@ -84,40 +80,6 @@ class ChatEmptyState extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Minimal model/capability pill
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: ShapeDecoration(
-                  color: colors.card,
-                  shape: StadiumBorder(
-                    side: BorderSide(color: colors.borderSubtle),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: colors.primary,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        capabilityPillText ?? 'Karmi · Study & code',
-                        textAlign: TextAlign.center,
-                        style: KarmiTypography.toolbarCaption().copyWith(
-                          color: colors.mutedForeground,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
               // Time-of-day greeting
               Text(
                 greeting,
@@ -172,9 +134,10 @@ class ChatEmptyState extends StatelessWidget {
                                 Flexible(
                                   child: Text(
                                     prompt,
-                                    style: (theme.textTheme.labelSmall ??
-                                            KarmiTypography.toolbarCaption())
-                                        .copyWith(color: colors.foreground),
+                                    style:
+                                        (theme.textTheme.labelSmall ??
+                                                KarmiTypography.toolbarCaption())
+                                            .copyWith(color: colors.foreground),
                                   ),
                                 ),
                               ],
