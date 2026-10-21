@@ -23,6 +23,8 @@ Command: `cd mobile && TZ=Asia/Kolkata flutter test test/perf/chat_perf_test.dar
 | Device frame timings / jank | NOT MEASURED | NOT MEASURED. No device attached. |
 | Release APK size | NOT MEASURED | NOT MEASURED. The release APK build was skipped (did not finish in the prior session). |
 
+Rebuild-count row is per send, not per delta.
+
 ## Method comparison
 
 - Test file logic (cold start loop, 90-step drag scroll with `pump(16ms)`, rebuild filter on `debugPrintRebuildDirtyWidgets` with the same four widget names, 5 sends) reads as identical to the baseline test body. The file header is a few lines longer in this worktree, and the source SHAs differ.
@@ -35,6 +37,12 @@ Command: `cd mobile && TZ=Asia/Kolkata flutter test test/perf/chat_perf_test.dar
 - The rebuild counts rose from a median of 9 to 20 per send. Both runs agree exactly. Because the filter is a debug-log text match, this is a proxy, and it is only comparable if the harness matched.
 - Cold start is noise-dominated. With 7 samples per run, p95 is effectively the single largest sample and varied from 1360 ms to 2022 ms across two runs of the same code. The median moved from 313-337 ms to 210-215 ms, which is within what a 7-sample run can produce. Do not read a cold-start improvement or regression from these numbers.
 - None of these numbers say anything about device jank, raster cost, or APK size.
+
+## Batching claim
+
+- The perf test measures rebuilds per send (5 sends with a fake whole-reply backend), NOT rebuilds per streamed delta. The fake backend emits one `message.delta` per reply, so token batching is NOT exercised.
+- The measured filtered rebuild count per send went UP (median 9 -> 20) under the same method. This measurement does NOT support a claim that rebuilds decreased with batching.
+- A per-delta batching measurement requires a multi-delta fake stream, which is not in this package.
 
 ## Commit
 
