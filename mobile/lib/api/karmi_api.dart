@@ -17,6 +17,7 @@ class KarmiApi {
   KarmiApi({
     this.baseUrl = defaultBaseUrl,
     http.Client? client,
+    // Above the backend's worst case: two gateway attempts at 20 s each (gateway/service.py).
     this.timeout = const Duration(seconds: 60),
     this.token,
     this.tokenProvider,

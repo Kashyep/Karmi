@@ -1,8 +1,8 @@
 {
   "schema_version": "model-registry.v1",
-  "snapshot_date": "2026-10-19",
+  "snapshot_date": "2026-10-21",
   "provisional": true,
-  "notes": "openrouter entries: Parakh provisional capped probe 2026-10-19 (see Parakh docs/live_pilots/registry). opencode entries: unreviewed seed (classes/context are estimates; need an OpenCode key).",
+  "notes": "openrouter entries: Parakh provisional capped probe 2026-10-19 (see Parakh docs/live_pilots/registry). opencode entries: unreviewed seed (classes/context are estimates; need an OpenCode key). 2026-10-21: dropped nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free and nvidia/nemotron-3-super-120b-a12b:free (OpenRouter endpoint uptime 0-4% over 1d); demoted liquid/lfm-2.5-2.6b:free scores to 0.5 (50% uptime over 30m, 82% over 1d) so nvidia/nemotron-3.5-lightning:free leads the economy class.",
   "models": [
     {
       "model_id": "liquid/lfm-2.5-2.6b:free",
@@ -15,9 +15,9 @@
       "data_terms": "unknown",
       "supports_structured_output": true,
       "scores": {
-        "code": 1.0,
-        "maths": 1.0,
-        "hindi": 1.0
+        "code": 0.5,
+        "maths": 0.5,
+        "hindi": 0.5
       },
       "score_status": "provisional"
     },
@@ -82,40 +82,6 @@
       "private_data_allowed": false,
       "data_terms": "unknown",
       "supports_structured_output": false,
-      "scores": {
-        "code": 1.0,
-        "maths": 1.0,
-        "hindi": 1.0
-      },
-      "score_status": "provisional"
-    },
-    {
-      "model_id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-      "provider": "openrouter",
-      "class": "balanced",
-      "prompt_price_usd": "0",
-      "completion_price_usd": "0",
-      "context_length": 256000,
-      "private_data_allowed": false,
-      "data_terms": "unknown",
-      "supports_structured_output": false,
-      "scores": {
-        "code": 1.0,
-        "maths": 1.0,
-        "hindi": 1.0
-      },
-      "score_status": "provisional"
-    },
-    {
-      "model_id": "nvidia/nemotron-3-super-120b-a12b:free",
-      "provider": "openrouter",
-      "class": "advanced",
-      "prompt_price_usd": "0",
-      "completion_price_usd": "0",
-      "context_length": 262144,
-      "private_data_allowed": false,
-      "data_terms": "unknown",
-      "supports_structured_output": true,
       "scores": {
         "code": 1.0,
         "maths": 1.0,
