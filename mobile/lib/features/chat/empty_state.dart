@@ -172,12 +172,9 @@ class ChatEmptyState extends StatelessWidget {
                                 Flexible(
                                   child: Text(
                                     prompt,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: colors.foreground,
-                                    ) ?? TextStyle(
-                                      color: colors.foreground,
-                                      fontSize: 12,
-                                    ),
+                                    style: (theme.textTheme.labelSmall ??
+                                            KarmiTypography.toolbarCaption())
+                                        .copyWith(color: colors.foreground),
                                   ),
                                 ),
                               ],

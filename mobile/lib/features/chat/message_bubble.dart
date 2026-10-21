@@ -143,7 +143,8 @@ class MessageBubble extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   if (reply != null) ...[
-                    if (reply!.message.outcome != Outcome.askUser) ...[
+                    if (StatusChip.hasVisibleOutcome(reply!.message.outcome) &&
+                        reply!.message.outcome != Outcome.askUser) ...[
                       StatusChip.outcome(reply!.message.outcome),
                       const SizedBox(height: 8),
                     ],
@@ -163,7 +164,7 @@ class MessageBubble extends StatelessWidget {
                       onRegenerate: onRegenerate,
                     ),
                   ] else if (chatMessage != null) ...[
-                    if (chatMessage!.outcome != null &&
+                    if (StatusChip.hasVisibleOutcome(chatMessage!.outcome) &&
                         chatMessage!.outcome != Outcome.askUser) ...[
                       StatusChip.outcome(chatMessage!.outcome!),
                       const SizedBox(height: 8),

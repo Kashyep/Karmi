@@ -139,6 +139,11 @@ class _KarmiShellState extends State<KarmiShell> {
           onOpenPlans: _openPlans,
           draftStore: widget.session.draftStore,
           historyCommands: widget.historyCommands,
+          trailing: _OverflowMenu(
+            onArmory: _openArmory,
+            onPlans: _openPlans,
+            onLicences: _openLicences,
+          ),
         );
       case 1:
         return TasksScreen(api: widget.api);
@@ -266,6 +271,7 @@ class _KarmiShellState extends State<KarmiShell> {
     final isCompactNav = width < 600;
     final isPhone = width < KarmiShape.tabletBreakpoint;
     final content = _buildContent(context, body);
+    final isChat = _index == 0;
 
     if (KarmiAccessibility.reduceTransparencyOf(context)) {
       return HistoryPanelScope(
@@ -278,16 +284,18 @@ class _KarmiShellState extends State<KarmiShell> {
           drawer: isPhone && widget.historyRailBuilder != null
               ? HistoryDrawer(child: widget.historyRailBuilder!(context))
               : null,
-          appBar: AppBar(
-            title: Semantics(header: true, child: title),
-            actions: [
-              _OverflowMenu(
-                onArmory: _openArmory,
-                onPlans: _openPlans,
-                onLicences: _openLicences,
-              ),
-            ],
-          ),
+          appBar: isChat
+              ? null
+              : AppBar(
+                  title: Semantics(header: true, child: title),
+                  actions: [
+                    _OverflowMenu(
+                      onArmory: _openArmory,
+                      onPlans: _openPlans,
+                      onLicences: _openLicences,
+                    ),
+                  ],
+                ),
           body: _withPreviewBanner(
             content,
             top: 8,
@@ -341,10 +349,11 @@ class _KarmiShellState extends State<KarmiShell> {
     // content can scroll behind them without being hidden at rest.
     final mq = MediaQuery.of(context);
     final bodyPadding = mq.padding.copyWith(
-      top: mq.padding.top + appBar.preferredSize.height,
+      top: isChat
+          ? mq.padding.top
+          : (mq.padding.top + appBar.preferredSize.height),
       bottom: mq.padding.bottom + (isCompactNav ? tabBar.preferredSize.height : 0),
     );
-
     return HistoryPanelScope(
       isOpen: _isHistoryOverlayOpen,
       openHistory: _openHistory,
@@ -359,7 +368,7 @@ class _KarmiShellState extends State<KarmiShell> {
         body: GlassScaffold(
           key: const ValueKey('shell-glass'),
           backgroundColor: KarmiColors.of(context).background,
-          appBar: appBar,
+          appBar: isChat ? null : appBar,
           bottomBar: isCompactNav
               ? Semantics(
                   container: true,

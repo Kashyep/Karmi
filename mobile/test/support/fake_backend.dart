@@ -76,6 +76,11 @@ class FakeBackend {
         });
       }
     }
+    if (handler == null && request.method == 'GET') {
+      if (path.startsWith('/v1/conversations/') && path.endsWith('/messages')) {
+        return jsonResponse({'items': [], 'has_more_before': false});
+      }
+    }
     if (handler == null) {
       return http.Response('unrouted: ${request.method} $path', 599);
     }
@@ -119,6 +124,52 @@ class FakeBackend {
     });
   }
 
+  /// Fixture conversations spanning Pinned, Today, Yesterday, Previous 7 days, and Older.
+  static List<Map<String, dynamic>> defaultConversationsJson([DateTime? now]) {
+    final current = now ?? DateTime.now();
+    final today = DateTime(current.year, current.month, current.day, 12);
+    final yesterday = DateTime(current.year, current.month, current.day - 1, 12);
+    final prev7 = DateTime(current.year, current.month, current.day - 3, 12);
+    final older = DateTime(current.year, current.month, current.day - 30, 12);
+    return [
+      {
+        'id': 'conv-pinned',
+        'title': 'Quarterly Planning',
+        'pinned': true,
+        'updated_at': today.toIso8601String(),
+        'message_count': 5,
+      },
+      {
+        'id': 'conv-1',
+        'title': 'Daily sync and goals',
+        'pinned': false,
+        'updated_at': today.toIso8601String(),
+        'message_count': 3,
+      },
+      {
+        'id': 'conv-yesterday',
+        'title': 'Design review feedback',
+        'pinned': false,
+        'updated_at': yesterday.toIso8601String(),
+        'message_count': 2,
+      },
+      {
+        'id': 'conv-prev7',
+        'title': 'API schema migration',
+        'pinned': false,
+        'updated_at': prev7.toIso8601String(),
+        'message_count': 8,
+      },
+      {
+        'id': 'conv-older',
+        'title': 'Initial project kickoff',
+        'pinned': false,
+        'updated_at': older.toIso8601String(),
+        'message_count': 14,
+      },
+    ];
+  }
+
   /// A backend where every read succeeds with realistic synthetic data.
   static FakeBackend healthy({
     KarmiTier unlocked = KarmiTier.ananta,
@@ -143,7 +194,15 @@ class FakeBackend {
           {'id': 't2', 'title': 'Renew passport', 'completed': true},
         ]),
       )
-      ..on('POST', '/v1/messages', (_) => jsonResponse(messageJson('ACCEPT')));
+      ..on('POST', '/v1/messages', (_) => jsonResponse(messageJson('ACCEPT')))
+      ..on(
+        'GET',
+        '/v1/conversations',
+        (_) => jsonResponse({
+          'items': defaultConversationsJson(),
+          'next_cursor': null,
+        }),
+      );
     return backend;
   }
 }

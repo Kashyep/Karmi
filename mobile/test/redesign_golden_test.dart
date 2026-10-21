@@ -55,9 +55,9 @@ http.Response sseResponse(
 List<Map<String, dynamic>> createTestConversations() {
   final now = DateTime.now();
   final todayDate = DateTime(now.year, now.month, now.day, 12);
-  final yesterdayDate = DateTime(now.year, now.month, now.day - 1, 12);
-  final prev7Date = DateTime(now.year, now.month, now.day - 3, 12);
-  final olderDate = DateTime(now.year, now.month, now.day - 30, 12);
+  final yesterdayDate = todayDate.subtract(const Duration(days: 1));
+  final prev7Date = todayDate.subtract(const Duration(days: 3));
+  final olderDate = todayDate.subtract(const Duration(days: 30));
 
   return [
     {

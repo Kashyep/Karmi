@@ -160,7 +160,10 @@ Future<AppHandle> pumpApp(
     backend.on(
       'GET',
       '/v1/conversations',
-      (_) => jsonResponse({'items': [], 'next_cursor': null}),
+      (_) => jsonResponse({
+        'items': FakeBackend.defaultConversationsJson(),
+        'next_cursor': null,
+      }),
     );
   }
   if (!backend.routes.containsKey('POST /v1/chat/stream')) {

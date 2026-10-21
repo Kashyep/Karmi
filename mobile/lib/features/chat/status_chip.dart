@@ -19,6 +19,13 @@ class StatusChip extends StatelessWidget {
     this.backgroundColor,
   });
 
+  /// Returns whether [outcome] represents a real, displayable status.
+  ///
+  /// [Outcome.unknown] and null represent "no real status" and should not
+  /// render a chip.
+  static bool hasVisibleOutcome(Outcome? outcome) =>
+      outcome != null && outcome != Outcome.unknown;
+
   factory StatusChip.outcome(
     Outcome outcome, {
     Key? key,

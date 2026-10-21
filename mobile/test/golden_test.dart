@@ -1,9 +1,14 @@
 @Tags(['golden'])
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:karmi_app/fonts.dart';
+import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/api/models.dart';
 import 'package:karmi_app/features/plans/plan_selection_screen.dart';
@@ -14,6 +19,32 @@ import 'package:karmi_app/theme/karmi_glass.dart';
 import 'support/fake_backend.dart';
 import 'support/harness.dart';
 
+http.Response sseResponse(
+  String text, {
+  String runId = 'run-1',
+  String conversationId = 'conv-1',
+  String finishReason = 'stop',
+  String outcome = 'ACCEPT',
+}) {
+  final deltaJson = jsonEncode({'text': text});
+  final finishedJson = jsonEncode({
+    'finish_reason': finishReason,
+    'outcome': outcome,
+  });
+  final sse = 'event: run.started\n'
+      'data: {"run_id":"$runId","conversation_id":"$conversationId","user_message_id":"msg-u","assistant_message_id":"msg-a","seq":0}\n\n'
+      'id: 1\n'
+      'event: message.delta\n'
+      'data: $deltaJson\n\n'
+      'event: run.finished\n'
+      'data: $finishedJson\n\n';
+  return http.Response(
+    sse,
+    200,
+    headers: {'content-type': 'text/event-stream'},
+  );
+}
+
 /// §8 golden gate: every screen × light/dark × text scale 1.0/2.0 × reduce
 /// transparency off/on. Baselines live in `goldens/<host os>/`.
 ///
@@ -21,25 +52,44 @@ import 'support/harness.dart';
 /// shaders (it looks them up at the package-test path), so glass surfaces
 /// render their non-shader fallback here. On-device glass is checked manually.
 void main() {
+  setUpAll(() async {
+    configureBundledFonts();
+    KarmiTheme.of(KarmiTier.ananta, Brightness.light);
+    KarmiTypography.greeting();
+    KarmiTypography.toolbarCaption();
+    KarmiTypography.messageHeaderName();
+    KarmiTypography.quote();
+    KarmiTypography.emphasis();
+    await GoogleFonts.pendingFonts();
+  });
+
   Future<void> fontsReady(WidgetTester tester) async {
     await tester.runAsync(GoogleFonts.pendingFonts);
+    await tester.pump();
     await settle(tester);
   }
 
   for (final env in goldenEnvs) {
     group(env.name, () {
       testWidgets('chat', (tester) async {
+        const replyText =
+            'Which day should I remind you to call the bank?';
         await pumpApp(
           tester,
           env: env,
           backend: FakeBackend.healthy()
             ..on(
               'POST',
+              '/v1/chat/stream',
+              (_) => sseResponse(replyText, outcome: 'ASK_USER'),
+            )
+            ..on(
+              'POST',
               '/v1/messages',
               (_) => jsonResponse(
                 messageJson(
                   'ASK_USER',
-                  response: 'Which day should I remind you to call the bank?',
+                  response: replyText,
                 ),
               ),
             ),
@@ -64,6 +114,21 @@ void main() {
           matchesGoldenFile(goldenPath('chat_empty_${env.name}')),
         );
       });
+
+      if (env.textScale == 1.0 && !env.reduceTransparency) {
+        testWidgets('chat_empty_wide', (tester) async {
+          await pumpApp(
+            tester,
+            env: env,
+            size: const Size(1024, 768),
+          );
+          await fontsReady(tester);
+          await expectLater(
+            find.byType(MaterialApp),
+            matchesGoldenFile(goldenPath('chat_empty_wide_${env.name}')),
+          );
+        });
+      }
 
       for (final tab in ['Tasks', 'Usage', 'Settings']) {
         testWidgets(tab.toLowerCase(), (tester) async {
