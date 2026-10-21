@@ -74,7 +74,8 @@ class _CodeBlockState extends State<CodeBlock> {
     final isLong = lineCount > 40;
 
     final monoStyle = (textTheme.bodySmall ?? const TextStyle()).copyWith(
-      fontFamily: 'monospace',
+      fontFamily: 'JetBrains Mono',
+      fontFamilyFallback: const ['monospace'],
       color: fgColor,
     );
 

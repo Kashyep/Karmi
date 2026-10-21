@@ -103,7 +103,11 @@ class _FileCardState extends State<FileCard> {
                       child: SelectableText(
                         widget.content,
                         style: (textTheme.bodySmall ?? const TextStyle())
-                            .copyWith(fontFamily: 'monospace', color: fgColor),
+                            .copyWith(
+                              fontFamily: 'JetBrains Mono',
+                              fontFamilyFallback: const ['monospace'],
+                              color: fgColor,
+                            ),
                       ),
                     ),
                   ),

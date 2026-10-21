@@ -9,6 +9,7 @@ const Map<String, String> kBundledFontLicences = {
   'Trykker': 'assets/google_fonts/Trykker-OFL.txt',
   'Noto Sans Devanagari': 'assets/google_fonts/NotoSansDevanagari-OFL.txt',
   'Noto Serif Devanagari': 'assets/google_fonts/NotoSerifDevanagari-OFL.txt',
+  'JetBrains Mono': 'assets/google_fonts/JetBrainsMono-OFL.txt',
 };
 
 bool _registered = false;

@@ -147,7 +147,8 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
         case 'code':
           final codeBg = colors?.muted ?? colorScheme.surfaceContainerHighest;
           final monoStyle = baseStyle.copyWith(
-            fontFamily: 'monospace',
+            fontFamily: 'JetBrains Mono',
+            fontFamilyFallback: const ['monospace'],
             backgroundColor: codeBg,
           );
           return TextSpan(

@@ -50,3 +50,9 @@ flutter:
     - family: Noto Serif Devanagari
       fonts:
         - asset: assets/google_fonts/NotoSerifDevanagari-Regular.ttf
+    # Monospace for code blocks and inline code (resolved by name; `monospace` is the fallback).
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/google_fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/google_fonts/JetBrainsMono-Bold.ttf
+          weight: 700
