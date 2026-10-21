@@ -164,7 +164,7 @@ void main() {
       expect(button.onPressed, isNotNull);
     });
 
-    testWidgets('paste >= 2500 chars becomes chip, 2499 does not', (
+    testWidgets('paste > 2500 chars becomes chip, 2500 does not', (
       tester,
     ) async {
       ComposerSubmit? submitted;
@@ -181,8 +181,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 1. Enter 2499 chars -> should NOT create PasteChip
-      final text2499 = 'A' * 2499;
+      // 1. Enter 2500 chars -> should NOT create PasteChip (threshold is strict >)
+      final text2499 = 'A' * 2500;
       await tester.enterText(find.byType(TextField), text2499);
       await tester.pump();
 
@@ -196,13 +196,13 @@ void main() {
       await tester.enterText(find.byType(TextField), '');
       await tester.pump();
 
-      // 2. Paste 2500 chars -> should collapse into PasteChip
-      final text2500 = 'B' * 2500;
+      // 2. Paste 2501 chars -> should collapse into PasteChip
+      final text2500 = 'B' * 2501;
       await tester.enterText(find.byType(TextField), text2500);
       await tester.pump();
 
       expect(find.byType(PasteChip), findsOneWidget);
-      expect(find.text('Pasted text · 2500 chars'), findsOneWidget);
+      expect(find.text('Pasted text · 2501 chars'), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
         isEmpty,
