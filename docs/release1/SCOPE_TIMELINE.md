@@ -32,11 +32,11 @@ Onboarding, profiles, settings modal, usage/plans center, full liquid-glass dark
 
 | Phase | Content | Exit gate | Status |
 |---|---|---|---|
-| 0 Discovery | 5 explorers: architecture, UX inventory, perf baseline, data/API audit, test/release audit → `docs/release1/discovery/*.md` | Discovery files exist; perf baseline numbers recorded | NOT STARTED |
-| 0 Contract | `docs/release1/EXECUTION_CONTRACT.md` (models, stream events, finish/error, API ownership, tokens, file ownership, test reqs, metrics, migration + rollback) | Contract merged on branch; DEPENDENCY_BOARD references it | NOT STARTED |
-| 1 Build | Squads A–G implement; H writes tests and strategy; shared files serialized per board | Each squad handoff in `docs/release1/handoffs/` with files, tests, risks | NOT STARTED |
-| 2 Integrate | Merge in contract order; backend `make`/pytest; `flutter analyze`; `flutter test` incl. goldens (IST); new tests for stream interruption/resume, persistence/search/delete/archive, composer paste, scroll behaviour; perf before/after; independent audit of risky work | QA_REPORT approval by Manager-QAReleaseLead | NOT STARTED |
-| 2 Release | `RELEASE_REPORT.md`, Memory.md updated with verified state only | Acceptance evidence list complete | NOT STARTED |
+| 0 Discovery | 5 explorers: architecture, UX inventory, perf baseline, data/API audit, test/release audit → `docs/release1/discovery/*.md` | Discovery files exist; perf baseline numbers recorded | DONE |
+| 0 Contract | `docs/release1/EXECUTION_CONTRACT.md` (models, stream events, finish/error, API ownership, tokens, file ownership, test reqs, metrics, migration + rollback) | Contract merged on branch; DEPENDENCY_BOARD references it | DONE (5de20a8) |
+| 1 Build | Squads A–G implement; H writes tests and strategy; shared files serialized per board | Each squad handoff in `docs/release1/handoffs/` with files, tests, risks | MERGED (handoffs A–G, BW, FIX, QA1, WIRING present) |
+| 2 Integrate | Merge in contract order; backend `make`/pytest; `flutter analyze`; `flutter test` incl. goldens (IST); new tests for stream interruption/resume, persistence/search/delete/archive, composer paste, scroll behaviour; perf before/after; independent audit of risky work | QA_REPORT approval by Manager-QAReleaseLead | IN PROGRESS. Backend re-run at `4b95f5c` clean. Supervisor: analyze clean, a11y/chat 103 passed at `4b95f5c`. QA_REPORT updated for Boss rejection round 1; not signed off. |
+| 2 Release | `RELEASE_REPORT.md`, Memory.md updated with verified state only | Acceptance evidence list complete | IN PROGRESS. `RELEASE_REPORT.md` final; PENDING-USER items (section 11) not run. |
 
 ## Sequencing (critical path)
 
