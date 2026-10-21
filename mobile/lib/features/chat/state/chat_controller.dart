@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../api/models.dart';
 import '../../../api/stream/run_stream_client.dart';
 
 /// Phase of a chat run in the controller state machine.
@@ -479,6 +480,9 @@ class ChatController extends ChangeNotifier {
           assistantMessageId: event.assistantMessageId,
           status: msgStatus,
           finishReason: event.finishReason,
+          outcome: event.outcome == null
+              ? null
+              : Outcome.fromWire(event.outcome),
         );
         _setPhase(ChatRunPhase.finished);
         break;
@@ -577,6 +581,7 @@ class ChatController extends ChangeNotifier {
     String? assistantMessageId,
     required MessageStatus status,
     required FinishReason finishReason,
+    Outcome? outcome,
   }) {
     final targetId = assistantMessageId ?? _currentAssistantMessageId;
     final index = _messages.indexWhere((m) => m.id == targetId);
@@ -585,6 +590,7 @@ class ChatController extends ChangeNotifier {
       _messages[index] = current.copyWith(
         status: status,
         finishReason: finishReason,
+        outcome: outcome ?? current.outcome,
         updatedAt: DateTime.now(),
       );
     }

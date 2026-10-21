@@ -8,6 +8,7 @@ import '../../widgets/feedback.dart';
 import '../../widgets/karmi_card.dart';
 import '../history/conversation_list.dart';
 import '../history/conversation_list_controller.dart';
+import '../tasks/task_confirmation_sheet.dart';
 import 'composer.dart';
 import 'composer/draft_store.dart';
 import 'error_card.dart';
@@ -457,6 +458,17 @@ class _ChatScreenState extends State<ChatScreen> {
           : null,
       onRegenerate: isLastAssistant && !_isBusy
           ? () => _chatController.regenerate(msg.id)
+          : null,
+      onReviewDetails: msg.outcome == Outcome.askUser
+          ? () => showTaskConfirmationSheet(
+              context,
+              MessageView(
+                runId: msg.runId ?? msg.id,
+                status: msg.status.wireName,
+                outcome: Outcome.askUser,
+                response: msg.content,
+              ),
+            )
           : null,
       onFeedback: msg.role == 'assistant'
           ? (rating) => _onFeedback(msg, rating)

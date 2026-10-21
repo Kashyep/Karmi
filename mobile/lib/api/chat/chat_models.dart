@@ -1,6 +1,8 @@
 /// Wire types for Karmi chat and conversations.
 library;
 
+import '../models.dart';
+
 enum FinishReason {
   stop('stop'),
   length('length'),
@@ -148,6 +150,7 @@ class ChatMessageView {
     required this.status,
     required this.content,
     this.finishReason,
+    this.outcome,
     this.runId,
     this.parentMessageId,
     this.variantIndex = 0,
@@ -195,6 +198,10 @@ class ChatMessageView {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  /// Task outcome from the run-finished event (`ASK_USER` etc.). Client-side
+  /// only: not part of the message JSON, so it is absent after a reload.
+  final Outcome? outcome;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'conversationId': conversationId,
@@ -217,6 +224,7 @@ class ChatMessageView {
     MessageStatus? status,
     String? content,
     FinishReason? finishReason,
+    Outcome? outcome,
     String? runId,
     String? parentMessageId,
     int? variantIndex,
@@ -230,6 +238,7 @@ class ChatMessageView {
     status: status ?? this.status,
     content: content ?? this.content,
     finishReason: finishReason ?? this.finishReason,
+    outcome: outcome ?? this.outcome,
     runId: runId ?? this.runId,
     parentMessageId: parentMessageId ?? this.parentMessageId,
     variantIndex: variantIndex ?? this.variantIndex,
