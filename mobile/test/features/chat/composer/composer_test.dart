@@ -181,15 +181,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 1. Enter 2500 chars -> should NOT create PasteChip
-      final textNo = 'A' * 2500;
-      await tester.enterText(find.byType(TextField), textNo);
+      // 1. Enter 2500 chars -> should NOT create PasteChip (threshold is strict >)
+      final text2499 = 'A' * 2500;
+      await tester.enterText(find.byType(TextField), text2499);
       await tester.pump();
 
       expect(find.byType(PasteChip), findsNothing);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
-        textNo,
+        text2499,
       );
 
       // Clear field
