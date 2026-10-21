@@ -60,8 +60,6 @@ void main() {
         final field = tester.widget<TextField>(textFieldFinder);
         expect(field.controller?.text, text2500);
       },
-      // BUG: mobile/lib/features/chat/composer.dart:155 uses diff >= longPasteThreshold instead of > longPasteThreshold; 2500 chars is chipped when only > 2500 should be chipped per contract §3.3
-      skip: true,
     );
 
     testWidgets(

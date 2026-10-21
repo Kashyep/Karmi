@@ -91,6 +91,10 @@ class _ComposerState extends State<Composer> {
         // Shift+Enter inserts newline; let TextField handle it
         return KeyEventResult.ignored;
       }
+      if (_controller.value.composing.isValid) {
+        // IME composing active; let IME handle Enter
+        return KeyEventResult.ignored;
+      }
       // Plain Enter sends if allowed, otherwise consumes to prevent empty newlines
       if (_canSend) {
         _send();
@@ -152,7 +156,7 @@ class _ComposerState extends State<Composer> {
     final newText = _controller.text;
     final diff = newText.length - _previousText.length;
 
-    if (diff >= longPasteThreshold) {
+    if (diff > longPasteThreshold) {
       _isHandlingPaste = true;
 
       int prefixLen = 0;
@@ -171,7 +175,7 @@ class _ComposerState extends State<Composer> {
       }
 
       final inserted = newText.substring(prefixLen, newText.length - suffixLen);
-      if (inserted.length >= longPasteThreshold) {
+      if (inserted.length > longPasteThreshold) {
         final remaining =
             _previousText.substring(0, prefixLen) +
             _previousText.substring(_previousText.length - suffixLen);

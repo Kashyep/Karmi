@@ -121,8 +121,55 @@ void main() {
         // Must not send while composing
         expect(submitted, isNull);
       },
-      // BUG: mobile/lib/features/chat/composer.dart:88 _handleKeyEvent does not check controller.value.composing.isValid or text selection composing before sending per contract §3.3
-      skip: true,
+    );
+
+    testWidgets(
+      'IME composing transitions: valid range blocks Enter, invalid range allows Enter',
+      (tester) async {
+        ComposerSubmit? submitted;
+        await tester.pumpWidget(
+          _wrap(
+            Composer(
+              draftKey: 'test-ime-transition',
+              busy: false,
+              onSubmit: (s) => submitted = s,
+              onStop: () {},
+              draftStore: _KeyDraftStore(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final textField = find.byType(TextField);
+        await tester.tap(textField);
+        await tester.pump();
+
+        final controller = tester.widget<TextField>(textField).controller!;
+        // 1. While composing is valid, Enter must not submit
+        controller.value = const TextEditingValue(
+          text: 'konnichiwa',
+          selection: TextSelection.collapsed(offset: 10),
+          composing: TextRange(start: 0, end: 10),
+        );
+        await tester.pump();
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+        expect(submitted, isNull);
+
+        // 2. Once composing ends (invalid composing range), Enter must submit
+        controller.value = const TextEditingValue(
+          text: 'konnichiwa',
+          selection: TextSelection.collapsed(offset: 10),
+          composing: TextRange.empty,
+        );
+        await tester.pump();
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+        expect(submitted, isNotNull);
+        expect(submitted!.text, 'konnichiwa');
+      },
     );
   });
 }
