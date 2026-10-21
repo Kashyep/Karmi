@@ -52,6 +52,13 @@ class KarmiShell extends StatefulWidget {
 
 class _KarmiShellState extends State<KarmiShell> {
   int _index = 0;
+  final _chat = ChatController();
+
+  @override
+  void dispose() {
+    _chat.dispose();
+    super.dispose();
+  }
 
   void _openPlans() => Navigator.of(context).push(
     KarmiMotion.route<void>(
@@ -75,7 +82,7 @@ class _KarmiShellState extends State<KarmiShell> {
       showLicensePage(context: context, applicationName: 'Karmi');
 
   late final List<Widget> _pages = [
-    ChatScreen(api: widget.api, onOpenPlans: _openPlans),
+    ChatScreen(api: widget.api, controller: _chat, onOpenPlans: _openPlans),
     TasksScreen(api: widget.api),
     UsageScreen(api: widget.api),
     SettingsScreen(
@@ -107,6 +114,12 @@ class _KarmiShellState extends State<KarmiShell> {
         appBar: AppBar(
           title: Semantics(header: true, child: title),
           actions: [
+            if (_index == 0)
+              IconButton(
+                tooltip: 'New chat',
+                icon: const Icon(Icons.add_comment_outlined),
+                onPressed: _chat.newChat,
+              ),
             _OverflowMenu(
               onArmory: _openArmory,
               onPlans: _openPlans,
@@ -136,6 +149,12 @@ class _KarmiShellState extends State<KarmiShell> {
       // Material menu, not GlassMenu: on device GlassMenu's items were
       // missing from the accessibility tree (TalkBack could not reach them).
       actions: [
+        if (_index == 0)
+          IconButton(
+            tooltip: 'New chat',
+            icon: const Icon(Icons.add_comment_outlined),
+            onPressed: _chat.newChat,
+          ),
         _OverflowMenu(
           onArmory: _openArmory,
           onPlans: _openPlans,

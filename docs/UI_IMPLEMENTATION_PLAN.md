@@ -26,7 +26,9 @@ assumptions to confirm during the task that first depends on them.
 
 API surface the app will consume (from `src/daily_agent/api.py` and `schemas.py`):
 
-- `POST /v1/messages` takes `{text, idempotency_key}` and returns `MessageView{run_id, status, outcome, response, route}`.
+- `POST /v1/messages` takes `{text, idempotency_key, history?}` and returns `MessageView{run_id, status, outcome, response, route}`.
+  `history` is optional: up to 20 earlier `{role: user|assistant, content}` turns (oldest first, 1..8,000 chars each). The
+  server trims it to the plan's input budget and never stores it; a retry must resend the same history or it gets 409.
   The response is synchronous; there is no streaming endpoint. A duplicate request that is still in flight gets HTTP 409.
 - `GET /v1/usage` returns `UsageView{plan_id, plan_label, everyday_used, everyday_limit, reserved_micro, settled_micro, spend_limit_micro, reset_at, period_reset_at, policy_version}`.
 - Notes (used for memory): `POST`, `GET` and `DELETE /v1/notes`.
@@ -351,7 +353,7 @@ supports today.
 | Screen | API today | Gaps |
 | --- | --- | --- |
 | Welcome / sign-in | `POST /dev/token` (dev only) | **No production auth** (Q3) |
-| **Chat** | `POST /v1/messages` | No history endpoint and no streaming. States: empty, generating (while the request is pending), `outcome` → copy mapping, failed, offline, 409 in-flight, limit reached |
+| **Chat** | `POST /v1/messages` | No history endpoint and no streaming; the app sends recent turns as `history` and keeps the transcript in memory only ("New chat" clears it). States: empty, generating (while the request is pending), `outcome` → copy mapping, failed, offline, 409 in-flight, limit reached |
 | Tasks / reminders | `POST /v1/tasks`, `PATCH .../complete`, `POST /v1/reminders` | **No `GET /v1/tasks` or reminders list** (Q4) |
 | Usage & plan | `GET /v1/usage` | No plans catalogue endpoint; the labels come from `plans.py` |
 | Memory | `GET`, `POST`, `DELETE /v1/notes` | n/a |

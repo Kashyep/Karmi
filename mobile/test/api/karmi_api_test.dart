@@ -65,6 +65,52 @@ void main() {
       });
     });
 
+    test(
+      'sendMessage includes history when non-empty, omits when empty or null',
+      () async {
+        backend.on(
+          'POST',
+          '/v1/messages',
+          (_) => jsonResponse(messageJson('ACCEPT')),
+        );
+        // 1. Non-empty history
+        await api.sendMessage(
+          'how are you',
+          idempotencyKey: 'k1',
+          history: const [
+            HistoryTurn(role: 'user', content: 'hello'),
+            HistoryTurn(role: 'assistant', content: 'hi there'),
+          ],
+        );
+        expect(jsonDecode(backend.requests[0].body), {
+          'text': 'how are you',
+          'idempotency_key': 'k1',
+          'history': [
+            {'role': 'user', 'content': 'hello'},
+            {'role': 'assistant', 'content': 'hi there'},
+          ],
+        });
+
+        // 2. Empty history
+        await api.sendMessage(
+          'test 2',
+          idempotencyKey: 'k2',
+          history: const [],
+        );
+        expect(jsonDecode(backend.requests[1].body), {
+          'text': 'test 2',
+          'idempotency_key': 'k2',
+        });
+
+        // 3. Null history
+        await api.sendMessage('test 3', idempotencyKey: 'k3');
+        expect(jsonDecode(backend.requests[2].body), {
+          'text': 'test 3',
+          'idempotency_key': 'k3',
+        });
+      },
+    );
+
     test('every wire outcome maps to a lowerCamel member', () {
       const wire = {
         'ACCEPT': Outcome.accept,
@@ -402,6 +448,39 @@ void main() {
           'idempotency_key': 'regen-key-1',
           'reason': 'wrong',
         });
+      },
+    );
+
+    test(
+      'regenerateRun includes history when non-empty, omits when empty or null',
+      () async {
+        backend.on(
+          'POST',
+          '/v1/runs/run-300/regenerate',
+          (_) => jsonResponse(messageJson('ACCEPT')),
+        );
+
+        // With history
+        await api.regenerateRun(
+          'run-300',
+          text: 'hello',
+          idempotencyKey: 'k-regen-1',
+          history: const [HistoryTurn(role: 'user', content: 'prev')],
+        );
+        expect(jsonDecode(backend.requests[0].body)['history'], [
+          {'role': 'user', 'content': 'prev'},
+        ]);
+
+        // Without history
+        await api.regenerateRun(
+          'run-300',
+          text: 'hello',
+          idempotencyKey: 'k-regen-2',
+        );
+        expect(
+          (jsonDecode(backend.requests[1].body) as Map).containsKey('history'),
+          isFalse,
+        );
       },
     );
 
