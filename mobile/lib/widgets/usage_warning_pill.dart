@@ -7,6 +7,10 @@ import '../theme/karmi_tokens.dart';
 /// Renders nothing below [KarmiTokens.usageWarningThreshold]. At 100% or more
 /// it reads "Allowance reached"; otherwise "Near limit". Colours and spacing
 /// come from [KarmiTokens] only.
+///
+/// Accessibility: the pill exposes exactly one labelled semantics node (the
+/// label is the visible text); the decorative icon and the text itself are
+/// excluded so the label is not announced twice.
 class UsageWarningPill extends StatelessWidget {
   const UsageWarningPill({super.key, required this.fraction});
 
@@ -24,39 +28,39 @@ class UsageWarningPill extends StatelessWidget {
     final baseStyle =
         Theme.of(context).textTheme.labelMedium ?? const TextStyle();
 
-    return Container(
-      key: const ValueKey('usage-warning-pill'),
-      padding: const EdgeInsets.symmetric(
-        horizontal: KarmiTokens.s12,
-        vertical: KarmiTokens.s8,
-      ),
-      decoration: BoxDecoration(
-        color: KarmiTokens.usageWarningFill(brightness),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ExcludeSemantics(
-            child: Icon(
-              Icons.warning_amber,
-              size: 16,
-              color: KarmiTokens.usageWarningIcon(brightness),
-            ),
-          ),
-          const SizedBox(width: KarmiTokens.s4),
-          Semantics(
-            label: label,
-            container: true,
-            child: Text(
-              label,
-              style: baseStyle.copyWith(
-                color: KarmiTokens.usageWarningForeground(brightness),
-                fontWeight: FontWeight.w600,
+    return Semantics(
+      label: label,
+      container: true,
+      child: Container(
+        key: const ValueKey('usage-warning-pill'),
+        padding: const EdgeInsets.symmetric(
+          horizontal: KarmiTokens.s12,
+          vertical: KarmiTokens.s8,
+        ),
+        decoration: BoxDecoration(
+          color: KarmiTokens.usageWarningFill(brightness),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: ExcludeSemantics(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.warning_amber,
+                size: 16,
+                color: KarmiTokens.usageWarningIcon(brightness),
               ),
-            ),
+              const SizedBox(width: KarmiTokens.s4),
+              Text(
+                label,
+                style: baseStyle.copyWith(
+                  color: KarmiTokens.usageWarningForeground(brightness),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

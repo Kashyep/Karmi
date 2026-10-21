@@ -85,59 +85,79 @@ Future<void> showRenameDialog(
   BuildContext context, {
   required ConversationView conversation,
   required ConversationListController controller,
-}) async {
-  final textController = TextEditingController(text: conversation.title ?? '');
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (_) =>
+        _RenameDialog(conversation: conversation, controller: controller),
+  );
+}
 
-  try {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            final trimmed = textController.text.trim();
-            final isValid = trimmed.isNotEmpty && trimmed.length <= 200;
+/// Owns the title [TextEditingController] for the rename dialog.
+///
+/// The controller is created and disposed by this [State], so it lives exactly
+/// as long as the dialog subtree. Disposing it after `showDialog` returns is
+/// too early: the route is still animating out and its [TextField] still uses
+/// the controller.
+class _RenameDialog extends StatefulWidget {
+  const _RenameDialog({required this.conversation, required this.controller});
 
-            return AlertDialog(
-              title: const Text('Rename conversation'),
-              content: TextField(
-                controller: textController,
-                autofocus: true,
-                maxLength: 200,
-                decoration: const InputDecoration(
-                  hintText: 'Conversation title',
-                ),
-                onChanged: (_) => setState(() {}),
-                onSubmitted: isValid
-                    ? (value) {
-                        final title = value.trim();
-                        if (title.isNotEmpty && title.length <= 200) {
-                          Navigator.of(dialogContext).pop();
-                          controller.rename(conversation.id, title);
-                        }
-                      }
-                    : null,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: isValid
-                      ? () {
-                          Navigator.of(dialogContext).pop();
-                          controller.rename(conversation.id, trimmed);
-                        }
-                      : null,
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+  final ConversationView conversation;
+  final ConversationListController controller;
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final TextEditingController _textController = TextEditingController(
+    text: widget.conversation.title ?? '',
+  );
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = _textController.text.trim();
+    final isValid = trimmed.isNotEmpty && trimmed.length <= 200;
+
+    return AlertDialog(
+      title: const Text('Rename conversation'),
+      content: TextField(
+        controller: _textController,
+        autofocus: true,
+        maxLength: 200,
+        decoration: const InputDecoration(hintText: 'Conversation title'),
+        onChanged: (_) => setState(() {}),
+        onSubmitted: isValid
+            ? (value) {
+                final title = value.trim();
+                if (title.isNotEmpty && title.length <= 200) {
+                  Navigator.of(context).pop();
+                  widget.controller.rename(widget.conversation.id, title);
+                }
+              }
+            : null,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: isValid
+              ? () {
+                  Navigator.of(context).pop();
+                  widget.controller.rename(widget.conversation.id, trimmed);
+                }
+              : null,
+          child: const Text('Save'),
+        ),
+      ],
     );
-  } finally {
-    textController.dispose();
   }
 }
