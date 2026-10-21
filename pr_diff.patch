@@ -1,0 +1,2465 @@
+diff --git a/docs/UI_IMPLEMENTATION_PLAN.md b/docs/UI_IMPLEMENTATION_PLAN.md
+index 7183bd0..fa4bc90 100644
+--- a/docs/UI_IMPLEMENTATION_PLAN.md
++++ b/docs/UI_IMPLEMENTATION_PLAN.md
+@@ -26,7 +26,9 @@ assumptions to confirm during the task that first depends on them.
+
+ API surface the app will consume (from `src/daily_agent/api.py` and `schemas.py`):
+
+-- `POST /v1/messages` takes `{text, idempotency_key}` and returns `MessageView{run_id, status, outcome, response, route}`.
++- `POST /v1/messages` takes `{text, idempotency_key, history?}` and returns `MessageView{run_id, status, outcome, response, route}`.
++  `history` is optional: up to 20 earlier `{role: user|assistant, content}` turns (oldest first, 1..8,000 chars each). The
++  server trims it to the plan's input budget and never stores it; a retry must resend the same history or it gets 409.
+   The response is synchronous; there is no streaming endpoint. A duplicate request that is still in flight gets HTTP 409.
+ - `GET /v1/usage` returns `UsageView{plan_id, plan_label, everyday_used, everyday_limit, reserved_micro, settled_micro, spend_limit_micro, reset_at, period_reset_at, policy_version}`.
+ - Notes (used for memory): `POST`, `GET` and `DELETE /v1/notes`.
+@@ -351,7 +353,7 @@ supports today.
+ | Screen | API today | Gaps |
+ | --- | --- | --- |
+ | Welcome / sign-in | `POST /dev/token` (dev only) | **No production auth** (Q3) |
+-| **Chat** | `POST /v1/messages` | No history endpoint and no streaming. States: empty, generating (while the request is pending), `outcome` → copy mapping, failed, offline, 409 in-flight, limit reached |
++| **Chat** | `POST /v1/messages` | No history endpoint and no streaming; the app sends recent turns as `history` and keeps the transcript in memory only ("New chat" clears it). States: empty, generating (while the request is pending), `outcome` → copy mapping, failed, offline, 409 in-flight, limit reached |
+ | Tasks / reminders | `POST /v1/tasks`, `PATCH .../complete`, `POST /v1/reminders` | **No `GET /v1/tasks` or reminders list** (Q4) |
+ | Usage & plan | `GET /v1/usage` | No plans catalogue endpoint; the labels come from `plans.py` |
+ | Memory | `GET`, `POST`, `DELETE /v1/notes` | n/a |
+diff --git a/mobile/lib/api/karmi_api.dart b/mobile/lib/api/karmi_api.dart
+index 264ce2f..5792d6a 100644
+--- a/mobile/lib/api/karmi_api.dart
++++ b/mobile/lib/api/karmi_api.dart
+@@ -63,11 +63,17 @@ class KarmiApi {
+   Future<MessageView> sendMessage(
+     String text, {
+     required String idempotencyKey,
++    List<HistoryTurn>? history,
+   }) async {
+     final body = await _send(
+       'POST',
+       '/v1/messages',
+-      json: {'text': text, 'idempotency_key': idempotencyKey},
++      json: {
++        'text': text,
++        'idempotency_key': idempotencyKey,
++        if (history != null && history.isNotEmpty)
++          'history': history.map((t) => t.toJson()).toList(),
++      },
+     );
+     return MessageView.fromJson(body as Map<String, dynamic>);
+   }
+@@ -93,6 +99,7 @@ class KarmiApi {
+     required String text,
+     required String idempotencyKey,
+     String? reason,
++    List<HistoryTurn>? history,
+   }) async {
+     final body = await _send(
+       'POST',
+@@ -101,6 +108,8 @@ class KarmiApi {
+         'text': text,
+         'idempotency_key': idempotencyKey,
+         if (reason != null) 'reason': reason,
++        if (history != null && history.isNotEmpty)
++          'history': history.map((t) => t.toJson()).toList(),
+       },
+     );
+     return MessageView.fromJson(body as Map<String, dynamic>);
+@@ -112,11 +121,13 @@ class KarmiApi {
+     required String text,
+     required String idempotencyKey,
+     String? reason,
++    List<HistoryTurn>? history,
+   }) => regenerateRun(
+     runId,
+     text: text,
+     idempotencyKey: idempotencyKey,
+     reason: reason,
++    history: history,
+   );
+
+   /// `POST /v1/access-code`. Unlocks a higher beta tier; 404 means invalid code.
+@@ -250,3 +261,32 @@ class KarmiApi {
+     }
+   }
+ }
++
++/// One earlier chat turn sent with a request for context.
++class HistoryTurn {
++  const HistoryTurn({required this.role, required this.content});
++
++  final String role;
++  final String content;
++
++  Map<String, dynamic> toJson() => {'role': role, 'content': content};
++
++  factory HistoryTurn.fromJson(Map<String, dynamic> json) => HistoryTurn(
++    role: json['role'] as String,
++    content: json['content'] as String,
++  );
++
++  @override
++  bool operator ==(Object other) =>
++      identical(this, other) ||
++      other is HistoryTurn &&
++          runtimeType == other.runtimeType &&
++          role == other.role &&
++          content == other.content;
++
++  @override
++  int get hashCode => Object.hash(role, content);
++
++  @override
++  String toString() => 'HistoryTurn(role: $role, content: $content)';
++}
+diff --git a/mobile/lib/features/chat/chat_controller.dart b/mobile/lib/features/chat/chat_controller.dart
+new file mode 100644
+index 0000000..576a9ca
+--- /dev/null
++++ b/mobile/lib/features/chat/chat_controller.dart
+@@ -0,0 +1,6 @@
++import 'package:flutter/foundation.dart';
++
++/// Coordinates external actions (such as shell app bar buttons) with [ChatScreen].
++class ChatController extends ChangeNotifier {
++  void newChat() => notifyListeners();
++}
+diff --git a/mobile/lib/features/chat/chat_entry.dart b/mobile/lib/features/chat/chat_entry.dart
+index efa3c47..d788ee4 100644
+--- a/mobile/lib/features/chat/chat_entry.dart
++++ b/mobile/lib/features/chat/chat_entry.dart
+@@ -1,4 +1,4 @@
+-import '../../api/models.dart';
++import '../../api/karmi_api.dart';
+
+ /// Delivery state of a message the user typed.
+ enum SendState {
+@@ -11,8 +11,9 @@ enum SendState {
+   capacityFull,
+ }
+
+-/// One row in the local, in-memory transcript. There is no history endpoint,
+-/// so the transcript is not persisted.
++/// One row in the local, in-memory transcript. There is no history endpoint;
++/// recent turns are sent with each message to provide context, but the transcript
++/// is not persisted.
+ sealed class ChatEntry {
+   const ChatEntry(this.id);
+
+@@ -26,11 +27,15 @@ final class UserEntry extends ChatEntry {
+     required String id,
+     required this.text,
+     required this.idempotencyKey,
++    this.history = const [],
+     this.state = SendState.sending,
+   }) : super(id);
+
+   final String text;
+   final String idempotencyKey;
++
++  /// Earlier turns sent with this message for context. Reused on retries.
++  final List<HistoryTurn> history;
+   SendState state;
+
+   /// Allowance or beta-capacity reset time from a 429 response, when known.
+diff --git a/mobile/lib/features/chat/chat_screen.dart b/mobile/lib/features/chat/chat_screen.dart
+index 1b191ea..49d69a7 100644
+--- a/mobile/lib/features/chat/chat_screen.dart
++++ b/mobile/lib/features/chat/chat_screen.dart
+@@ -5,7 +5,10 @@ import '../../theme/karmi_motion.dart';
+ import '../../widgets/feedback.dart';
+ import '../../widgets/karmi_card.dart';
+ import '../tasks/task_confirmation_sheet.dart';
++import 'chat_controller.dart';
+ import 'chat_entry.dart';
++
++export 'chat_controller.dart';
+ import 'composer.dart';
+ import 'message_bubble.dart';
+ import 'status_chip.dart';
+@@ -14,9 +17,15 @@ import 'status_chip.dart';
+ /// in-flight (409) / limit-reached (429) states. No streaming or history exists
+ /// server-side, so the transcript is in memory only.
+ class ChatScreen extends StatefulWidget {
+-  const ChatScreen({super.key, required this.api, this.onOpenPlans});
++  const ChatScreen({
++    super.key,
++    required this.api,
++    this.controller,
++    this.onOpenPlans,
++  });
+
+   final KarmiApi api;
++  final ChatController? controller;
+   final VoidCallback? onOpenPlans;
+
+   @override
+@@ -30,18 +39,44 @@ class _ChatScreenState extends State<ChatScreen> {
+   UserEntry? _pending;
+   _ActionError? _actionError;
+
++  @override
++  void initState() {
++    super.initState();
++    widget.controller?.addListener(_newChat);
++  }
++
++  @override
++  void didUpdateWidget(covariant ChatScreen oldWidget) {
++    super.didUpdateWidget(oldWidget);
++    if (oldWidget.controller != widget.controller) {
++      oldWidget.controller?.removeListener(_newChat);
++      widget.controller?.addListener(_newChat);
++    }
++  }
++
+   @override
+   void dispose() {
++    widget.controller?.removeListener(_newChat);
+     _scroll.dispose();
+     super.dispose();
+   }
+
++  void _newChat() {
++    setState(() {
++      _entries.clear();
++      _pending = null;
++      _actionError = null;
++    });
++  }
++
+   void _send(String text) {
+     _actionError = null;
++    final history = buildHistoryFromEntries(_entries);
+     final entry = UserEntry(
+       id: 'u${_nextId++}',
+       text: text,
+       idempotencyKey: KarmiApi.newIdempotencyKey(),
++      history: history,
+     );
+     setState(() => _entries.add(entry));
+     _deliver(entry);
+@@ -60,14 +95,17 @@ class _ChatScreenState extends State<ChatScreen> {
+       final reply = await widget.api.sendMessage(
+         entry.text,
+         idempotencyKey: entry.idempotencyKey,
++        history: entry.history,
+       );
+       if (!mounted) return;
++      if (!_entries.contains(entry)) return;
+       setState(() {
+         entry.state = SendState.sent;
+         _entries.add(ReplyEntry(id: 'r${_nextId++}', message: reply));
+       });
+     } on KarmiApiException catch (error) {
+       if (!mounted) return;
++      if (!_entries.contains(entry)) return;
+       setState(() {
+         entry.state = switch (error) {
+           NetworkException() => SendState.offline,
+@@ -80,7 +118,10 @@ class _ChatScreenState extends State<ChatScreen> {
+         if (error is BetaCapacityFullException) entry.resetAt = error.resetAt;
+       });
+     } finally {
+-      if (mounted) setState(() => _pending = null);
++      // A New chat may have started another send meanwhile; only clear our own.
++      if (mounted && identical(_pending, entry)) {
++        setState(() => _pending = null);
++      }
+     }
+     _scrollToEnd();
+   }
+@@ -109,7 +150,8 @@ class _ChatScreenState extends State<ChatScreen> {
+         reason: updated.feedbackReason,
+       );
+     } on KarmiApiException catch (error) {
+-      if (!mounted) return;
++      // The reply is gone after New chat: no banner for a cleared transcript.
++      if (!mounted || !_entries.contains(updated)) return;
+       setState(() {
+         _actionError = _ActionError(
+           title: "Couldn't send feedback",
+@@ -147,7 +189,7 @@ class _ChatScreenState extends State<ChatScreen> {
+         reason: reason,
+       );
+     } on KarmiApiException catch (error) {
+-      if (!mounted) return;
++      if (!mounted || !_entries.contains(updated)) return;
+       setState(() {
+         _actionError = _ActionError(
+           title: "Couldn't send feedback",
+@@ -186,6 +228,7 @@ class _ChatScreenState extends State<ChatScreen> {
+         text: prompt.text,
+         idempotencyKey: KarmiApi.newIdempotencyKey(),
+         reason: reply.feedbackReason,
++        history: prompt.history,
+       );
+       if (!mounted) return;
+       setState(() {
+@@ -193,7 +236,7 @@ class _ChatScreenState extends State<ChatScreen> {
+         _updateReply(updated, replacement);
+       });
+     } on KarmiApiException catch (error) {
+-      if (!mounted) return;
++      if (!mounted || !_entries.contains(updated)) return;
+       setState(() {
+         _actionError = _ActionError(
+           title: "Couldn't regenerate reply",
+@@ -443,3 +486,53 @@ class _UserRow extends StatelessWidget {
+     );
+   }
+ }
++
++/// Extracts recent turns from [entries] for context:
++/// - Completed UserEntry + ReplyEntry pairs BEFORE the message being sent.
++/// - Skips pairs whose user entry failed/offline/limit/capacity or reply outcome is DEFERRED.
++/// - Content truncated/skipped to fit 1..8000 chars (skip empty; truncate >8000 chars).
++/// - Newest 20 turns max (i.e. keep the last 20 turn objects, oldest first in the list).
++List<HistoryTurn> buildHistoryFromEntries(List<ChatEntry> entries) {
++  final turns = <HistoryTurn>[];
++  for (var i = 0; i < entries.length - 1; i++) {
++    final user = entries[i];
++    final reply = entries[i + 1];
++    if (user is UserEntry && reply is ReplyEntry) {
++      if (user.state != SendState.sent) continue;
++      if (reply.message.outcome == Outcome.deferred) continue;
++
++      final uText = user.text;
++      if (uText.isNotEmpty) {
++        turns.add(
++          HistoryTurn(role: 'user', content: truncateHistoryContent(uText)),
++        );
++      }
++
++      final rText = reply.message.response;
++      if (rText.isNotEmpty) {
++        turns.add(
++          HistoryTurn(
++            role: 'assistant',
++            content: truncateHistoryContent(rText),
++          ),
++        );
++      }
++    }
++  }
++  if (turns.length > 20) {
++    return turns.sublist(turns.length - 20);
++  }
++  return turns;
++}
++
++/// Truncates [text] to at most 8000 UTF-16 code units safely.
++/// If the code unit at index 7999 is a high surrogate (0xD800-0xDBFF),
++/// it cuts at 7999 instead to avoid splitting a surrogate pair.
++String truncateHistoryContent(String text) {
++  if (text.length <= 8000) return text;
++  final cu = text.codeUnitAt(7999);
++  if (cu >= 0xD800 && cu <= 0xDBFF) {
++    return text.substring(0, 7999);
++  }
++  return text.substring(0, 8000);
++}
+diff --git a/mobile/lib/features/chat/message_bubble.dart b/mobile/lib/features/chat/message_bubble.dart
+index bc64941..8468110 100644
+--- a/mobile/lib/features/chat/message_bubble.dart
++++ b/mobile/lib/features/chat/message_bubble.dart
+@@ -1,6 +1,7 @@
+ import 'dart:math' as math;
+
+ import 'package:flutter/material.dart';
++import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+
+ import '../../api/models.dart';
+ import '../../theme/karmi_colors.dart';
+@@ -73,7 +74,19 @@ class MessageBubble extends StatelessWidget {
+                   children: [
+                     StatusChip.outcome(reply!.message.outcome),
+                     const SizedBox(height: 8),
+-                    Text(reply!.message.response, style: text.bodyLarge),
++                    MarkdownBody(
++                      data: reply!.message.response,
++                      styleSheet: _markdownStyle(context, colors, text),
++                      selectable: false,
++                      onTapLink: (text, href, title) {},
++                      // Never fetch images named by a model reply; show the alt text.
++                      imageBuilder: (uri, title, alt) => Text(
++                        alt ?? '',
++                        style: text.bodyLarge?.copyWith(
++                          color: colors.mutedForeground,
++                        ),
++                      ),
++                    ),
+                     if (reply!.message.outcome == Outcome.askUser &&
+                         onReviewDetails != null) ...[
+                       const SizedBox(height: 4),
+@@ -111,6 +124,44 @@ class MessageBubble extends StatelessWidget {
+   }
+ }
+
++MarkdownStyleSheet _markdownStyle(
++  BuildContext context,
++  KarmiColors colors,
++  TextTheme text,
++) {
++  final bodyStyle =
++      text.bodyLarge?.copyWith(color: colors.foreground) ??
++      TextStyle(
++        color: colors.foreground,
++        fontFamilyFallback: KarmiTypography.sansFallback,
++      );
++  return MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
++    p: bodyStyle,
++    pPadding: EdgeInsets.zero,
++    listBullet: bodyStyle,
++    listBulletPadding: const EdgeInsets.only(right: 8),
++    a: bodyStyle.copyWith(
++      color: colors.primary,
++      decoration: TextDecoration.underline,
++    ),
++    code: TextStyle(
++      fontFamily: 'monospace',
++      fontFamilyFallback: KarmiTypography.sansFallback,
++      fontSize: (bodyStyle.fontSize ?? 16) * 0.88,
++      color: colors.foreground,
++    ),
++    codeblockDecoration: BoxDecoration(
++      color: colors.muted.withValues(alpha: 0.25),
++      borderRadius: BorderRadius.circular(8),
++      border: Border.all(color: colors.borderSubtle),
++    ),
++    codeblockPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
++    tableBorder: TableBorder.all(color: colors.borderSubtle),
++    tableBody: bodyStyle,
++    tableHead: bodyStyle.copyWith(fontWeight: FontWeight.bold),
++  );
++}
++
+ class _ReplyActions extends StatelessWidget {
+   const _ReplyActions({
+     required this.reply,
+diff --git a/mobile/lib/shell/karmi_shell.dart b/mobile/lib/shell/karmi_shell.dart
+index a191602..8849353 100644
+--- a/mobile/lib/shell/karmi_shell.dart
++++ b/mobile/lib/shell/karmi_shell.dart
+@@ -52,6 +52,13 @@ class KarmiShell extends StatefulWidget {
+
+ class _KarmiShellState extends State<KarmiShell> {
+   int _index = 0;
++  final _chat = ChatController();
++
++  @override
++  void dispose() {
++    _chat.dispose();
++    super.dispose();
++  }
+
+   void _openPlans() => Navigator.of(context).push(
+     KarmiMotion.route<void>(
+@@ -75,7 +82,7 @@ class _KarmiShellState extends State<KarmiShell> {
+       showLicensePage(context: context, applicationName: 'Karmi');
+
+   late final List<Widget> _pages = [
+-    ChatScreen(api: widget.api, onOpenPlans: _openPlans),
++    ChatScreen(api: widget.api, controller: _chat, onOpenPlans: _openPlans),
+     TasksScreen(api: widget.api),
+     UsageScreen(api: widget.api),
+     SettingsScreen(
+@@ -107,6 +114,12 @@ class _KarmiShellState extends State<KarmiShell> {
+         appBar: AppBar(
+           title: Semantics(header: true, child: title),
+           actions: [
++            if (_index == 0)
++              IconButton(
++                tooltip: 'New chat',
++                icon: const Icon(Icons.add_comment_outlined),
++                onPressed: _chat.newChat,
++              ),
+             _OverflowMenu(
+               onArmory: _openArmory,
+               onPlans: _openPlans,
+@@ -136,6 +149,12 @@ class _KarmiShellState extends State<KarmiShell> {
+       // Material menu, not GlassMenu: on device GlassMenu's items were
+       // missing from the accessibility tree (TalkBack could not reach them).
+       actions: [
++        if (_index == 0)
++          IconButton(
++            tooltip: 'New chat',
++            icon: const Icon(Icons.add_comment_outlined),
++            onPressed: _chat.newChat,
++          ),
+         _OverflowMenu(
+           onArmory: _openArmory,
+           onPlans: _openPlans,
+diff --git a/mobile/pubspec.lock b/mobile/pubspec.lock
+index ec6e33c..264685b 100644
+--- a/mobile/pubspec.lock
++++ b/mobile/pubspec.lock
+@@ -219,6 +219,14 @@ packages:
+     description: flutter
+     source: sdk
+     version: "0.0.0"
++  flutter_markdown_plus:
++    dependency: "direct main"
++    description:
++      name: flutter_markdown_plus
++      sha256: fce641d6c2106cc495de1cd603f97a4f9d615a97a64011928ded380dbdade935
++      url: "https://pub.dev"
++    source: hosted
++    version: "1.0.12"
+   flutter_plugin_android_lifecycle:
+     dependency: transitive
+     description:
+@@ -429,6 +437,14 @@ packages:
+       url: "https://pub.dev"
+     source: hosted
+     version: "1.3.0"
++  markdown:
++    dependency: transitive
++    description:
++      name: markdown
++      sha256: ee85086ad7698b42522c6ad42fe195f1b9898e4d974a1af4576c1a3a176cada9
++      url: "https://pub.dev"
++    source: hosted
++    version: "7.3.1"
+   matcher:
+     dependency: transitive
+     description:
+diff --git a/mobile/pubspec.yaml b/mobile/pubspec.yaml
+index 47936bd..280e09c 100644
+--- a/mobile/pubspec.yaml
++++ b/mobile/pubspec.yaml
+@@ -18,6 +18,7 @@ dependencies:
+   http: 1.6.0
+   clerk_flutter: 0.0.18-beta
+   clerk_auth: 0.0.18-beta
++  flutter_markdown_plus: 1.0.12
+
+ dev_dependencies:
+   flutter_test:
+diff --git a/mobile/test/api/karmi_api_test.dart b/mobile/test/api/karmi_api_test.dart
+index 5961f31..515cbac 100644
+--- a/mobile/test/api/karmi_api_test.dart
++++ b/mobile/test/api/karmi_api_test.dart
+@@ -65,6 +65,52 @@ void main() {
+       });
+     });
+
++    test(
++      'sendMessage includes history when non-empty, omits when empty or null',
++      () async {
++        backend.on(
++          'POST',
++          '/v1/messages',
++          (_) => jsonResponse(messageJson('ACCEPT')),
++        );
++        // 1. Non-empty history
++        await api.sendMessage(
++          'how are you',
++          idempotencyKey: 'k1',
++          history: const [
++            HistoryTurn(role: 'user', content: 'hello'),
++            HistoryTurn(role: 'assistant', content: 'hi there'),
++          ],
++        );
++        expect(jsonDecode(backend.requests[0].body), {
++          'text': 'how are you',
++          'idempotency_key': 'k1',
++          'history': [
++            {'role': 'user', 'content': 'hello'},
++            {'role': 'assistant', 'content': 'hi there'},
++          ],
++        });
++
++        // 2. Empty history
++        await api.sendMessage(
++          'test 2',
++          idempotencyKey: 'k2',
++          history: const [],
++        );
++        expect(jsonDecode(backend.requests[1].body), {
++          'text': 'test 2',
++          'idempotency_key': 'k2',
++        });
++
++        // 3. Null history
++        await api.sendMessage('test 3', idempotencyKey: 'k3');
++        expect(jsonDecode(backend.requests[2].body), {
++          'text': 'test 3',
++          'idempotency_key': 'k3',
++        });
++      },
++    );
++
+     test('every wire outcome maps to a lowerCamel member', () {
+       const wire = {
+         'ACCEPT': Outcome.accept,
+@@ -405,6 +451,39 @@ void main() {
+       },
+     );
+
++    test(
++      'regenerateRun includes history when non-empty, omits when empty or null',
++      () async {
++        backend.on(
++          'POST',
++          '/v1/runs/run-300/regenerate',
++          (_) => jsonResponse(messageJson('ACCEPT')),
++        );
++
++        // With history
++        await api.regenerateRun(
++          'run-300',
++          text: 'hello',
++          idempotencyKey: 'k-regen-1',
++          history: const [HistoryTurn(role: 'user', content: 'prev')],
++        );
++        expect(jsonDecode(backend.requests[0].body)['history'], [
++          {'role': 'user', 'content': 'prev'},
++        ]);
++
++        // Without history
++        await api.regenerateRun(
++          'run-300',
++          text: 'hello',
++          idempotencyKey: 'k-regen-2',
++        );
++        expect(
++          (jsonDecode(backend.requests[1].body) as Map).containsKey('history'),
++          isFalse,
++        );
++      },
++    );
++
+     test('FeedbackRating wire parsing', () {
+       expect(FeedbackRating.fromWire('up'), FeedbackRating.up);
+       expect(FeedbackRating.fromWire('down'), FeedbackRating.down);
+diff --git a/mobile/test/features/chat_markdown_golden_test.dart b/mobile/test/features/chat_markdown_golden_test.dart
+new file mode 100644
+index 0000000..8ad94fe
+--- /dev/null
++++ b/mobile/test/features/chat_markdown_golden_test.dart
+@@ -0,0 +1,64 @@
++@Tags(['golden'])
++library;
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:google_fonts/google_fonts.dart';
++import 'package:karmi_app/api/models.dart';
++import 'package:karmi_app/features/chat/chat_entry.dart';
++import 'package:karmi_app/features/chat/message_bubble.dart';
++
++import '../support/fake_backend.dart';
++import '../support/harness.dart';
++
++void main() {
++  Future<void> fontsReady(WidgetTester tester) async {
++    tester.takeException();
++    await tester.runAsync(GoogleFonts.pendingFonts);
++    await settle(tester);
++  }
++
++  testWidgets(
++    'Markdown reply renders bold, list, and code block without overflow at 360px',
++    (tester) async {
++      final reply = ReplyEntry(
++        id: 'reply_markdown_test',
++        message: MessageView.fromJson(
++          messageJson(
++            'ACCEPT',
++            response:
++                'Here is the **recommended approach**:\n\n'
++                '* Step 1: Initialize the configuration\n'
++                '* Step 2: **Execute** the pipeline\n'
++                '* Step 3: Verify the output\n\n'
++                '```python\n'
++                'def bubble_sort(items):\n'
++                '    for i in range(len(items)):\n'
++                '        for j in range(len(items) - i - 1):\n'
++                '            if items[j] > items[j + 1]: items[j], items[j + 1] = items[j + 1], items[j]\n'
++                '```\n\n'
++                'For details see [documentation](https://karmi.app/docs).',
++          ),
++        ),
++      );
++
++      await pumpHost(
++        tester,
++        Center(
++          child: Padding(
++            padding: const EdgeInsets.symmetric(horizontal: 16),
++            child: MessageBubble.reply(reply: reply),
++          ),
++        ),
++        size: const Size(360, 640),
++      );
++      await fontsReady(tester);
++
++      expectNoOverflow(tester);
++      await expectLater(
++        find.byType(MaterialApp),
++        matchesGoldenFile('../${goldenPath('chat_markdown_reply')}'),
++      );
++    },
++  );
++}
+diff --git a/mobile/test/features/chat_test.dart b/mobile/test/features/chat_test.dart
+index 4d61ed9..da47610 100644
+--- a/mobile/test/features/chat_test.dart
++++ b/mobile/test/features/chat_test.dart
+@@ -4,6 +4,9 @@ import 'dart:convert';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:http/http.dart' as http;
++import 'package:karmi_app/api/karmi_api.dart';
++import 'package:karmi_app/features/chat/chat_entry.dart';
++import 'package:karmi_app/features/chat/chat_screen.dart';
+ import 'package:karmi_app/features/chat/message_bubble.dart';
+ import 'package:karmi_app/features/chat/status_chip.dart';
+ import 'package:karmi_app/features/plans/plan_selection_screen.dart';
+@@ -348,4 +351,447 @@ void main() {
+       },
+     );
+   }
++
++  testWidgets('sendMessage posts history (and omits it when empty)', (
++    tester,
++  ) async {
++    final app = await pumpApp(
++      tester,
++      backend: backendWith((request) {
++        return jsonResponse(
++          messageJson('ACCEPT', response: 'Reply to message'),
++        );
++      }),
++    );
++
++    // 1. First message: history is empty and omitted from JSON body.
++    await send(tester, 'First message');
++    await settle(tester);
++
++    final req1 = app.backend.requests.firstWhere(
++      (r) => r.url.path == '/v1/messages',
++    );
++    final body1 = jsonDecode(req1.body) as Map<String, dynamic>;
++    expect(body1['text'], 'First message');
++    expect(body1.containsKey('history'), isFalse);
++
++    // 2. Second message: history contains the completed first turn.
++    await send(tester, 'Second message');
++    await settle(tester);
++
++    final req2 = app.backend.requests
++        .where((r) => r.url.path == '/v1/messages')
++        .toList()[1];
++    final body2 = jsonDecode(req2.body) as Map<String, dynamic>;
++    expect(body2['text'], 'Second message');
++    expect(body2['history'], [
++      {'role': 'user', 'content': 'First message'},
++      {'role': 'assistant', 'content': 'Reply to message'},
++    ]);
++  });
++
++  testWidgets('retry reuses the stored history', (tester) async {
++    var calls = 0;
++    final app = await pumpApp(
++      tester,
++      backend: backendWith((request) {
++        calls++;
++        if (calls == 1) {
++          return jsonResponse(messageJson('ACCEPT', response: 'First reply'));
++        }
++        if (calls == 2) {
++          return FakeBackend.network()(request);
++        }
++        return jsonResponse(messageJson('ACCEPT', response: 'Second reply'));
++      }),
++    );
++
++    await send(tester, 'First message');
++    await settle(tester);
++
++    // Second message fails offline.
++    await send(tester, 'Second message');
++    await settle(tester);
++    expect(find.text("You're offline"), findsOneWidget);
++
++    // Retry sending second message.
++    await tester.tap(find.text('Retry'));
++    await settle(tester);
++    expect(find.text("You're offline"), findsNothing);
++
++    final msgRequests = app.backend.requests
++        .where((r) => r.url.path == '/v1/messages')
++        .toList();
++    expect(msgRequests.length, 3);
++
++    final attempt1 = jsonDecode(msgRequests[1].body) as Map<String, dynamic>;
++    final attempt2 = jsonDecode(msgRequests[2].body) as Map<String, dynamic>;
++
++    expect(attempt1['idempotency_key'], attempt2['idempotency_key']);
++    expect(attempt1['history'], isNotNull);
++    expect(attempt1['history'], attempt2['history']);
++    expect(attempt1['history'], [
++      {'role': 'user', 'content': 'First message'},
++      {'role': 'assistant', 'content': 'First reply'},
++    ]);
++  });
++
++  testWidgets("'New chat' empties entries/history", (tester) async {
++    final app = await pumpApp(
++      tester,
++      backend: backendWith((_) {
++        return jsonResponse(messageJson('ACCEPT', response: 'Initial reply'));
++      }),
++    );
++
++    await send(tester, 'Message before reset');
++    await settle(tester);
++    expect(find.text('Message before reset'), findsOneWidget);
++
++    // Tap "New chat".
++    await tester.tap(find.byTooltip('New chat'));
++    await settle(tester);
++
++    // Entries are emptied, empty state is displayed.
++    expect(find.text('Message before reset'), findsNothing);
++    expect(
++      find.text('Ask a study question, or get help with maths or code.'),
++      findsOneWidget,
++    );
++
++    // Send next message; context/history is dropped.
++    await send(tester, 'Message in new chat');
++    await settle(tester);
++
++    final reqs = app.backend.requests
++        .where((r) => r.url.path == '/v1/messages')
++        .toList();
++    expect(reqs.length, 2);
++    final bodyAfterNewChat = jsonDecode(reqs[1].body) as Map<String, dynamic>;
++    expect(bodyAfterNewChat['text'], 'Message in new chat');
++    expect(bodyAfterNewChat.containsKey('history'), isFalse);
++  });
++
++  testWidgets('deferred/failed entries excluded from history', (tester) async {
++    var calls = 0;
++    final app = await pumpApp(
++      tester,
++      backend: backendWith((request) {
++        calls++;
++        if (calls == 1) {
++          // Outcome DEFERRED.
++          return jsonResponse(
++            messageJson('DEFERRED', response: "couldn't reach the AI service"),
++          );
++        }
++        if (calls == 2) {
++          // Network failure.
++          return FakeBackend.network()(request);
++        }
++        if (calls == 3) {
++          // Successful response.
++          return jsonResponse(messageJson('ACCEPT', response: 'Valid reply 3'));
++        }
++        return jsonResponse(messageJson('ACCEPT', response: 'Valid reply 4'));
++      }),
++    );
++
++    // 1. DEFERRED reply
++    await send(tester, 'Turn 1');
++    await settle(tester);
++
++    // 2. Failed reply
++    await send(tester, 'Turn 2');
++    await settle(tester);
++
++    // 3. Turn 3: both Turn 1 (deferred) and Turn 2 (failed) should be excluded from history.
++    await send(tester, 'Turn 3');
++    await settle(tester);
++
++    final reqs = app.backend.requests
++        .where((r) => r.url.path == '/v1/messages')
++        .toList();
++    expect(reqs.length, 3);
++    final body3 = jsonDecode(reqs[2].body) as Map<String, dynamic>;
++    // History should be omitted because no valid completed turns exist before Turn 3.
++    expect(body3.containsKey('history'), isFalse);
++
++    // 4. Turn 4: Turn 3 was successful, so only Turn 3 should be in history.
++    await send(tester, 'Turn 4');
++    await settle(tester);
++
++    final reqsAfter = app.backend.requests
++        .where((r) => r.url.path == '/v1/messages')
++        .toList();
++    expect(reqsAfter.length, 4);
++    final body4 = jsonDecode(reqsAfter[3].body) as Map<String, dynamic>;
++    expect(body4['history'], [
++      {'role': 'user', 'content': 'Turn 3'},
++      {'role': 'assistant', 'content': 'Valid reply 3'},
++    ]);
++  });
++
++  testWidgets(
++    'tapping New chat while send is in flight leaves transcript empty and drops history',
++    (tester) async {
++      final completer = Completer<http.Response>();
++      var callCount = 0;
++      final app = await pumpApp(
++        tester,
++        backend: backendWith((request) {
++          callCount++;
++          if (callCount == 1) {
++            return completer.future;
++          }
++          return jsonResponse(messageJson('ACCEPT', response: 'Second reply'));
++        }),
++      );
++
++      // Send first message, waiting on completer
++      await send(tester, 'First message in flight');
++      expect(find.text('First message in flight'), findsOneWidget);
++      expect(find.text('Working on your message'), findsOneWidget);
++
++      // Trigger New chat while send is in flight via shell app bar action
++      await tester.tap(find.byTooltip('New chat'));
++      await tester.pump();
++
++      // Transcript is cleared immediately
++      expect(find.text('First message in flight'), findsNothing);
++      expect(
++        find.text('Ask a study question, or get help with maths or code.'),
++        findsOneWidget,
++      );
++
++      // Complete the in-flight request
++      completer.complete(
++        jsonResponse(messageJson('ACCEPT', response: 'Stale reply')),
++      );
++      await settle(tester);
++
++      // The transcript stays empty (the stale reply was discarded)
++      expect(find.text('Stale reply'), findsNothing);
++      expect(
++        find.text('Ask a study question, or get help with maths or code.'),
++        findsOneWidget,
++      );
++
++      // Next send has empty history
++      await send(tester, 'Second message');
++      await settle(tester);
++
++      final reqs = app.backend.requests
++          .where((r) => r.url.path == '/v1/messages')
++          .toList();
++      expect(reqs.length, 2);
++      final body2 = jsonDecode(reqs[1].body) as Map<String, dynamic>;
++      expect(body2['text'], 'Second message');
++      expect(body2.containsKey('history'), isFalse);
++    },
++  );
++
++  testWidgets(
++    'tapping New chat while regenerate is in flight drops stale error banner',
++    (tester) async {
++      final completer = Completer<http.Response>();
++      await pumpApp(
++        tester,
++        backend: backendWith((request) {
++          return jsonResponse(messageJson('ACCEPT', response: 'Initial reply'));
++        })..on('POST', '/v1/runs/run-1/regenerate', (_) => completer.future),
++      );
++
++      // 1. First POST /v1/messages returns an ACCEPT reply.
++      await send(tester, 'First message');
++      await settle(tester);
++      expect(find.text('Initial reply'), findsOneWidget);
++
++      // 2. Tap the reply's regenerate action while regenerate is in flight.
++      await tester.tap(find.byTooltip('Regenerate response'));
++      await tester.pump();
++
++      // 3. Tap New chat and pump.
++      await tester.tap(find.byTooltip('New chat'));
++      await tester.pump();
++
++      // 4. Complete the regenerate completer with an error response.
++      completer.complete(http.Response('{}', 500));
++      await settle(tester);
++
++      // 5. Expect no stale error banner and empty state is shown.
++      expect(find.text("Couldn't regenerate reply"), findsNothing);
++      expect(
++        find.text('Ask a study question, or get help with maths or code.'),
++        findsOneWidget,
++      );
++    },
++  );
++
++  testWidgets(
++    'tapping New chat while feedback is in flight drops stale error banner',
++    (tester) async {
++      final completer = Completer<http.Response>();
++      await pumpApp(
++        tester,
++        backend: backendWith((request) {
++          return jsonResponse(messageJson('ACCEPT', response: 'Initial reply'));
++        })..on('POST', '/v1/runs/run-1/feedback', (_) => completer.future),
++      );
++
++      // 1. First message returns reply.
++      await send(tester, 'First message');
++      await settle(tester);
++      expect(find.text('Initial reply'), findsOneWidget);
++
++      // 2. Tap feedback (thumbs down) while feedback is in flight.
++      await tester.tap(find.byTooltip('Thumbs down'));
++      await tester.pump();
++
++      // 3. Tap New chat and pump.
++      await tester.tap(find.byTooltip('New chat'));
++      await tester.pump();
++
++      // 4. Complete the feedback completer with an error response.
++      completer.complete(http.Response('{}', 500));
++      await settle(tester);
++
++      // 5. Expect no stale error banner and empty state is shown.
++      expect(find.text("Couldn't send feedback"), findsNothing);
++      expect(
++        find.text('Ask a study question, or get help with maths or code.'),
++        findsOneWidget,
++      );
++    },
++  );
++
++  testWidgets(
++    'ChatController.newChat clears entries and pending in ChatScreen',
++    (tester) async {
++      final controller = ChatController();
++      addTearDown(controller.dispose);
++      final reply = Completer<http.Response>();
++      final backend = backendWith((_) => reply.future);
++      final api = KarmiApi(
++        baseUrl: 'http://karmi.test',
++        client: backend.client,
++      );
++
++      await pumpHost(
++        tester,
++        Scaffold(
++          body: ChatScreen(api: api, controller: controller),
++        ),
++      );
++
++      await send(tester, 'Testing controller');
++      expect(find.text('Testing controller'), findsOneWidget);
++
++      controller.newChat();
++      await tester.pump();
++
++      expect(find.text('Testing controller'), findsNothing);
++      expect(
++        find.text('Ask a study question, or get help with maths or code.'),
++        findsOneWidget,
++      );
++
++      reply.complete(
++        jsonResponse(messageJson('ACCEPT', response: 'Discarded')),
++      );
++      await settle(tester);
++      expect(find.text('Discarded'), findsNothing);
++    },
++  );
++
++  test(
++    'buildHistoryFromEntries safely truncates without splitting UTF-16 surrogate pair',
++    () {
++      // 7999 'a's followed by a 2-code-unit emoji ('\u{1F600}').
++      // Index 7999 is 0xD83D (high surrogate), index 8000 is 0xDE00 (low surrogate).
++      final straddlingText = '${'a' * 7999}\u{1F600}';
++      expect(straddlingText.length, 8001);
++      expect(straddlingText.codeUnitAt(7999), 0xD83D);
++      expect(
++        straddlingText.codeUnitAt(7999) >= 0xD800 &&
++            straddlingText.codeUnitAt(7999) <= 0xDBFF,
++        isTrue,
++      );
++
++      final entries = [
++        UserEntry(
++          id: 'u1',
++          text: straddlingText,
++          idempotencyKey: 'k1',
++          state: SendState.sent,
++        ),
++        ReplyEntry(
++          id: 'r1',
++          message: MessageView.fromJson(
++            messageJson('ACCEPT', response: 'reply'),
++          ),
++        ),
++      ];
++
++      final history = buildHistoryFromEntries(entries);
++      expect(history.length, 2);
++      // User turn should be cut at 7999 instead of 8000, avoiding an orphaned high surrogate.
++      expect(history[0].role, 'user');
++      expect(history[0].content.length, 7999);
++      expect(history[0].content, 'a' * 7999);
++
++      // When emoji fits within 8000 (starts at 7998), both surrogates are preserved.
++      final fittingText = '${'a' * 7998}\u{1F600}';
++      expect(fittingText.length, 8000);
++      final fittingEntries = [
++        UserEntry(
++          id: 'u2',
++          text: fittingText,
++          idempotencyKey: 'k2',
++          state: SendState.sent,
++        ),
++        ReplyEntry(
++          id: 'r2',
++          message: MessageView.fromJson(
++            messageJson('ACCEPT', response: 'reply'),
++          ),
++        ),
++      ];
++      final fittingHistory = buildHistoryFromEntries(fittingEntries);
++      expect(fittingHistory[0].content.length, 8000);
++      expect(fittingHistory[0].content, fittingText);
++
++      // Also verify assistant response safe truncation.
++      final assistantStraddling = [
++        UserEntry(
++          id: 'u3',
++          text: 'hello',
++          idempotencyKey: 'k3',
++          state: SendState.sent,
++        ),
++        ReplyEntry(
++          id: 'r3',
++          message: MessageView.fromJson(
++            messageJson('ACCEPT', response: straddlingText),
++          ),
++        ),
++      ];
++      final assistantHistory = buildHistoryFromEntries(assistantStraddling);
++      expect(assistantHistory[1].role, 'assistant');
++      expect(assistantHistory[1].content.length, 7999);
++      expect(assistantHistory[1].content, 'a' * 7999);
++    },
++  );
++
++  test(
++    'truncateHistoryContent cuts at 7999 if high surrogate is at index 7999',
++    () {
++      final straddling = '${'x' * 7999}\u{1F389}';
++      expect(truncateHistoryContent(straddling), 'x' * 7999);
++      expect(
++        truncateHistoryContent('${'x' * 7998}\u{1F389}'),
++        '${'x' * 7998}\u{1F389}',
++      );
++      expect(truncateHistoryContent('x' * 8005), 'x' * 8000);
++    },
++  );
+ }
+diff --git a/mobile/test/features/message_bubble_markdown_test.dart b/mobile/test/features/message_bubble_markdown_test.dart
+new file mode 100644
+index 0000000..7ae17ae
+--- /dev/null
++++ b/mobile/test/features/message_bubble_markdown_test.dart
+@@ -0,0 +1,69 @@
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:karmi_app/api/models.dart';
++import 'package:karmi_app/features/chat/chat_entry.dart';
++import 'package:karmi_app/features/chat/message_bubble.dart';
++
++import '../support/fake_backend.dart';
++import '../support/harness.dart';
++
++void main() {
++  testWidgets(
++    'reply image markdown renders alt text and does not render Image widget',
++    (tester) async {
++      final reply = ReplyEntry(
++        id: 'reply_markdown_image_test',
++        message: MessageView.fromJson(
++          messageJson(
++            'ACCEPT',
++            response: '![a chart](https://example.invalid/x.png)',
++          ),
++        ),
++      );
++
++      await pumpHost(
++        tester,
++        Center(
++          child: Padding(
++            padding: const EdgeInsets.symmetric(horizontal: 16),
++            child: MessageBubble.reply(reply: reply),
++          ),
++        ),
++      );
++
++      expect(find.text('a chart'), findsOneWidget);
++      expect(find.byType(Image), findsNothing);
++    },
++  );
++
++  testWidgets(
++    'reply with long fenced code block has horizontal scroll and no overflow at 360x640',
++    (tester) async {
++      final reply = ReplyEntry(
++        id: 'reply_markdown_code_test',
++        message: MessageView.fromJson(
++          messageJson('ACCEPT', response: '```\n${'x = 1; ' * 40}\n```'),
++        ),
++      );
++
++      await pumpHost(
++        tester,
++        Center(
++          child: Padding(
++            padding: const EdgeInsets.symmetric(horizontal: 16),
++            child: MessageBubble.reply(reply: reply),
++          ),
++        ),
++        size: const Size(360, 640),
++      );
++
++      expectNoOverflow(tester);
++      final horizontalScrollView = find.byWidgetPredicate(
++        (widget) =>
++            widget is SingleChildScrollView &&
++            widget.scrollDirection == Axis.horizontal,
++      );
++      expect(horizontalScrollView, findsWidgets);
++    },
++  );
++}
+diff --git a/mobile/test/goldens/linux/chat_dark_x1.0_glass.png b/mobile/test/goldens/linux/chat_dark_x1.0_glass.png
+index 2357f3e..8b22439 100644
+Binary files a/mobile/test/goldens/linux/chat_dark_x1.0_glass.png and b/mobile/test/goldens/linux/chat_dark_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/chat_dark_x1.0_opaque.png b/mobile/test/goldens/linux/chat_dark_x1.0_opaque.png
+index 58e9355..d068cf5 100644
+Binary files a/mobile/test/goldens/linux/chat_dark_x1.0_opaque.png and b/mobile/test/goldens/linux/chat_dark_x1.0_opaque.png differ
+diff --git a/mobile/test/goldens/linux/chat_dark_x2.0_glass.png b/mobile/test/goldens/linux/chat_dark_x2.0_glass.png
+index 8838de5..dcb19ae 100644
+Binary files a/mobile/test/goldens/linux/chat_dark_x2.0_glass.png and b/mobile/test/goldens/linux/chat_dark_x2.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/chat_dark_x2.0_opaque.png b/mobile/test/goldens/linux/chat_dark_x2.0_opaque.png
+index de39208..f931cef 100644
+Binary files a/mobile/test/goldens/linux/chat_dark_x2.0_opaque.png and b/mobile/test/goldens/linux/chat_dark_x2.0_opaque.png differ
+diff --git a/mobile/test/goldens/linux/chat_empty_dark_x1.0_glass.png b/mobile/test/goldens/linux/chat_empty_dark_x1.0_glass.png
+index d94a57a..53254aa 100644
+Binary files a/mobile/test/goldens/linux/chat_empty_dark_x1.0_glass.png and b/mobile/test/goldens/linux/chat_empty_dark_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/chat_empty_dark_x1.0_opaque.png b/mobile/test/goldens/linux/chat_empty_dark_x1.0_opaque.png
+index b76ef19..ffa1a9a 100644
+Binary files a/mobile/test/goldens/linux/chat_empty_dark_x1.0_opaque.png and b/mobile/test/goldens/linux/chat_empty_dark_x1.0_opaque.png differ
+diff --git a/mobile/test/goldens/linux/chat_empty_dark_x2.0_glass.png b/mobile/test/goldens/linux/chat_empty_dark_x2.0_glass.png
+index 66d23a7..d94a401 100644
+Binary files a/mobile/test/goldens/linux/chat_empty_dark_x2.0_glass.png and b/mobile/test/goldens/linux/chat_empty_dark_x2.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/chat_empty_dark_x2.0_opaque.png b/mobile/test/goldens/linux/chat_empty_dark_x2.0_opaque.png
+index b717703..ee4dbae 100644
+Binary files a/mobile/test/goldens/linux/chat_empty_dark_x2.0_opaque.png and b/mobile/test/goldens/linux/chat_empty_dark_x2.0_opaque.png differ
+diff --git a/mobile/test/goldens/linux/chat_empty_light_x1.0_glass.png b/mobile/test/goldens/linux/chat_empty_light_x1.0_glass.png
+index 9dcafc1..07a4917 100644
+Binary files a/mobile/test/goldens/linux/chat_empty_light_x1.0_glass.png and b/mobile/test/goldens/linux/chat_empty_light_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/chat_empty_light_x1.0_opaque.png b/mobile/test/goldens/linux/chat_empty_light_x1.0_opaque.png
+index cf12a9d..daa557d 100644
+Binary files a/mobile/test/goldens/linux/chat_empty_light_x1.0_opaque.png and b/mobile/test/goldens/linux/chat_empty_light_x1.0_opaque.png differ
+diff --git a/mobile/test/goldens/linux/chat_empty_light_x2.0_glass.png b/mobile/test/goldens/linux/chat_empty_light_x2.0_glass.png
+index 1ebb1eb..b02898c 100644
+Binary files a/mobile/test/goldens/linux/chat_empty_light_x2.0_glass.png and b/mobile/test/goldens/linux/chat_empty_light_x2.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/chat_empty_light_x2.0_opaque.png b/mobile/test/goldens/linux/chat_empty_light_x2.0_opaque.png
+index 05a37d3..f68311f 100644
+Binary files a/mobile/test/goldens/linux/chat_empty_light_x2.0_opaque.png and b/mobile/test/goldens/linux/chat_empty_light_x2.0_opaque.png differ
+diff --git a/mobile/test/goldens/linux/chat_light_x1.0_glass.png b/mobile/test/goldens/linux/chat_light_x1.0_glass.png
+index 591a937..d532af5 100644
+Binary files a/mobile/test/goldens/linux/chat_light_x1.0_glass.png and b/mobile/test/goldens/linux/chat_light_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/chat_light_x1.0_opaque.png b/mobile/test/goldens/linux/chat_light_x1.0_opaque.png
+index 87e2690..c64081a 100644
+Binary files a/mobile/test/goldens/linux/chat_light_x1.0_opaque.png and b/mobile/test/goldens/linux/chat_light_x1.0_opaque.png differ
+diff --git a/mobile/test/goldens/linux/chat_light_x2.0_glass.png b/mobile/test/goldens/linux/chat_light_x2.0_glass.png
+index cbf555a..8ef2297 100644
+Binary files a/mobile/test/goldens/linux/chat_light_x2.0_glass.png and b/mobile/test/goldens/linux/chat_light_x2.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/chat_light_x2.0_opaque.png b/mobile/test/goldens/linux/chat_light_x2.0_opaque.png
+index 301a1c0..fcd1870 100644
+Binary files a/mobile/test/goldens/linux/chat_light_x2.0_opaque.png and b/mobile/test/goldens/linux/chat_light_x2.0_opaque.png differ
+diff --git a/mobile/test/goldens/linux/chat_markdown_reply.png b/mobile/test/goldens/linux/chat_markdown_reply.png
+new file mode 100644
+index 0000000..04816a6
+Binary files /dev/null and b/mobile/test/goldens/linux/chat_markdown_reply.png differ
+diff --git a/mobile/test/goldens/linux/tier_chat_dark_x1.0_glass.png b/mobile/test/goldens/linux/tier_chat_dark_x1.0_glass.png
+index 0b31130..fb7beaf 100644
+Binary files a/mobile/test/goldens/linux/tier_chat_dark_x1.0_glass.png and b/mobile/test/goldens/linux/tier_chat_dark_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/tier_chat_light_x1.0_glass.png b/mobile/test/goldens/linux/tier_chat_light_x1.0_glass.png
+index 3cf3d01..2ccf875 100644
+Binary files a/mobile/test/goldens/linux/tier_chat_light_x1.0_glass.png and b/mobile/test/goldens/linux/tier_chat_light_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/tier_chat_parth_dark_x1.0_glass.png b/mobile/test/goldens/linux/tier_chat_parth_dark_x1.0_glass.png
+index 06a8040..a51dbe2 100644
+Binary files a/mobile/test/goldens/linux/tier_chat_parth_dark_x1.0_glass.png and b/mobile/test/goldens/linux/tier_chat_parth_dark_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/tier_chat_parth_light_x1.0_glass.png b/mobile/test/goldens/linux/tier_chat_parth_light_x1.0_glass.png
+index 314a43a..ec30632 100644
+Binary files a/mobile/test/goldens/linux/tier_chat_parth_light_x1.0_glass.png and b/mobile/test/goldens/linux/tier_chat_parth_light_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/tier_chat_trika_dark_x1.0_glass.png b/mobile/test/goldens/linux/tier_chat_trika_dark_x1.0_glass.png
+index 5105bae..b8a5847 100644
+Binary files a/mobile/test/goldens/linux/tier_chat_trika_dark_x1.0_glass.png and b/mobile/test/goldens/linux/tier_chat_trika_dark_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/tier_chat_trika_light_x1.0_glass.png b/mobile/test/goldens/linux/tier_chat_trika_light_x1.0_glass.png
+index 7ac2708..8ff6cf4 100644
+Binary files a/mobile/test/goldens/linux/tier_chat_trika_light_x1.0_glass.png and b/mobile/test/goldens/linux/tier_chat_trika_light_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/tier_chat_yanta_dark_x1.0_glass.png b/mobile/test/goldens/linux/tier_chat_yanta_dark_x1.0_glass.png
+index 0fca730..4234ebd 100644
+Binary files a/mobile/test/goldens/linux/tier_chat_yanta_dark_x1.0_glass.png and b/mobile/test/goldens/linux/tier_chat_yanta_dark_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/linux/tier_chat_yanta_light_x1.0_glass.png b/mobile/test/goldens/linux/tier_chat_yanta_light_x1.0_glass.png
+index d1020f0..860e49b 100644
+Binary files a/mobile/test/goldens/linux/tier_chat_yanta_light_x1.0_glass.png and b/mobile/test/goldens/linux/tier_chat_yanta_light_x1.0_glass.png differ
+diff --git a/mobile/test/goldens/windows/chat_markdown_reply.png b/mobile/test/goldens/windows/chat_markdown_reply.png
+new file mode 100644
+index 0000000..7197af0
+Binary files /dev/null and b/mobile/test/goldens/windows/chat_markdown_reply.png differ
+diff --git a/src/daily_agent/api.py b/src/daily_agent/api.py
+index a345b8d..fc11053 100644
+--- a/src/daily_agent/api.py
++++ b/src/daily_agent/api.py
+@@ -74,8 +74,10 @@ from daily_agent.services import (
+     estimate_request_cost_micro,
+     gateway_requests_made,
+     generate_reply,
++    history_tokens,
+     measured_cost_micro,
+     measured_tokens,
++    message_request_hash,
+     persist_completed_run,
+     plan_policy,
+     policy_for,
+@@ -88,6 +90,7 @@ from daily_agent.services import (
+     subscription_period,
+     sync_account_progression,
+     sync_theme_progression,
++    trim_history,
+ )
+ from daily_agent.web import build_manifest, render_shell
+
+@@ -401,7 +404,7 @@ def create_app() -> FastAPI:
+         previous_run_id: str | None = None,
+         regenerate_reason: str | None = None,
+     ) -> MessageView:
+-        request_hash = hashlib.sha256(body.text.encode("utf-8")).hexdigest()
++        request_hash = message_request_hash(body.text, body.history)
+         existing = session.scalar(
+             select(Run).where(
+                 Run.account_id == principal.account_id,
+@@ -421,9 +424,13 @@ def create_app() -> FastAPI:
+             )
+         _subscription, policy = policy_for(session, principal.account_id)
+         amount = estimate_request_cost_micro(policy, settings)
++        # Earlier turns are client-supplied and never stored; only what fits the plan's input
++        # budget is sent, and it counts toward the token hold like the message itself.
++        history = trim_history(body.history, text=body.text, plan=policy)
+         # Token quota applies to live generation only; the demo path never spends tokens.
+         token_hold = (
+-            max(1, len(body.text.encode("utf-8")) // 4) + policy.output_tokens
++            max(1, len(body.text.encode("utf-8")) // 4 + history_tokens(history))
++            + policy.output_tokens
+             if gateway.live
+             else 0
+         )
+@@ -480,6 +487,7 @@ def create_app() -> FastAPI:
+                 plan=policy,
+                 gateway=gateway,
+                 escalate=escalate,
++                history=history,
+             )
+             timing = RunTiming(
+                 started_at=started_at,
+@@ -687,13 +695,15 @@ def create_app() -> FastAPI:
+                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                 detail="regenerate needs a new idempotency key",
+             )
+-        if previous.request_hash != hashlib.sha256(body.text.encode("utf-8")).hexdigest():
++        if previous.request_hash != message_request_hash(body.text, body.history):
+             raise HTTPException(
+                 status_code=status.HTTP_409_CONFLICT,
+-                detail="text does not match the original request",
++                detail="text or history does not match the original request",
+             )
+         return execute_message(
+-            MessageCreate(text=body.text, idempotency_key=body.idempotency_key),
++            MessageCreate(
++                text=body.text, idempotency_key=body.idempotency_key, history=body.history
++            ),
+             principal,
+             session,
+             settings,
+diff --git a/src/daily_agent/gateway/__init__.py b/src/daily_agent/gateway/__init__.py
+index c59f3eb..7935caa 100644
+--- a/src/daily_agent/gateway/__init__.py
++++ b/src/daily_agent/gateway/__init__.py
+@@ -2,6 +2,9 @@
+
+ from __future__ import annotations
+
++from collections.abc import Callable
++from datetime import datetime
++
+ import httpx
+
+ from daily_agent.config import Settings
+@@ -16,6 +19,7 @@ def build_gateway(
+     *,
+     registry: ModelRegistry | None = None,
+     transport: httpx.BaseTransport | None = None,
++    clock: Callable[[], datetime] | None = None,
+ ) -> Gateway:
+     """Assemble the gateway from settings. Unconfigured providers are simply not routable."""
+     providers: dict[str, ChatProvider] = {}
+@@ -38,6 +42,7 @@ def build_gateway(
+             default_cooldown_seconds=settings.gateway_model_cooldown_seconds,
+         ),
+         kill_switch=settings.gateway_kill_switch,
++        clock=clock,
+     )
+
+
+diff --git a/src/daily_agent/gateway/service.py b/src/daily_agent/gateway/service.py
+index e9966f7..4a332e6 100644
+--- a/src/daily_agent/gateway/service.py
++++ b/src/daily_agent/gateway/service.py
+@@ -12,8 +12,10 @@ from __future__ import annotations
+
+ import logging
+ import re
+-from collections.abc import Mapping
++from collections.abc import Callable, Mapping, Sequence
+ from dataclasses import dataclass, replace
++from datetime import UTC, datetime, timedelta, timezone, tzinfo
++from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+ from daily_agent.gateway.adapters import ChatProvider
+ from daily_agent.gateway.health import HealthTracker
+@@ -29,15 +31,48 @@ MAX_ATTEMPTS = 2
+ _DEVANAGARI = re.compile(r"[\u0900-\u097F]")
+ FREE_MEASUREMENT = "registry-free-model"
+
+-SYSTEM_PROMPT = (
++BASE_SYSTEM_PROMPT = (
+     "You are Karmi, a patient study and productivity assistant for students in India. Give "
+     "correct, concise answers. Reply in the language the user wrote in (Hindi, English, or a "
+-    "Hindi-English mix). Show working for maths and keep code runnable. Never claim that a "
+-    "task, reminder or message was saved, sent or changed; this chat route cannot perform "
+-    "actions. If required facts are missing, ask one short clarifying question."
++    "Hindi-English mix). Show working for maths and keep code runnable. Use the earlier "
++    "conversation: a short reply such as a place name or \"yes\" usually answers your previous "
++    "question. The current date and time are given below; when the user names another place or "
++    "timezone, convert from IST. Use simple Markdown (bold, lists, code blocks) only when it "
++    "helps; no tables. Never claim that a task, reminder or message was saved, sent or changed; "
++    "this chat route cannot perform actions. If required facts are missing, ask one short "
++    "clarifying question."
+ )
+
+
++def _home_zone() -> tzinfo:
++    # IST has no DST, so the fixed offset is exact when the tz database is missing.
++    try:
++        return ZoneInfo("Asia/Kolkata")
++    except ZoneInfoNotFoundError:  # pragma: no cover - depends on the host tz database
++        return timezone(timedelta(hours=5, minutes=30), "IST")
++
++
++HOME_ZONE = _home_zone()
++
++
++def build_system_prompt(now: datetime) -> str:
++    """Base prompt plus the current IST date/time (``now`` must be timezone-aware)."""
++    local = now.astimezone(HOME_ZONE)
++    stamp = f"{local:%A}, {local.day} {local:%B %Y, %H:%M}"
++    return (
++        f"{BASE_SYSTEM_PROMPT}\nCurrent date and time: {stamp} IST "
++        "(Asia/Kolkata, UTC+05:30)."
++    )
++
++
++# Upper bound for the built prompt: Wednesday + September are the longest names.
++SYSTEM_PROMPT_MAX_CHARS = len(build_system_prompt(datetime(2026, 9, 30, 6, 30, tzinfo=UTC)))
++
++
++def _utc_now() -> datetime:
++    return datetime.now(UTC)
++
++
+ @dataclass(frozen=True)
+ class GatewayResult:
+     text: str | None
+@@ -80,12 +115,14 @@ class Gateway:
+         providers: Mapping[str, ChatProvider],
+         health: HealthTracker,
+         kill_switch: bool = False,
++        clock: Callable[[], datetime] | None = None,
+     ) -> None:
+         # Only models whose provider is actually configured are routable.
+         self.registry = registry.for_providers(frozenset(providers))
+         self._providers = providers
+         self.health = health
+         self.kill_switch = kill_switch
++        self._clock = clock or _utc_now
+
+     @property
+     def live(self) -> bool:
+@@ -107,11 +144,18 @@ class Gateway:
+         task_type: TaskType,
+         max_output_tokens: int,
+         escalate: bool = False,
++        history: Sequence[Mapping[str, str]] = (),
+     ) -> GatewayResult:
++        """Generate a reply to ``text``; ``history`` holds earlier turns, oldest first, already
++        trimmed to the plan's input budget by the caller."""
++        system_prompt = build_system_prompt(self._clock())
++        history_bytes = sum(len(turn["content"].encode("utf-8")) for turn in history)
+         request = RouteRequest(
+             plan=plan,
+             task_type=task_type,
+-            prompt_tokens=max(1, (len(text.encode("utf-8")) + len(SYSTEM_PROMPT)) // 4),
++            prompt_tokens=max(
++                1, (len(text.encode("utf-8")) + len(system_prompt) + history_bytes) // 4
++            ),
+             max_output_tokens=max_output_tokens,
+             escalate=escalate,
+         )
+@@ -119,7 +163,8 @@ class Gateway:
+         if not pool:
+             return GatewayResult(None, (), None, True, "no_eligible_model")
+         messages = (
+-            {"role": "system", "content": SYSTEM_PROMPT},
++            {"role": "system", "content": system_prompt},
++            *({"role": turn["role"], "content": turn["content"]} for turn in history),
+             {"role": "user", "content": text},
+         )
+         calls: list[ProviderCall] = []
+diff --git a/src/daily_agent/schemas.py b/src/daily_agent/schemas.py
+index df441ed..7a53874 100644
+--- a/src/daily_agent/schemas.py
++++ b/src/daily_agent/schemas.py
+@@ -32,9 +32,22 @@ class ReminderCreate(BaseModel):
+     idempotency_key: str = Field(min_length=8, max_length=120)
+
+
++MAX_HISTORY_TURNS = 20
++MAX_HISTORY_TURN_CHARS = 8_000
++
++
++class HistoryTurn(BaseModel):
++    """One earlier chat turn, sent by the client and never stored server-side."""
++
++    role: Literal["user", "assistant"]
++    content: str = Field(min_length=1, max_length=MAX_HISTORY_TURN_CHARS)
++
++
+ class MessageCreate(BaseModel):
+     text: str = Field(min_length=1, max_length=100_000)
+     idempotency_key: str = Field(min_length=8, max_length=120)
++    # Recent turns before ``text``, oldest first. Optional: old clients send none.
++    history: list[HistoryTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
+
+
+ class MessageView(BaseModel):
+@@ -68,6 +81,7 @@ class RegenerateCreate(BaseModel):
+     text: str = Field(min_length=1, max_length=100_000)
+     idempotency_key: str = Field(min_length=8, max_length=120)
+     reason: FeedbackReason | None = None
++    history: list[HistoryTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
+
+
+ class UsageView(BaseModel):
+diff --git a/src/daily_agent/services.py b/src/daily_agent/services.py
+index ce12e5d..50f66d7 100644
+--- a/src/daily_agent/services.py
++++ b/src/daily_agent/services.py
+@@ -2,6 +2,7 @@ import calendar
+ import hashlib
+ import json
+ import logging
++from collections.abc import Sequence
+ from dataclasses import dataclass
+ from datetime import UTC, date, datetime, timedelta
+
+@@ -12,8 +13,10 @@ from sqlalchemy.orm import Session
+
+ from daily_agent.config import Settings
+ from daily_agent.gateway import Gateway
++from daily_agent.gateway.adapters import MAX_PROMPT_CHARS as ADAPTER_PROMPT_CHARS
+ from daily_agent.gateway.registry import KNOWN_PROVIDERS
+ from daily_agent.gateway.router import classify_task
++from daily_agent.gateway.service import SYSTEM_PROMPT_MAX_CHARS
+ from daily_agent.models import (
+     Account,
+     BudgetReservation,
+@@ -31,13 +34,14 @@ from daily_agent.models import (
+     UsageWindow,
+     User,
+ )
++from daily_agent.opencode import MAX_PROMPT_CHARS as OPENCODE_PROMPT_CHARS
+ from daily_agent.plans import SYNTHETIC_POLICIES, PlanPolicy
+ from daily_agent.providers import (
+     TYPESAFE_CALL_ESTIMATE_MICRO,
+     ProviderCall,
+     classify_intent,
+ )
+-from daily_agent.schemas import Outcome
++from daily_agent.schemas import HistoryTurn, Outcome
+
+ logger = logging.getLogger(__name__)
+
+@@ -700,6 +704,53 @@ OVERSIZE_TEXT = "This request is too large for the current bounded route. Choose
+ LOCAL_ROUTE = "fake-economy"
+
+
++def message_request_hash(text: str, history: Sequence[HistoryTurn] = ()) -> str:
++    """Idempotency hash of a chat payload.
++
++    Without history it stays ``sha256(text)`` so rows written before history existed (and
++    regenerate checks against them) still match; with history it covers a canonical JSON of both.
++    """
++    if not history:
++        return hashlib.sha256(text.encode("utf-8")).hexdigest()
++    canonical = json.dumps(
++        {"text": text, "history": [{"role": t.role, "content": t.content} for t in history]},
++        ensure_ascii=False,
++        sort_keys=True,
++        separators=(",", ":"),
++    )
++    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
++
++
++def _utf8_len(value: str) -> int:
++    return len(value.encode("utf-8"))
++
++
++# Every adapter bounds total prompt characters; history never pushes a request past the smallest.
++HISTORY_REQUEST_CAP_BYTES = min(ADAPTER_PROMPT_CHARS, OPENCODE_PROMPT_CHARS)
++
++
++def trim_history(
++    history: Sequence[HistoryTurn], *, text: str, plan: PlanPolicy
++) -> tuple[HistoryTurn, ...]:
++    """Keep the newest whole turns that fit the plan's input budget next to the system prompt and
++    the current message (``bytes // 4`` estimate). Oldest turns go first; ``text`` always stays."""
++    total_bytes = min(plan.input_tokens * 4, HISTORY_REQUEST_CAP_BYTES)
++    budget_bytes = total_bytes - SYSTEM_PROMPT_MAX_CHARS - _utf8_len(text)
++    kept: list[HistoryTurn] = []
++    for turn in reversed(history):
++        size = _utf8_len(turn.content)
++        if size > budget_bytes:
++            break  # dropping a newer turn but keeping an older one would garble the thread
++        budget_bytes -= size
++        kept.append(turn)
++    kept.reverse()
++    return tuple(kept)
++
++
++def history_tokens(history: Sequence[HistoryTurn]) -> int:
++    return sum(_utf8_len(turn.content) for turn in history) // 4
++
++
+ def generate_reply(
+     text: str,
+     *,
+@@ -707,8 +758,11 @@ def generate_reply(
+     plan: PlanPolicy,
+     gateway: Gateway | None = None,
+     escalate: bool = False,
++    history: Sequence[HistoryTurn] = (),
+ ) -> GenerationResult:
+-    """Classify the request, route it, and generate. Tasks are written by the caller."""
++    """Classify the request, route it, and generate. Tasks are written by the caller.
++
++    ``history`` must already be trimmed (``trim_history``); classification uses ``text`` only."""
+     if len(text) > 20_000:
+         return GenerationResult(OVERSIZE_TEXT, Outcome.DEFERRED, intent=None, route=LOCAL_ROUTE)
+
+@@ -745,6 +799,7 @@ def generate_reply(
+         task_type=classify_task(text),
+         max_output_tokens=plan.output_tokens,
+         escalate=escalate,
++        history=[{"role": turn.role, "content": turn.content} for turn in history],
+     )
+     calls_all = (*routing_calls, *outcome.calls)
+     if outcome.failed or outcome.text is None:
+diff --git a/tests/e2e/test_chat_history_api.py b/tests/e2e/test_chat_history_api.py
+new file mode 100644
+index 0000000..41615a4
+--- /dev/null
++++ b/tests/e2e/test_chat_history_api.py
+@@ -0,0 +1,436 @@
++from __future__ import annotations
++
++import contextlib
++import hashlib
++import json
++import logging
++from collections.abc import Callable, Generator, Iterator
++from dataclasses import dataclass
++from datetime import UTC, datetime
++from pathlib import Path
++from typing import Any
++
++import httpx
++import pytest
++from fastapi.testclient import TestClient
++from sqlalchemy import Engine, create_engine, select
++from sqlalchemy.orm import Session, sessionmaker
++
++from daily_agent.api import create_app
++from daily_agent.config import Settings, get_settings
++from daily_agent.db import Base, get_session
++from daily_agent.gateway import build_gateway
++from daily_agent.gateway.registry import parse_registry
++from daily_agent.models import (
++    BudgetReservation,
++    Run,
++    Subscription,
++    UsageWindow,
++)
++from daily_agent.plans import SYNTHETIC_POLICIES
++from tests.conftest import create_identity
++
++pytestmark = pytest.mark.e2e
++
++KEY = "test-key-synthetic"
++FIXED_NOW = datetime(2026, 10, 21, 16, 23, tzinfo=UTC)
++
++
++def _entry(
++    model_id: str, model_class: str = "economy", *, private: bool = False, provider: str = "openrouter"
++) -> dict[str, Any]:
++    return {
++        "model_id": model_id,
++        "provider": provider,
++        "class": model_class,
++        "prompt_price_usd": "0",
++        "completion_price_usd": "0",
++        "context_length": 32_000,
++        "private_data_allowed": private,
++        "data_terms": "no_training" if private else "unknown",
++        "supports_structured_output": False,
++        "scores": {},
++    }
++
++
++def registry(*entries: dict[str, Any]) -> Any:
++    return parse_registry(
++        {
++            "schema_version": "model-registry.v1",
++            "snapshot_date": "2026-10-18",
++            "provisional": True,
++            "models": list(entries),
++        }
++    )
++
++
++ECO_A = _entry("vendor/eco-a:free", "economy")
++
++
++@dataclass(frozen=True)
++class Harness:
++    client: TestClient
++    factory: sessionmaker[Session]
++    settings: Settings
++    seen: list[httpx.Request]
++
++
++@pytest.fixture
++def make_harness(tmp_path: Path) -> Iterator[Callable[..., Harness]]:
++    with contextlib.ExitStack() as stack:
++        engines: list[Engine] = []
++
++        def build(
++            entries: list[dict[str, Any]],
++            handler: Callable[[httpx.Request], httpx.Response],
++            *,
++            clock: Callable[[], datetime] | None = None,
++            **overrides: Any,
++        ) -> Harness:
++            db_path = tmp_path / f"chat_history_{len(engines)}.db"
++            engine = create_engine(
++                f"sqlite+pysqlite:///{db_path}", connect_args={"check_same_thread": False}
++            )
++            engines.append(engine)
++            Base.metadata.create_all(engine)
++            factory = sessionmaker(bind=engine, expire_on_commit=False)
++            values: dict[str, Any] = {
++                "environment": "test",
++                "database_url": f"sqlite+pysqlite:///{db_path}",
++                "auth_secret": "test-secret-with-enough-entropy",
++                "webhook_secret": "test-webhook-secret",
++                "global_daily_budget_micro": 10_000,
++                "openrouter_enabled": True,
++                "openrouter_api_key": KEY,
++            }
++            values.update(overrides)
++            settings = Settings(**values)
++            seen: list[httpx.Request] = []
++
++            def recording(request: httpx.Request) -> httpx.Response:
++                seen.append(request)
++                return handler(request)
++
++            def session_override() -> Generator[Session, None, None]:
++                with factory() as session:
++                    yield session
++
++            app = create_app()
++            app.state.gateway = build_gateway(
++                settings,
++                registry=registry(*entries),
++                transport=httpx.MockTransport(recording),
++                clock=clock or (lambda: FIXED_NOW),
++            )
++            app.dependency_overrides[get_session] = session_override
++            app.dependency_overrides[get_settings] = lambda: settings
++            client = stack.enter_context(TestClient(app))
++            return Harness(client=client, factory=factory, settings=settings, seen=seen)
++
++        try:
++            yield build
++        finally:
++            for engine in engines:
++                engine.dispose()
++
++
++def reply(text: str, *, finish: str = "stop") -> httpx.Response:
++    return httpx.Response(
++        200,
++        json={
++            "choices": [
++                {"message": {"role": "assistant", "content": text}, "finish_reason": finish}
++            ],
++            "usage": {"prompt_tokens": 12, "completion_tokens": 4},
++        },
++    )
++
++
++def identity(harness: Harness, plan_id: str = "ananta") -> tuple[str, str]:
++    with harness.factory() as session:
++        account, _user, token = create_identity(session, harness.settings, name="A")
++        if plan_id != "ananta":
++            subscription = session.scalar(
++                select(Subscription).where(Subscription.account_id == account.id)
++            )
++            assert subscription is not None
++            subscription.plan_id = plan_id
++            session.commit()
++        return account.id, token
++
++
++def window_of(harness: Harness, account_id: str) -> UsageWindow:
++    with harness.factory() as session:
++        window = session.scalar(select(UsageWindow).where(UsageWindow.account_id == account_id))
++        assert window is not None
++        return window
++
++
++def send(
++    harness: Harness,
++    token: str,
++    key: str,
++    text: str = "Explain photosynthesis simply",
++    *,
++    history: list[dict[str, str]] | None = None,
++) -> httpx.Response:
++    payload: dict[str, Any] = {"text": text, "idempotency_key": key}
++    if history is not None:
++        payload["history"] = history
++    return harness.client.post(
++        "/v1/messages",
++        headers={"Authorization": f"Bearer {token}"},
++        json=payload,
++    )
++
++
++def regenerate(
++    harness: Harness,
++    token: str,
++    run_id: str,
++    key: str,
++    text: str,
++    *,
++    history: list[dict[str, str]] | None = None,
++) -> httpx.Response:
++    payload: dict[str, Any] = {"text": text, "idempotency_key": key}
++    if history is not None:
++        payload["history"] = history
++    return harness.client.post(
++        f"/v1/runs/{run_id}/regenerate",
++        headers={"Authorization": f"Bearer {token}"},
++        json=payload,
++    )
++
++
++def test_kolkata_conversation(make_harness: Callable[..., Harness]) -> None:
++    replies = [
++        "Kolkata is in IST (UTC+05:30).",
++        "Today is Wednesday.",
++        "Russia spans 11 time zones.",
++    ]
++    seen_calls = 0
++
++    def handler(_r: httpx.Request) -> httpx.Response:
++        nonlocal seen_calls
++        res = reply(replies[seen_calls])
++        seen_calls += 1
++        return res
++
++    harness = make_harness([ECO_A], handler)
++    _account, token = identity(harness)
++
++    q1 = "what is the timezone of Kolkata?"
++    r1 = replies[0]
++    res1 = send(harness, token, "kolkata-1", q1)
++    assert res1.status_code == 200
++    assert res1.json()["response"] == r1
++
++    q2 = "what's the day today?"
++    r2 = replies[1]
++    res2 = send(
++        harness,
++        token,
++        "kolkata-2",
++        q2,
++        history=[{"role": "user", "content": q1}, {"role": "assistant", "content": r1}],
++    )
++    assert res2.status_code == 200
++    assert res2.json()["response"] == r2
++
++    q3 = "russia"
++    res3 = send(
++        harness,
++        token,
++        "kolkata-3",
++        q3,
++        history=[
++            {"role": "user", "content": q1},
++            {"role": "assistant", "content": r1},
++            {"role": "user", "content": q2},
++            {"role": "assistant", "content": r2},
++        ],
++    )
++    assert res3.status_code == 200
++
++    assert len(harness.seen) == 3
++    third_messages = json.loads(harness.seen[2].content)["messages"]
++    assert len(third_messages) == 6
++    assert third_messages[0]["role"] == "system"
++    assert (
++        "Current date and time: Wednesday, 21 October 2026, 21:53 IST"
++        in third_messages[0]["content"]
++    )
++    assert third_messages[1] == {"role": "user", "content": q1}
++    assert third_messages[2] == {"role": "assistant", "content": r1}
++    assert third_messages[3] == {"role": "user", "content": q2}
++    assert third_messages[4] == {"role": "assistant", "content": r2}
++    assert third_messages[5] == {"role": "user", "content": q3}
++
++
++def test_no_history_field_backward_compatible(make_harness: Callable[..., Harness]) -> None:
++    harness = make_harness([ECO_A], lambda _r: reply("Light speed is c."))
++    _account, token = identity(harness)
++
++    text = "what is the speed of light?"
++    res = send(harness, token, "no-hist-1", text)
++    assert res.status_code == 200
++
++    assert len(harness.seen) == 1
++    messages = json.loads(harness.seen[0].content)["messages"]
++    assert len(messages) == 2
++    assert messages[0]["role"] == "system"
++    assert messages[1] == {"role": "user", "content": text}
++
++    with harness.factory() as session:
++        run = session.scalar(select(Run).where(Run.logical_request_id == "no-hist-1"))
++        assert run is not None
++        assert run.request_hash == hashlib.sha256(text.encode("utf-8")).hexdigest()
++
++
++def test_idempotent_replay_and_history_conflict(make_harness: Callable[..., Harness]) -> None:
++    harness = make_harness([ECO_A], lambda _r: reply("Replay test answer."))
++    _account, token = identity(harness)
++
++    history = [{"role": "user", "content": "prev query"}, {"role": "assistant", "content": "prev ans"}]
++    first = send(harness, token, "replay-key-1", "current prompt", history=history)
++    assert first.status_code == 200
++    first_run_id = first.json()["run_id"]
++    assert len(harness.seen) == 1
++
++    # Same key + same text + same history -> replay
++    second = send(harness, token, "replay-key-1", "current prompt", history=history)
++    assert second.status_code == 200
++    assert second.json()["run_id"] == first_run_id
++    assert len(harness.seen) == 1
++
++    # Same key + same text + different history -> 409
++    diff_history = [{"role": "user", "content": "different query"}]
++    third = send(harness, token, "replay-key-1", "current prompt", history=diff_history)
++    assert third.status_code == 409
++
++    # Same key + text, with history added where the first had none -> 409
++    first_no_hist = send(harness, token, "replay-key-2", "first prompt")
++    assert first_no_hist.status_code == 200
++    second_with_hist = send(harness, token, "replay-key-2", "first prompt", history=history)
++    assert second_with_hist.status_code == 409
++
++
++def test_regenerate_with_history(make_harness: Callable[..., Harness]) -> None:
++    harness = make_harness([ECO_A], lambda _r: reply("Regenerated reply."))
++    _account, token = identity(harness)
++
++    history = [{"role": "user", "content": "turn 1"}, {"role": "assistant", "content": "turn 2"}]
++    init_res = send(harness, token, "regen-init-1", "main question", history=history)
++    assert init_res.status_code == 200
++    run_id = init_res.json()["run_id"]
++    assert len(harness.seen) == 1
++
++    # Matching text + history -> 200 and provider request contains history
++    regen_ok = regenerate(
++        harness, token, run_id, "regen-new-key-1", "main question", history=history
++    )
++    assert regen_ok.status_code == 200
++    assert len(harness.seen) == 2
++    regen_messages = json.loads(harness.seen[1].content)["messages"]
++    assert len(regen_messages) == 4
++    assert regen_messages[1] == {"role": "user", "content": "turn 1"}
++    assert regen_messages[2] == {"role": "assistant", "content": "turn 2"}
++    assert regen_messages[3] == {"role": "user", "content": "main question"}
++
++    # Mismatching history -> 409
++    mismatch_history = [{"role": "user", "content": "mismatched turn"}]
++    regen_mismatch = regenerate(
++        harness, token, run_id, "regen-new-key-2", "main question", history=mismatch_history
++    )
++    assert regen_mismatch.status_code == 409
++
++    # Regenerate of a run created without history, sent without history -> 200
++    no_hist_init = send(harness, token, "regen-nohist-init", "solo text")
++    assert no_hist_init.status_code == 200
++    no_hist_run_id = no_hist_init.json()["run_id"]
++
++    regen_nohist = regenerate(
++        harness, token, no_hist_run_id, "regen-nohist-key-1", "solo text"
++    )
++    assert regen_nohist.status_code == 200
++
++
++def test_over_budget_history_on_ananta(make_harness: Callable[..., Harness]) -> None:
++    harness = make_harness([ECO_A], lambda _r: reply("Summarised answer."))
++    account_id, token = identity(harness)
++
++    turns = [
++        {"role": "user" if i % 2 == 0 else "assistant", "content": f"turn_{i:02d}_" + "z" * 7990}
++        for i in range(20)
++    ]
++    prompt_text = "Summarise our conversation"
++    res = send(harness, token, "over-budget-1", prompt_text, history=turns)
++    assert res.status_code == 200
++
++    assert len(harness.seen) == 1
++    messages = json.loads(harness.seen[0].content)["messages"]
++    assert messages[0]["role"] == "system"
++    assert messages[-1] == {"role": "user", "content": prompt_text}
++
++    # Provider receives only a contiguous newest suffix of turns that fits
++    kept_turns = messages[1:-1]
++    assert 0 < len(kept_turns) < 20
++    assert kept_turns == turns[-len(kept_turns) :]
++
++    # Estimated tokens of everything sent <= plan.input_tokens
++    total_bytes_sent = sum(len(m["content"].encode("utf-8")) for m in messages)
++    estimated_tokens = total_bytes_sent // 4
++    assert estimated_tokens <= SYNTHETIC_POLICIES["ananta"].input_tokens
++
++    # UsageWindow token accounting: settled tokens come from provider usage (12 + 4 = 16)
++    window = window_of(harness, account_id)
++    assert (window.tokens_settled, window.tokens_reserved, window.reserved_micro) == (16, 0, 0)
++
++
++def test_chat_history_validation_422(make_harness: Callable[..., Harness]) -> None:
++    harness = make_harness([ECO_A], lambda _r: reply("ok"))
++    _account, token = identity(harness)
++
++    # 21 turns -> 422
++    turns_21 = [{"role": "user", "content": f"msg {i}"} for i in range(21)]
++    res_21 = send(harness, token, "val-21-key", "query", history=turns_21)
++    assert res_21.status_code == 422
++
++    # 8001-char turn -> 422
++    turns_8001 = [{"role": "user", "content": "x" * 8001}]
++    res_8001 = send(harness, token, "val-8001-key", "query", history=turns_8001)
++    assert res_8001.status_code == 422
++
++
++def test_history_is_never_logged(
++    make_harness: Callable[..., Harness], caplog: pytest.LogCaptureFixture
++) -> None:
++    caplog.set_level(logging.DEBUG)
++    harness = make_harness([ECO_A], lambda _r: reply("Logged test reply."))
++    _account, token = identity(harness)
++
++    canary_string = "SUPER_DISTINCTIVE_CANARY_CHAT_HISTORY_PAYLOAD_9876543210"
++    history = [
++        {"role": "user", "content": canary_string},
++        {"role": "assistant", "content": "Canary acknowledged."},
++    ]
++    res = send(harness, token, "canary-log-1", "normal user prompt", history=history)
++    assert res.status_code == 200
++
++    for record in caplog.records:
++        assert canary_string not in record.getMessage()
++
++
++def test_token_hold_counts_kept_history(make_harness: Callable[..., Harness]) -> None:
++    harness = make_harness([ECO_A], lambda _r: reply("ok"))
++    account_id, token = identity(harness)
++    history = [{"role": "user", "content": "u" * 400}, {"role": "assistant", "content": "a" * 400}]
++    assert send(harness, token, "hold-key-1", "hold check", history=history).status_code == 200
++    with harness.factory() as session:
++        reservation = session.scalar(
++            select(BudgetReservation).where(BudgetReservation.account_id == account_id)
++        )
++        assert reservation is not None
++        # 10-byte text // 4 + 800 history bytes // 4, plus the plan's output allowance.
++        assert reservation.reserved_tokens == 2 + 200 + SYNTHETIC_POLICIES["ananta"].output_tokens
+diff --git a/tests/unit/test_chat_history.py b/tests/unit/test_chat_history.py
+new file mode 100644
+index 0000000..cc6e22b
+--- /dev/null
++++ b/tests/unit/test_chat_history.py
+@@ -0,0 +1,331 @@
++from __future__ import annotations
++
++import hashlib
++from datetime import UTC, datetime
++from typing import Any
++
++import pytest
++from pydantic import ValidationError
++
++from daily_agent.gateway.health import HealthTracker
++from daily_agent.gateway.registry import ModelRegistry, RegistryModel, parse_registry
++from daily_agent.gateway.service import (
++    BASE_SYSTEM_PROMPT,
++    SYSTEM_PROMPT_MAX_CHARS,
++    Gateway,
++    build_system_prompt,
++)
++from daily_agent.gateway.types import ChatRequest, ChatResult, TaskType
++from daily_agent.plans import SYNTHETIC_POLICIES
++from daily_agent.providers import ProviderCall
++from daily_agent.schemas import (
++    HistoryTurn,
++    MessageCreate,
++    RegenerateCreate,
++)
++from daily_agent.services import (
++    HISTORY_REQUEST_CAP_BYTES,
++    history_tokens,
++    message_request_hash,
++    trim_history,
++)
++
++FIXED_NOW = datetime(2026, 10, 21, 16, 23, tzinfo=UTC)
++
++
++class FakeChatProvider:
++    name: str = "openrouter"
++
++    def __init__(self) -> None:
++        self.requests: list[ChatRequest] = []
++
++    def complete(self, request: ChatRequest, model: RegistryModel) -> ChatResult:
++        self.requests.append(request)
++        call = ProviderCall(
++            provider="openrouter",
++            model_id=model.model_id,
++            operation="generate",
++            input_tokens=10,
++            output_tokens=5,
++            cost_micro=0,
++            measurement="registry-free-model",
++            rate_version=f"registry-{model.snapshot_date}",
++        )
++        return ChatResult(text="ok", finish_reason="stop", latency_ms=1.0, call=call)
++
++
++def entry(model_id: str, model_class: str = "economy", **overrides: Any) -> dict[str, Any]:
++    row: dict[str, Any] = {
++        "model_id": model_id,
++        "provider": "openrouter",
++        "class": model_class,
++        "prompt_price_usd": "0",
++        "completion_price_usd": "0",
++        "context_length": 32_000,
++        "private_data_allowed": False,
++        "data_terms": "unknown",
++        "scores": {},
++    }
++    row.update(overrides)
++    return row
++
++
++def make_registry(*rows: dict[str, Any]) -> ModelRegistry:
++    return parse_registry(
++        {"schema_version": "model-registry.v1", "snapshot_date": "2026-10-18", "models": list(rows)}
++    )
++
++
++def test_build_system_prompt_date_line() -> None:
++    prompt = build_system_prompt(FIXED_NOW)
++    expected_suffix = (
++        "\nCurrent date and time: Wednesday, 21 October 2026, 21:53 IST (Asia/Kolkata, UTC+05:30)."
++    )
++    assert prompt.endswith(expected_suffix)
++    assert prompt.startswith(BASE_SYSTEM_PROMPT)
++    assert len(prompt) <= SYSTEM_PROMPT_MAX_CHARS
++
++    prompt_rollover = build_system_prompt(datetime(2026, 10, 21, 18, 45, tzinfo=UTC))
++    assert "Thursday, 22 October 2026, 00:15 IST" in prompt_rollover
++
++
++def test_gateway_with_fake_provider_formats_messages_and_system_prompt() -> None:
++    provider = FakeChatProvider()
++    reg = make_registry(entry("vendor/m:free"))
++    gateway = Gateway(
++        registry=reg,
++        providers={"openrouter": provider},
++        health=HealthTracker(),
++        clock=lambda: FIXED_NOW,
++    )
++
++    history = (
++        {"role": "user", "content": "What is the capital of France?"},
++        {"role": "assistant", "content": "Paris."},
++    )
++    result = gateway.generate(
++        plan=SYNTHETIC_POLICIES["ananta"],
++        text="And of Germany?",
++        task_type=TaskType.STUDY,
++        max_output_tokens=100,
++        history=history,
++    )
++
++    assert not result.failed
++    assert result.text == "ok"
++    assert len(provider.requests) == 1
++    messages = provider.requests[0].messages
++    assert len(messages) == 4
++    assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]
++    assert messages[0]["content"] == build_system_prompt(FIXED_NOW)
++    assert messages[1] == {"role": "user", "content": "What is the capital of France?"}
++    assert messages[2] == {"role": "assistant", "content": "Paris."}
++    assert messages[3] == {"role": "user", "content": "And of Germany?"}
++
++    provider.requests.clear()
++    result_no_history = gateway.generate(
++        plan=SYNTHETIC_POLICIES["ananta"],
++        text="Solo question",
++        task_type=TaskType.STUDY,
++        max_output_tokens=100,
++        history=(),
++    )
++    assert not result_no_history.failed
++    assert len(provider.requests) == 1
++    no_hist_messages = provider.requests[0].messages
++    assert len(no_hist_messages) == 2
++    assert [m["role"] for m in no_hist_messages] == ["system", "user"]
++    assert no_hist_messages[0]["content"] == build_system_prompt(FIXED_NOW)
++    assert no_hist_messages[1] == {"role": "user", "content": "Solo question"}
++
++
++def test_prompt_tokens_includes_history_routes_or_fails_context_check() -> None:
++    # prompt_tokens = (len(text) + len(system) + history_bytes) // 4.
++    # With len(text)=10, len(system)=675, max_output_tokens=100:
++    # Text alone: (10 + 675) // 4 = 171 prompt tokens -> needed = 171 + 100 = 271.
++    # Text + 4000-byte history: (10 + 675 + 4000) // 4 = 1171 prompt tokens -> needed = 1271.
++    # A model with context_length=500 accommodates text alone (271 <= 500) but rejects text + history (1271 > 500).
++    provider = FakeChatProvider()
++    reg = make_registry(entry("vendor/tiny-context:free", "economy", context_length=500))
++    gateway = Gateway(
++        registry=reg,
++        providers={"openrouter": provider},
++        health=HealthTracker(),
++        clock=lambda: FIXED_NOW,
++    )
++
++    r1 = gateway.generate(
++        plan=SYNTHETIC_POLICIES["ananta"],
++        text="short text",
++        task_type=TaskType.STUDY,
++        max_output_tokens=100,
++        history=(),
++    )
++    assert not r1.failed
++    assert r1.text == "ok"
++
++    history = [{"role": "user", "content": "h" * 4000}]
++    r2 = gateway.generate(
++        plan=SYNTHETIC_POLICIES["ananta"],
++        text="short text",
++        task_type=TaskType.STUDY,
++        max_output_tokens=100,
++        history=history,
++    )
++    assert r2.failed
++    assert r2.reason == "no_eligible_model"
++
++
++def test_trim_history() -> None:
++    plan = SYNTHETIC_POLICIES["ananta"]  # input_tokens = 4000 -> 16000 bytes cap
++
++    # 1. Everything kept when it fits
++    t1 = HistoryTurn(role="user", content="hello")
++    t2 = HistoryTurn(role="assistant", content="world")
++    assert trim_history([t1, t2], text="query", plan=plan) == (t1, t2)
++
++    # 2. Oldest dropped first with an exact expected tuple
++    # Budget = 16000 - SYSTEM_PROMPT_MAX_CHARS (~675) - 10000 = ~5325 bytes
++    text = "x" * 10_000
++    turn_old = HistoryTurn(role="user", content="a" * 3000)
++    turn_mid = HistoryTurn(role="assistant", content="b" * 3000)
++    turn_new = HistoryTurn(role="user", content="c" * 2000)
++    trimmed_dropped = trim_history([turn_old, turn_mid, turn_new], text=text, plan=plan)
++    assert trimmed_dropped == (turn_mid, turn_new)
++
++    # 3. Contiguous suffix: a too-big middle turn stops trimming even if an older small turn fits
++    turn_small_old = HistoryTurn(role="user", content="tiny")
++    turn_big_mid = HistoryTurn(role="assistant", content="m" * 5000)
++    turn_small_new = HistoryTurn(role="user", content="recent" * 200)  # 1200 bytes
++    trimmed_suffix = trim_history(
++        [turn_small_old, turn_big_mid, turn_small_new], text=text, plan=plan
++    )
++    assert trimmed_suffix == (turn_small_new,)
++
++    # 4. Returns () when text fills the budget
++    text_fills_budget = "x" * 16_000
++    assert trim_history([t1, t2], text=text_fills_budget, plan=plan) == ()
++
++    # 5. Capped by HISTORY_REQUEST_CAP_BYTES for the parth plan with 20 x 8000-char turns
++    parth_plan = SYNTHETIC_POLICIES["parth"]  # input_tokens = 32_000 -> total 40_000 cap bytes
++    turns_20 = [
++        HistoryTurn(
++            role="user" if i % 2 == 0 else "assistant",
++            content=f"turn_{i:02d}_" + "z" * 7992,
++        )
++        for i in range(20)
++    ]
++    parth_trimmed = trim_history(turns_20, text="short query", plan=parth_plan)
++    assert len(parth_trimmed) > 0
++    assert parth_trimmed == tuple(turns_20[-len(parth_trimmed) :])
++    assert sum(len(t.content.encode("utf-8")) for t in parth_trimmed) <= HISTORY_REQUEST_CAP_BYTES
++    assert len(parth_trimmed) == 4
++
++    # 6. History tokens value check
++    sample_turns = [
++        HistoryTurn(role="user", content="a" * 200),
++        HistoryTurn(role="assistant", content="b" * 203),
++    ]
++    # Total utf-8 bytes = 403. 403 // 4 = 100.
++    assert history_tokens(sample_turns) == 100
++
++
++def test_trim_history_exact_budget_boundary() -> None:
++    plan = SYNTHETIC_POLICIES["ananta"]
++    text = "q" * (plan.input_tokens * 4 - SYSTEM_PROMPT_MAX_CHARS - 100)  # leaves 100 bytes
++    fits = HistoryTurn(role="user", content="f" * 100)
++    over = HistoryTurn(role="user", content="o" * 101)
++    assert trim_history([fits], text=text, plan=plan) == (fits,)
++    assert trim_history([over], text=text, plan=plan) == ()
++
++
++def test_message_request_hash() -> None:
++    text = "Explain photosynthesis"
++    expected_no_hist = hashlib.sha256(text.encode("utf-8")).hexdigest()
++
++    # No or empty history matches sha256(text)
++    assert message_request_hash(text) == expected_no_hist
++    assert message_request_hash(text, ()) == expected_no_hist
++    assert message_request_hash(text, []) == expected_no_hist
++
++    t1 = HistoryTurn(role="user", content="What is biology?")
++    t2 = HistoryTurn(role="assistant", content="The study of life.")
++    t3 = HistoryTurn(role="user", content="Tell me more.")
++    t4 = HistoryTurn(role="assistant", content="What is biology?")  # different role
++
++    h_with_t1 = message_request_hash(text, [t1])
++    h_with_t2 = message_request_hash(text, [t2])
++    h_with_t1_t2 = message_request_hash(text, [t1, t2])
++    h_with_t3 = message_request_hash(text, [t3])
++    h_with_t4 = message_request_hash(text, [t4])
++
++    # With-history != without
++    assert h_with_t1 != expected_no_hist
++
++    # Different content or role -> different hash
++    assert h_with_t1 != h_with_t3
++    assert h_with_t1 != h_with_t4
++    assert h_with_t1 != h_with_t2
++    assert h_with_t1 != h_with_t1_t2
++
++    # Same history -> same hash
++    h_identical = message_request_hash(
++        text, [HistoryTurn(role="user", content="What is biology?")]
++    )
++    assert h_with_t1 == h_identical
++
++
++def test_schema_history_validation() -> None:
++    # MessageCreate without history defaults to []
++    msg_default = MessageCreate(text="test query", idempotency_key="key-12345678")
++    assert msg_default.history == []
++
++    for cls in (MessageCreate, RegenerateCreate):
++        # 21 turns -> ValidationError
++        with pytest.raises(ValidationError):
++            cls(
++                text="test query",
++                idempotency_key="key-12345678",
++                history=[
++                    HistoryTurn(role="user", content=f"msg {i}") for i in range(21)
++                ],
++            )
++
++        # 8001-char turn -> ValidationError
++        with pytest.raises(ValidationError):
++            cls(
++                text="test query",
++                idempotency_key="key-12345678",
++                history=[{"role": "user", "content": "x" * 8001}],
++            )
++
++        # Empty content -> ValidationError
++        with pytest.raises(ValidationError):
++            cls(
++                text="test query",
++                idempotency_key="key-12345678",
++                history=[{"role": "user", "content": ""}],
++            )
++
++        # Role "system" -> ValidationError
++        with pytest.raises(ValidationError):
++            cls(
++                text="test query",
++                idempotency_key="key-12345678",
++                history=[{"role": "system", "content": "not allowed"}],
++            )
++
++        # 20 turns of 8000 chars accepted
++        accepted_turns = [
++            HistoryTurn(
++                role="user" if i % 2 == 0 else "assistant",
++                content="a" * 8000,
++            )
++            for i in range(20)
++        ]
++        valid_instance = cls(
++            text="test query",
++            idempotency_key="key-12345678",
++            history=accepted_turns,
++        )
++        assert len(valid_instance.history) == 20
