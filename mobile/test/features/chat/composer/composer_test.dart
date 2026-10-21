@@ -263,6 +263,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('40,000 character limit'), findsOneWidget);
+      final dismissBtn = find.byTooltip('Dismiss error');
+      expect(dismissBtn, findsOneWidget);
+      final dismissSize = tester.getSize(dismissBtn);
+      expect(dismissSize.width, greaterThanOrEqualTo(44.0));
+      expect(dismissSize.height, greaterThanOrEqualTo(44.0));
     });
 
     testWidgets('total 60,001 chars rejected with message', (tester) async {
@@ -384,5 +389,48 @@ void main() {
         );
       },
     );
+
+    testWidgets('Send button tap target size is at least 44x44', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrapWithTheme(
+          Composer(
+            draftKey: 'test-a11y-size',
+            busy: false,
+            onSubmit: (_) {},
+            onStop: () {},
+            draftStore: FakeDraftStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final target = find.bySemanticsLabel('Send message');
+      expect(target, findsOneWidget);
+      final size = tester.getSize(target);
+      expect(size.width, greaterThanOrEqualTo(44.0));
+      expect(size.height, greaterThanOrEqualTo(44.0));
+    });
+
+    testWidgets('Send button Semantics label equals tooltip exactly', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrapWithTheme(
+          Composer(
+            draftKey: 'test-a11y-semantics-match',
+            busy: false,
+            onSubmit: (_) {},
+            onStop: () {},
+            draftStore: FakeDraftStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.bySemanticsLabel('Send message'), findsOneWidget);
+      expect(find.byTooltip('Send message'), findsOneWidget);
+    });
   });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/karmi_colors.dart';
+import '../../theme/karmi_motion.dart';
 import 'state/chat_controller.dart';
 /// Displays staged summary during assistant generation without exposing model reasoning.
 class ProcessingPanel extends StatelessWidget {
@@ -16,7 +17,7 @@ class ProcessingPanel extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    final disableAnimations = KarmiAccessibility.reduceMotionOf(context);
     final duration = disableAnimations
         ? Duration.zero
         : const Duration(milliseconds: 200);
@@ -52,7 +53,8 @@ class ProcessingPanel extends StatelessWidget {
         karmiColors?.sidebarSurface ?? colorScheme.surfaceContainerLow;
     final borderColor =
         karmiColors?.borderSubtle ?? colorScheme.outlineVariant;
-    final brandGreen = karmiColors?.primary ?? colorScheme.primary;
+    final primaryTextColor =
+        karmiColors?.primaryText ?? colorScheme.primary;
     final textColor =
         karmiColors?.foreground ?? colorScheme.onSurfaceVariant;
     final subtleColor =
@@ -88,7 +90,7 @@ class ProcessingPanel extends StatelessWidget {
                           )
                         : CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: brandGreen,
+                            color: primaryTextColor,
                           ),
                   ),
                   const SizedBox(width: 8),

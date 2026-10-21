@@ -57,12 +57,12 @@ void main() {
           findsNothing,
         );
 
-        // Semantics label is 'Stop response'
+        // Semantics label is 'Stop generating'
         final stopSemantics = find.byWidgetPredicate(
           (w) =>
               w is Semantics &&
               w.properties.button == true &&
-              w.properties.label == 'Stop response',
+              w.properties.label == 'Stop generating',
         );
         expect(stopSemantics, findsOneWidget);
 
@@ -112,12 +112,12 @@ void main() {
         );
         expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
 
-        // Semantics label is 'Send'
+        // Semantics label is 'Send message'
         final sendSemantics = find.byWidgetPredicate(
           (w) =>
               w is Semantics &&
               w.properties.button == true &&
-              w.properties.label == 'Send',
+              w.properties.label == 'Send message',
         );
         expect(sendSemantics, findsOneWidget);
 

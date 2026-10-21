@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/api/chat/chat_models.dart';
 import 'package:karmi_app/api/models.dart';
@@ -236,6 +237,61 @@ void main() {
       expect(find.text(language), findsOneWidget);
       expect(find.byTooltip('Copy code'), findsOneWidget);
       expect(find.byTooltip('Wrap long lines'), findsOneWidget);
+    });
+
+    testWidgets('6. Assistant reply liveRegion is false during streaming and true when finished', (tester) async {
+      final handle = tester.ensureSemantics();
+
+      final streamingMessage = ChatMessageView(
+        id: 'msg-stream-1',
+        conversationId: 'c1',
+        role: 'assistant',
+        status: MessageStatus.streaming,
+        content: 'Streaming reply in progress...',
+        createdAt: DateTime(2026, 1, 1),
+        updatedAt: DateTime(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
+          home: Scaffold(
+            body: MessageBubble.chatMessage(
+              chatMessage: streamingMessage,
+              announce: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final streamingNode = tester.getSemantics(find.bySemanticsLabel(RegExp('^Karmi replied')));
+      // ignore: deprecated_member_use
+      expect(streamingNode.hasFlag(SemanticsFlag.isLiveRegion), isFalse);
+      expect(streamingNode.getSemanticsData().flagsCollection.isLiveRegion, isFalse);
+
+      final finishedMessage = streamingMessage.copyWith(
+        status: MessageStatus.complete,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
+          home: Scaffold(
+            body: MessageBubble.chatMessage(
+              chatMessage: finishedMessage,
+              announce: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final finishedNode = tester.getSemantics(find.bySemanticsLabel(RegExp('^Karmi replied')));
+      // ignore: deprecated_member_use
+      expect(finishedNode.hasFlag(SemanticsFlag.isLiveRegion), isTrue);
+      expect(finishedNode.getSemanticsData().flagsCollection.isLiveRegion, isTrue);
+      handle.dispose();
     });
   });
 }

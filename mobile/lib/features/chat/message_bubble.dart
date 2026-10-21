@@ -199,11 +199,14 @@ class MessageBubble extends StatelessWidget {
           ),
         );
 
+        final isFinished =
+            chatMessage == null || chatMessage!.status != MessageStatus.streaming;
+
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Semantics(
             container: true,
-            liveRegion: announce,
+            liveRegion: announce && isFinished,
             label: 'Karmi replied',
             child: assistantTurn,
           ),
