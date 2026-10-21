@@ -25,6 +25,7 @@ class KarmiSession extends ChangeNotifier {
     required SharedPreferences prefs,
     this.clerkAuth,
   }) : _prefs = prefs {
+    unawaited(SharedPrefsDraftStore.purgeUnscopedDrafts(prefs));
     final auth = clerkAuth;
     if (auth != null) {
       // Never let a leftover synthetic token authenticate a Clerk-configured
@@ -54,6 +55,25 @@ class KarmiSession extends ChangeNotifier {
 
   /// Why the previous session ended, for the Welcome screen copy.
   SessionEnd get lastEnd => _lastEnd;
+
+  /// Stable id of the signed-in user, or null while unknown (e.g. Clerk still
+  /// loading). Dev tokens are `<userId>|<role>|<exp>|<tv>|<sig>`.
+  String? get userId {
+    final auth = clerkAuth;
+    if (auth != null) return auth.user?.id;
+    final token = api.token;
+    if (token == null) return null;
+    final sep = token.indexOf('|');
+    return sep > 0 ? token.substring(0, sep) : null;
+  }
+
+  /// Drafts scoped to the signed-in user; null when no user id is known, in
+  /// which case callers fall back to non-persistent drafts.
+  SharedPrefsDraftStore? get draftStore {
+    final uid = userId;
+    if (uid == null || uid.isEmpty || uid.contains('.')) return null;
+    return SharedPrefsDraftStore(userId: uid, prefs: _prefs);
+  }
 
   Future<String?> _clerkToken() async {
     final auth = clerkAuth;

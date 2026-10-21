@@ -9,6 +9,7 @@ import '../../widgets/karmi_card.dart';
 import '../history/conversation_list.dart';
 import '../history/conversation_list_controller.dart';
 import 'composer.dart';
+import 'composer/draft_store.dart';
 import 'error_card.dart';
 import 'message_bubble.dart';
 import 'processing_panel.dart';
@@ -28,6 +29,7 @@ class ChatScreen extends StatefulWidget {
     this.onConversationChanged,
     this.runStreamClient,
     this.conversationsApi,
+    this.draftStore,
   });
 
   final KarmiApi api;
@@ -38,6 +40,7 @@ class ChatScreen extends StatefulWidget {
   final ValueChanged<String?>? onConversationChanged;
   final RunStreamClient? runStreamClient;
   final ConversationsApi? conversationsApi;
+  final DraftStore? draftStore;
 
   /// Builds a history rail widget for wide layouts.
   static Widget historyRailBuilder({
@@ -479,6 +482,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           child: Composer(
             draftKey: _activeConversationId ?? 'new',
+            draftStore: widget.draftStore,
             busy: _isBusy,
             onSubmit: (submit) {
               final attachments = submit.attachments

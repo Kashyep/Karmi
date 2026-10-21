@@ -64,6 +64,7 @@ class _ComposerState extends State<Composer> {
   final _controller = TextEditingController();
   late final FocusNode _focusNode;
   late DraftStore _draftStore;
+  final _fallbackDrafts = MemoryDraftStore();
 
   final List<TextAttachment> _attachments = [];
   final List<String> _pasteChips = [];
@@ -76,7 +77,7 @@ class _ComposerState extends State<Composer> {
   @override
   void initState() {
     super.initState();
-    _draftStore = widget.draftStore ?? const SharedPrefsDraftStore();
+    _draftStore = widget.draftStore ?? _fallbackDrafts;
     _focusNode = FocusNode(
       debugLabel: 'ComposerTextFieldFocus',
       onKeyEvent: _handleKeyEvent,
@@ -108,7 +109,7 @@ class _ComposerState extends State<Composer> {
   void didUpdateWidget(Composer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.draftStore != widget.draftStore) {
-      _draftStore = widget.draftStore ?? const SharedPrefsDraftStore();
+      _draftStore = widget.draftStore ?? _fallbackDrafts;
     }
     if (oldWidget.draftKey != widget.draftKey) {
       _debounceTimer?.cancel();

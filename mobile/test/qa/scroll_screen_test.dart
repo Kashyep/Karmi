@@ -297,5 +297,92 @@ void main() {
         expect(find.byType(JumpToLatestButton).hitTestable(), findsNothing);
       },
     );
+
+    testWidgets(
+      '(c) new content while scrolled up during streaming shows the new-messages badge '
+      'semantics, and tapping Jump to Latest clears it',
+      (tester) async {
+        final fakeStream = FakeRunStreamClient();
+        final controller = ChatController(
+          client: fakeStream,
+          deltaFlushInterval: const Duration(milliseconds: 10),
+        );
+        final convController = ConversationListController(api: FakeConversationsApi());
+
+        await tester.pumpWidget(
+          wrapChatScreen(
+            ChatScreen(
+              api: KarmiApi(baseUrl: 'http://fake.test'),
+              chatController: controller,
+              conversationListController: convController,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.enterText(find.byType(TextField), 'Badge streaming check');
+        await tester.pump();
+        await tester.tap(find.byTooltip('Send message'));
+        await tester.pump();
+
+        fakeStream.emitStarted();
+        final chunk = 'Line of streaming output for Karmi testing.\n' * 6;
+        for (int i = 0; i < 6; i++) {
+          fakeStream.emitDelta('Block $i:\n$chunk\n');
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+
+        final position = getChatScrollPosition(tester);
+        final jumpBtnFinder = find.byType(JumpToLatestButton);
+        final listFinder = find.descendant(
+          of: find.byType(EndAnchoredScroll),
+          matching: find.byType(ListView),
+        );
+        final badgeSemantics = find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.label == 'New messages, jump to latest',
+        );
+        final plainSemantics = find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.label == 'Jump to latest message',
+        );
+
+        // Pinned at bottom: no badge.
+        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent, isFalse);
+
+        // Scroll up while the stream is still running.
+        await tester.drag(listFinder, const Offset(0, 300));
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(position.pixels, lessThan(position.maxScrollExtent - 48.0));
+        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isTrue);
+        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent, isFalse);
+        expect(plainSemantics, findsOneWidget);
+
+        // New streamed content arrives while scrolled up: badge appears.
+        fakeStream.emitDelta('Streaming while scrolled up:\n$chunk\n');
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.pump(const Duration(milliseconds: 250));
+
+        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent, isTrue);
+        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isTrue);
+        expect(badgeSemantics, findsOneWidget);
+        expect(plainSemantics, findsNothing);
+        expect(find.text('New messages'), findsOneWidget);
+
+        // Tapping clears the badge and returns to the end.
+        await tester.tap(jumpBtnFinder);
+        for (int i = 0; i < 10; i++) {
+          await tester.pump(const Duration(milliseconds: 30));
+        }
+        await tester.pump(const Duration(milliseconds: 250));
+
+        expect((position.pixels - position.maxScrollExtent).abs(), lessThanOrEqualTo(1.0));
+        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent, isFalse);
+        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isFalse);
+        expect(badgeSemantics, findsNothing);
+        expect(find.text('New messages'), findsNothing);
+
+        fakeStream.emitFinished();
+        await tester.pump(const Duration(milliseconds: 50));
+      },
+    );
   });
 }
