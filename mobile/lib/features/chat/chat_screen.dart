@@ -4,7 +4,8 @@ import '../../api/conversations/conversations_api.dart';
 import '../../api/karmi_api.dart';
 import '../../api/stream/run_stream_client.dart';
 import '../../shell/breakpoints.dart';
-import '../../widgets/feedback.dart';
+import '../../theme/karmi_motion.dart';
+import 'empty_state.dart';
 import '../../widgets/karmi_card.dart';
 import '../history/conversation_list.dart';
 import '../history/conversation_list_controller.dart';
@@ -30,6 +31,7 @@ class ChatScreen extends StatefulWidget {
     this.runStreamClient,
     this.conversationsApi,
     this.draftStore,
+    this.clock,
   });
 
   final KarmiApi api;
@@ -41,6 +43,7 @@ class ChatScreen extends StatefulWidget {
   final RunStreamClient? runStreamClient;
   final ConversationsApi? conversationsApi;
   final DraftStore? draftStore;
+  final DateTime Function()? clock;
 
   /// Builds a history rail widget for wide layouts.
   static Widget historyRailBuilder({
@@ -493,13 +496,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       controller: scrollController,
                       physics: physics,
                       padding: insets.copyWith(bottom: 16),
-                      children: const [
-                        EmptyState(
-                          quote:
-                              'Ask a study question, or get help with maths or code.',
-                          body:
-                              'Each reply shows its status, such as "Completed" or '
-                              '"Awaiting confirmation".',
+                      children: [
+                        ChatEmptyState(
+                          key: const ValueKey('new-chat-empty-state'),
+                          clock: widget.clock,
+                          onStarterPicked: (prompt) =>
+                              _chatController.send(prompt),
                         ),
                       ],
                     );
@@ -569,14 +571,35 @@ class _ChatScreenState extends State<ChatScreen> {
               onUpgrade: widget.onOpenPlans,
             ),
           ),
-        Padding(
+        AnimatedPadding(
+          key: const ValueKey('chat-composer-dock'),
+          duration: KarmiMotion.composerDurationOf(context),
+          curve: KarmiMotion.composerCurve,
           padding: EdgeInsets.only(
-            bottom: MediaQuery.paddingOf(context).bottom,
+            bottom: _composerDockBottomPadding(
+              context,
+              messages.isNotEmpty || _isLoadingMessages,
+            ),
           ),
           child: _buildComposer(),
         ),
       ],
     );
+  }
+
+  double _composerDockBottomPadding(BuildContext context, bool isDocked) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom +
+        MediaQuery.viewInsetsOf(context).bottom;
+    if (isDocked) {
+      return bottomInset;
+    }
+    final height = MediaQuery.sizeOf(context).height;
+    final isDesktop = WorkspaceSize.of(context) == WorkspaceSize.expanded;
+    // On desktop, composer is centered slightly above midpoint (~42-45% from top).
+    // On mobile, centered vertically (~48-50%).
+    final factor = isDesktop ? 0.55 : 0.50;
+    final computed = (height * factor - 35).clamp(bottomInset, height * 0.55);
+    return computed;
   }
 }
 
