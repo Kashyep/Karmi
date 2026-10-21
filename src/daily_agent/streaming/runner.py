@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -11,6 +12,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import SingletonThreadPool
 
 from daily_agent.config import Settings
 from daily_agent.conversations.service import touch_conversation
@@ -28,7 +30,14 @@ from daily_agent.gateway.types import (
 from daily_agent.models import BudgetReservation, ChatMessage, Conversation, Run, RunStatus, utcnow
 from daily_agent.plans import PlanPolicy
 from daily_agent.schemas_chat import ErrorCategory, FinishReason, MessageStatus
-from daily_agent.services import measured_cost_micro, measured_tokens, release_budget, settle_budget
+from daily_agent.services import (
+    GatewayAdmission,
+    measured_cost_micro,
+    measured_tokens,
+    release_budget,
+    return_gateway_requests,
+    settle_budget,
+)
 from daily_agent.streaming.registry import RunState
 
 logger = logging.getLogger(__name__)
@@ -72,6 +81,7 @@ class StreamRunner:
         session_factory: Callable[[], Session],
         reservation_id: str,
         prior_content: str | None = None,
+        admission: GatewayAdmission | None = None,
     ) -> None:
         self.run_state = run_state
         self.plan = plan
@@ -83,6 +93,7 @@ class StreamRunner:
         self.session_factory = session_factory
         self.reservation_id = reservation_id
         self.prior_content = prior_content
+        self.admission = admission
 
         self.seq = 0
         self.accumulated_text = ""
@@ -91,9 +102,49 @@ class StreamRunner:
         self.last_event_time = time.monotonic()
         self.first_delta_recorded = False
         self.start_time = time.monotonic()
-        self.budget_settled = False
+        self.provider_invoked = False
+        self._budget_settled = False
+        self._budget_lock = threading.Lock()
+        self._flush_lock = threading.Lock()
+        self._flushed_terminal = False
         self.final_call: Any = None
+        if self.run_state.on_finalize is None:
+            self.run_state.on_finalize = self.finalize
 
+    @property
+    def budget_settled(self) -> bool:
+        return self._budget_settled
+
+    @budget_settled.setter
+    def budget_settled(self, value: bool) -> None:
+        self._budget_settled = value
+
+    def _is_sqlite_singleton_memory(self) -> bool:
+        if hasattr(self, "_sqlite_singleton_memory"):
+            return self._sqlite_singleton_memory
+        is_singleton = False
+        try:
+            bind = getattr(self.session_factory, "kw", {}).get("bind") or getattr(
+                self.session_factory, "bind", None
+            )
+            if bind is None:
+                with self.session_factory() as session:
+                    bind = session.get_bind()
+            if (
+                bind is not None
+                and bind.dialect.name == "sqlite"
+                and isinstance(bind.pool, SingletonThreadPool)
+            ):
+                is_singleton = True
+        except Exception:
+            pass
+        self._sqlite_singleton_memory = is_singleton
+        return is_singleton
+
+    async def _run_in_thread(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        if self._is_sqlite_singleton_memory():
+            return fn(*args, **kwargs)
+        return await asyncio.to_thread(fn, *args, **kwargs)
     def _flush_db(
         self,
         *,
@@ -104,60 +155,80 @@ class StreamRunner:
         message_finish_reason: str | None = None,
         outcome: str | None = None,
     ) -> None:
-        with self.session_factory() as session:
-            run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
-            if run is not None:
-                run.partial_text = text
-                run.last_seq = self.seq
-                if run_status is not None:
-                    run.status = run_status
-                if run_finish_reason is not None:
-                    run.finish_reason = run_finish_reason
-                if outcome is not None:
-                    run.outcome = outcome
-                if run_status == RunStatus.COMPLETED:
-                    run.response_text = text
+        with self._flush_lock:
+            with self.session_factory() as session:
+                run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
+                if run is not None:
+                    run.partial_text = text
+                    run.last_seq = self.seq
+                    if run_status is not None:
+                        run.status = run_status
+                    if run_finish_reason is not None:
+                        run.finish_reason = run_finish_reason
+                    if outcome is not None:
+                        run.outcome = outcome
+                    if run_status == RunStatus.COMPLETED:
+                        run.response_text = text
 
-            msg = session.scalar(select(ChatMessage).where(ChatMessage.id == self.run_state.assistant_message_id))
-            if msg is not None:
-                # If continuing, full content includes prior text
-                full_content = (self.prior_content or "") + text
-                msg.content = full_content
-                if message_status is not None:
-                    msg.status = message_status
-                if message_finish_reason is not None:
-                    msg.finish_reason = message_finish_reason
-            if msg is not None and run_status in (RunStatus.COMPLETED, RunStatus.FAILED):
-                conversation = session.get(Conversation, msg.conversation_id)
-                if conversation is not None:
-                    touch_conversation(conversation, utcnow())
-            session.commit()
-            self.last_flush_time = time.monotonic()
-            self.last_flushed_len = len(text)
+                msg = session.scalar(select(ChatMessage).where(ChatMessage.id == self.run_state.assistant_message_id))
+                if msg is not None:
+                    # If continuing, full content includes prior text
+                    full_content = (self.prior_content or "") + text
+                    msg.content = full_content
+                    if message_status is not None:
+                        msg.status = message_status
+                    if message_finish_reason is not None:
+                        msg.finish_reason = message_finish_reason
+                if msg is not None and run_status in (RunStatus.COMPLETED, RunStatus.FAILED):
+                    self._flushed_terminal = True
+                    conversation = session.get(Conversation, msg.conversation_id)
+                    if conversation is not None:
+                        touch_conversation(conversation, utcnow())
+                session.commit()
+                self.last_flush_time = time.monotonic()
+                self.last_flushed_len = len(text)
 
     def _settle_or_release_budget(self, *, release: bool = False) -> None:
-        if self.budget_settled:
-            return
-        self.budget_settled = True
-        with self.session_factory() as session:
-            reservation = session.get(BudgetReservation, self.reservation_id)
-            if reservation is None:
+        with self._budget_lock:
+            if self._budget_settled:
                 return
-            if release or (self.final_call is None and not self.accumulated_text):
-                release_budget(session, reservation)
-            else:
-                calls = [self.final_call] if self.final_call is not None else []
-                cost = measured_cost_micro(calls) if calls else 0
-                tokens = measured_tokens(calls) if calls else len(self.accumulated_text) // 4
-                settle_budget(
-                    session,
-                    reservation,
-                    attempt_id=f"{self.run_state.run_id}:1",
-                    actual_micro=cost,
-                    actual_tokens=tokens,
-                    calls=calls,
+            self._budget_settled = True
+            with self.session_factory() as session:
+                reservation = session.get(BudgetReservation, self.reservation_id)
+                if reservation is not None:
+                    if release or (self.final_call is None and not self.accumulated_text):
+                        release_budget(session, reservation)
+                    else:
+                        calls = [self.final_call] if self.final_call is not None else []
+                        cost = measured_cost_micro(calls) if calls else 0
+                        tokens = measured_tokens(calls) if calls else len(self.accumulated_text) // 4
+                        settle_budget(
+                            session,
+                            reservation,
+                            attempt_id=f"{self.run_state.run_id}:1",
+                            actual_micro=cost,
+                            actual_tokens=tokens,
+                            calls=calls,
+                        )
+                if self.admission is not None:
+                    used = 1 if (self.provider_invoked or self.final_call is not None) else 0
+                    return_gateway_requests(session, self.admission, used=used)
+                session.commit()
+
+    def finalize(self) -> None:
+        self._settle_or_release_budget(release=not bool(self.accumulated_text))
+        if not self._flushed_terminal:
+            try:
+                self._flush_db(
+                    text=self.accumulated_text,
+                    run_status=RunStatus.FAILED,
+                    run_finish_reason=FinishReason.ERROR.value,
+                    message_status=MessageStatus.FAILED.value,
+                    message_finish_reason=FinishReason.ERROR.value,
+                    outcome="FAILED",
                 )
-            session.commit()
+            except Exception:
+                logger.exception("Failed to flush DB during runner finalization")
 
     async def _heartbeat_loop(self) -> None:
         while not self.run_state.terminal:
@@ -199,6 +270,7 @@ class StreamRunner:
 
         finish_reason: str = FinishReason.STOP.value
         try:
+            self.provider_invoked = True
             stream_gen = self.gateway.stream(
                 plan=self.plan,
                 text=self.text,
@@ -225,7 +297,12 @@ class StreamRunner:
 
                     # Flush partial text at most once per 1.0 s or per 1 KB of new text
                     if (now - self.last_flush_time >= 1.0) or (len(self.accumulated_text) - self.last_flushed_len >= 1024):
-                        self._flush_db(text=self.accumulated_text, run_status="streaming", message_status=MessageStatus.STREAMING.value)
+                        await self._run_in_thread(
+                            self._flush_db,
+                            text=self.accumulated_text,
+                            run_status="streaming",
+                            message_status=MessageStatus.STREAMING.value,
+                        )
 
                 if chunk.finish_reason is not None:
                     finish_reason = chunk.finish_reason
@@ -233,7 +310,8 @@ class StreamRunner:
                     self.final_call = chunk.call
 
             # Stream finished normally
-            self._flush_db(
+            await self._run_in_thread(
+                self._flush_db,
                 text=self.accumulated_text,
                 run_status=RunStatus.COMPLETED,
                 run_finish_reason=finish_reason,
@@ -241,7 +319,7 @@ class StreamRunner:
                 message_finish_reason=finish_reason,
                 outcome="COMPLETED",
             )
-            self._settle_or_release_budget(release=False)
+            await self._run_in_thread(self._settle_or_release_budget, release=False)
 
             in_tokens = self.final_call.input_tokens if self.final_call else None
             out_tokens = self.final_call.output_tokens if self.final_call else None
@@ -260,7 +338,8 @@ class StreamRunner:
         except asyncio.CancelledError:
             # Stop requested: cancels the provider call. Finish_reason=cancelled, message status=stopped, partial kept
             logger.info("stream.stopped run_id=%s", self.run_state.run_id)
-            self._flush_db(
+            await self._run_in_thread(
+                self._flush_db,
                 text=self.accumulated_text,
                 run_status=RunStatus.COMPLETED,
                 run_finish_reason=FinishReason.CANCELLED.value,
@@ -268,22 +347,24 @@ class StreamRunner:
                 message_finish_reason=FinishReason.CANCELLED.value,
                 outcome="STOPPED",
             )
-            self._settle_or_release_budget(release=False)
-            await self.run_state.publish(
-                "run.finished",
-                {
-                    "finish_reason": FinishReason.CANCELLED.value,
-                    "outcome": "STOPPED",
-                    "assistant_message_id": self.run_state.assistant_message_id,
-                },
-            )
+            await self._run_in_thread(self._settle_or_release_budget, release=False)
+            if not self.run_state.terminal:
+                await self.run_state.publish(
+                    "run.finished",
+                    {
+                        "finish_reason": FinishReason.CANCELLED.value,
+                        "outcome": "STOPPED",
+                        "assistant_message_id": self.run_state.assistant_message_id,
+                    },
+                )
             raise
 
         except Exception as exc:
             category, retryable, retry_after_s = _error_category(exc)
             logger.info("stream.error run_id=%s category=%s", self.run_state.run_id, category)
             # Partial text is kept
-            self._flush_db(
+            await self._run_in_thread(
+                self._flush_db,
                 text=self.accumulated_text,
                 run_status=RunStatus.FAILED,
                 run_finish_reason=FinishReason.ERROR.value,
@@ -291,16 +372,17 @@ class StreamRunner:
                 message_finish_reason=FinishReason.ERROR.value,
                 outcome="FAILED",
             )
-            self._settle_or_release_budget(release=not bool(self.accumulated_text))
-            await self.run_state.publish(
-                "run.error",
-                {
-                    "category": category,
-                    "retryable": retryable,
-                    "retry_after_s": retry_after_s,
-                    "assistant_message_id": self.run_state.assistant_message_id,
-                },
-            )
+            await self._run_in_thread(self._settle_or_release_budget, release=not bool(self.accumulated_text))
+            if not self.run_state.terminal:
+                await self.run_state.publish(
+                    "run.error",
+                    {
+                        "category": category,
+                        "retryable": retryable,
+                        "retry_after_s": retry_after_s,
+                        "assistant_message_id": self.run_state.assistant_message_id,
+                    },
+                )
 
         finally:
             heartbeat_task.cancel()
@@ -318,6 +400,7 @@ def start_stream_run(
     session_factory: Callable[[], Session],
     reservation_id: str,
     prior_content: str | None = None,
+    admission: GatewayAdmission | None = None,
 ) -> asyncio.Task[None]:
     runner = StreamRunner(
         run_state=run_state,
@@ -330,7 +413,9 @@ def start_stream_run(
         session_factory=session_factory,
         reservation_id=reservation_id,
         prior_content=prior_content,
+        admission=admission,
     )
     task = asyncio.create_task(runner.run())
     run_state.task = task
+    run_state.on_finalize = runner.finalize
     return task
