@@ -102,6 +102,7 @@ void main() {
         expect(find.byType(PasteChip), findsOneWidget);
 
         // Tap the remove icon button on PasteChip
+        await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('Remove pasted text'));
         await tester.pump();
 
