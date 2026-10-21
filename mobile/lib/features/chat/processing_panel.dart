@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-// Canonical definition belongs in features/chat/state/chat_controller.dart (Squad A); move at merge.
-enum ChatRunPhase { idle, sending, streaming, stalled, finished, error }
+import 'state/chat_controller.dart';
 
 /// Displays staged summary during assistant generation without exposing model reasoning.
 class ProcessingPanel extends StatelessWidget {

@@ -117,8 +117,7 @@ class ErrorCard extends StatelessWidget {
                         horizontal: 12,
                         vertical: 8,
                       ),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      minimumSize: const Size(48, 48),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                         side: BorderSide(

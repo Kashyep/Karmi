@@ -1,5 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
-
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/api/karmi_api.dart';
@@ -155,6 +156,31 @@ Future<AppHandle> pumpApp(
 }) async {
   _applyView(tester, env, size);
   backend ??= FakeBackend.healthy(unlocked: env.tier, active: env.tier);
+  if (!backend.routes.containsKey('GET /v1/conversations')) {
+    backend.on(
+      'GET',
+      '/v1/conversations',
+      (_) => jsonResponse({'items': [], 'next_cursor': null}),
+    );
+  }
+  if (!backend.routes.containsKey('POST /v1/chat/stream')) {
+    backend.on('POST', '/v1/chat/stream', (req) {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final text = body['text'] as String? ?? 'Reply';
+      final sse = 'event: run.started\n'
+          'data: {"run_id":"run-1","conversation_id":"conv-1","user_message_id":"msg-u","assistant_message_id":"msg-a","seq":0}\n\n'
+          'id: 1\n'
+          'event: message.delta\n'
+          'data: {"text":"$text"}\n\n'
+          'event: run.finished\n'
+          'data: {"finish_reason":"stop","outcome":"success"}\n\n';
+      return http.Response(
+        sse,
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
+    });
+  }
   SharedPreferences.setMockInitialValues({
     'reduce_transparency': env.reduceTransparency,
     'theme_mode': env.brightness == Brightness.dark ? 'dark' : 'light',

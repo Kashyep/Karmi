@@ -2,6 +2,7 @@
 // Run: cd mobile && flutter test test/perf/chat_perf_test.dart --reporter expanded
 // Emits lines prefixed `PERF ` for capture into docs/release1/perf/BASELINE.md.
 import 'dart:math' as math;
+import 'package:http/http.dart' as http;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,12 +26,20 @@ void _perf(String line) => print('PERF $line');
 FakeBackend _numberedReplies() {
   var n = 0;
   return FakeBackend.healthy()
-    ..on('POST', '/v1/messages', (_) {
+    ..on('POST', '/v1/chat/stream', (_) {
       n += 1;
-      return jsonResponse({
-        ...messageJson('ACCEPT', response: 'Reply $n: a short streamed-style answer about the plan.'),
-        'run_id': 'run-$n',
-      });
+      final sse = 'event: run.started\n'
+          'data: {"run_id":"run-$n","conversation_id":"conv-1","user_message_id":"msg-u-$n","assistant_message_id":"msg-a-$n","seq":0}\n\n'
+          'id: 1\n'
+          'event: message.delta\n'
+          'data: {"text":"Reply $n: a short streamed-style answer about the plan."}\n\n'
+          'event: run.finished\n'
+          'data: {"finish_reason":"stop","outcome":"success"}\n\n';
+      return http.Response(
+        sse,
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
     });
 }
 

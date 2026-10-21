@@ -317,6 +317,8 @@ class ChatController extends ChangeNotifier {
       await _streamSubscription?.cancel();
       _streamSubscription = null;
 
+      _error = null;
+      _resumeAttempts = 0;
       _terminalReceived = false;
       _setPhase(ChatRunPhase.streaming);
       _resetStallTimer();
@@ -335,6 +337,8 @@ class ChatController extends ChangeNotifier {
       await _streamSubscription?.cancel();
       _streamSubscription = null;
 
+      _error = null;
+      _resumeAttempts = 0;
       _terminalReceived = false;
       _setPhase(ChatRunPhase.sending);
 

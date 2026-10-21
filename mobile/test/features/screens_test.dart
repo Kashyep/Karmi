@@ -252,7 +252,7 @@ void main() {
       await pumpApp(tester, env: const Env(reduceTransparency: true));
       await tester.tap(find.byTooltip('More options'));
       await settle(tester);
-      await tester.tap(find.text('Plans'));
+      await tester.tap(find.text('Plans').last);
       await settle(tester);
       expect(find.byType(PlanSelectionScreen), findsOneWidget);
     });

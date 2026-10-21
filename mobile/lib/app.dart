@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+import 'api/conversations/conversations_api.dart';
 import 'armory/armory_controller.dart';
 import 'auth/session.dart';
+import 'features/history/conversation_list.dart';
+import 'features/history/conversation_list_controller.dart';
 import 'features/welcome/welcome_screen.dart';
 import 'features/welcome/tester_notice.dart';
 import 'features/welcome/tester_notice_screen.dart';
@@ -39,18 +44,39 @@ class KarmiApp extends StatefulWidget {
 class _KarmiAppState extends State<KarmiApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
   late bool _signedIn = widget.session.isSignedIn;
+  ConversationsApi? _conversationsApi;
+  ConversationListController? _conversationListController;
 
   @override
   void initState() {
     super.initState();
     widget.session.addListener(_onSession);
-    if (_signedIn) _loadArmory();
+    if (_signedIn) {
+      _loadArmory();
+      _ensureConversationController();
+    }
   }
 
   @override
   void dispose() {
     widget.session.removeListener(_onSession);
     super.dispose();
+    _conversationListController?.dispose();
+    _conversationsApi?.close();
+  }
+
+  ConversationListController _ensureConversationController() {
+    final existing = _conversationListController;
+    if (existing != null) return existing;
+    final api = _conversationsApi ??= ConversationsApi(
+      baseUrl: widget.session.api.baseUrl,
+      tokenProvider: widget.session.api.tokenProvider ??
+          () async => widget.session.api.token,
+    );
+    final controller = ConversationListController(api: api);
+    _conversationListController = controller;
+    unawaited(controller.refresh());
+    return controller;
   }
 
   /// Progression is server-authoritative; a failed fetch keeps the cached
@@ -70,8 +96,13 @@ class _KarmiAppState extends State<KarmiApp> {
     if (_signedIn && !signedIn) {
       _navigatorKey.currentState?.popUntil((route) => route.isFirst);
       widget.armory.reset();
+      _conversationListController?.dispose();
+      _conversationListController = null;
+      _conversationsApi?.close();
+      _conversationsApi = null;
     } else if (!_signedIn && signedIn) {
       _loadArmory();
+      _ensureConversationController();
     }
     setState(() => _signedIn = signedIn);
   }
@@ -121,6 +152,11 @@ class _KarmiAppState extends State<KarmiApp> {
                     settings: widget.settings,
                     session: widget.session,
                     armory: widget.armory,
+                    historyRailBuilder: (context) => ConversationList(
+                      controller: _ensureConversationController(),
+                      onOpen: (_) {},
+                      onNewChat: () {},
+                    ),
                   )
                 : WelcomeScreen(
                     key: const ValueKey('welcome'),

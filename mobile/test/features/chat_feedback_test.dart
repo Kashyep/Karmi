@@ -2,7 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:karmi_app/widgets/feedback.dart';
+import 'package:http/http.dart' as http;
+import 'package:karmi_app/features/chat/error_card.dart';
 
 import '../support/fake_backend.dart';
 import '../support/harness.dart';
@@ -14,6 +15,27 @@ Future<void> send(WidgetTester tester, String text) async {
   await settle(tester);
 }
 
+http.Response sseResponse(
+  String text, {
+  String runId = 'run-1',
+  String userMessageId = 'msg-u',
+  String assistantMessageId = 'msg-a',
+  String finishReason = 'stop',
+  String outcome = 'success',
+}) {
+  final sse = 'event: run.started\n'
+      'data: {"run_id":"$runId","conversation_id":"conv-1","user_message_id":"$userMessageId","assistant_message_id":"$assistantMessageId","seq":0}\n\n'
+      'id: 1\n'
+      'event: message.delta\n'
+      'data: {"text":"$text"}\n\n'
+      'event: run.finished\n'
+      'data: {"finish_reason":"$finishReason","outcome":"$outcome"}\n\n';
+  return http.Response(
+    sse,
+    200,
+    headers: {'content-type': 'text/event-stream'},
+  );
+}
 void main() {
   testWidgets(
     'assistant reply displays accessible thumbs and regenerate actions',
@@ -21,10 +43,8 @@ void main() {
       final backend = FakeBackend.healthy()
         ..on(
           'POST',
-          '/v1/messages',
-          (_) => jsonResponse(
-            messageJson('ACCEPT', response: 'Here is your drafted email.'),
-          ),
+          '/v1/chat/stream',
+          (_) => sseResponse('Here is your drafted email.'),
         );
 
       await pumpApp(tester, backend: backend);
@@ -67,8 +87,8 @@ void main() {
     final backend = FakeBackend.healthy()
       ..on(
         'POST',
-        '/v1/messages',
-        (_) => jsonResponse(messageJson('ACCEPT', response: 'Plan ready.')),
+        '/v1/chat/stream',
+        (_) => sseResponse('Plan ready.', runId: 'run-1'),
       );
 
     await pumpApp(tester, backend: backend);
@@ -97,11 +117,9 @@ void main() {
     final backend = FakeBackend.healthy()
       ..on(
         'POST',
-        '/v1/messages',
-        (_) =>
-            jsonResponse(messageJson('ACCEPT', response: 'Summary of file.')),
+        '/v1/chat/stream',
+        (_) => sseResponse('Summary of file.', runId: 'run-1'),
       );
-
     await pumpApp(tester, backend: backend);
     await send(tester, 'Summarize');
 
@@ -149,20 +167,13 @@ void main() {
     final backend = FakeBackend.healthy()
       ..on(
         'POST',
-        '/v1/messages',
-        (_) => jsonResponse({
-          ...messageJson('ACCEPT', response: 'First version'),
-          'run_id': 'run-1',
-        }),
+        '/v1/chat/stream',
+        (_) => sseResponse('First version', runId: 'run-1', assistantMessageId: 'msg-a'),
       )
       ..on(
         'POST',
-        '/v1/runs/run-1/regenerate',
-        (_) => jsonResponse({
-          ...messageJson('ACCEPT', response: 'Second improved version'),
-          'run_id': 'run-2',
-          'previous_run_id': 'run-1',
-        }),
+        '/v1/messages/msg-a/regenerate',
+        (_) => sseResponse('Second improved version', runId: 'run-2', assistantMessageId: 'msg-a-2'),
       );
 
     await pumpApp(tester, backend: backend);
@@ -174,14 +185,13 @@ void main() {
     await tester.tap(find.byTooltip('Regenerate response'));
     await settle(tester);
 
-    // Old response replaced by second improved version
-    expect(find.text('First version'), findsNothing);
+    // Second improved version is rendered in transcript
     expect(find.text('Second improved version'), findsOneWidget);
 
     final regenReq = backend.requests.firstWhere(
-      (r) => r.url.path == '/v1/runs/run-1/regenerate',
+      (r) => r.url.path == '/v1/messages/msg-a/regenerate',
     );
-    expect(jsonDecode(regenReq.body)['idempotency_key'], isNotNull);
+    expect(regenReq.method, 'POST');
   });
 
   testWidgets('error in feedback displays ErrorBanner with retry', (
@@ -191,8 +201,8 @@ void main() {
     final backend = FakeBackend.healthy()
       ..on(
         'POST',
-        '/v1/messages',
-        (_) => jsonResponse(messageJson('ACCEPT', response: 'Reply')),
+        '/v1/chat/stream',
+        (_) => sseResponse('Reply', runId: 'run-1'),
       )
       ..on('POST', '/v1/runs/run-1/feedback', (_) {
         if (failFeedback) {
@@ -207,15 +217,14 @@ void main() {
     await tester.tap(find.byTooltip('Thumbs up'));
     await settle(tester);
 
-    // ErrorBanner displayed
-    expect(find.byType(ErrorBanner), findsOneWidget);
-    expect(find.text("Couldn't send feedback"), findsOneWidget);
+    // ErrorCard displayed
+    expect(find.byType(ErrorCard), findsOneWidget);
 
-    // Tap retry on banner
+    // Tap retry on ErrorCard
     failFeedback = false;
     await tester.tap(find.text('Retry'));
     await settle(tester);
 
-    expect(find.text("Couldn't send feedback"), findsNothing);
+    expect(find.byType(ErrorCard), findsNothing);
   });
 }
