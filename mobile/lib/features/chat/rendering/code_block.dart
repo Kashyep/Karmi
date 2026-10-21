@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../theme/karmi_colors.dart';
+import '../../../theme/karmi_theme.dart';
 import 'long_output_fold.dart';
 
 /// Renders a code block with language indicator, copy-to-clipboard,
@@ -53,17 +54,22 @@ class _CodeBlockState extends State<CodeBlock> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    final blockBg = colors?.card ?? colorScheme.surfaceContainerHighest;
-    final codeAreaBg = colors?.background ?? colorScheme.surface;
+    final headerBg =
+        colors?.codeHeaderSurface ?? colorScheme.surfaceContainerHighest;
+    final codeAreaBg = colors?.codeSurface ?? colorScheme.surfaceContainer;
     final borderColor = colors?.borderSubtle ?? colorScheme.outlineVariant;
+    final hairline = colors?.hairline ?? borderColor;
     final fgColor = colors?.foreground ?? colorScheme.onSurface;
     final mutedFg = colors?.mutedForeground ?? colorScheme.onSurfaceVariant;
+    final successColor = colors?.success ?? const Color(0xFF2DD4BF);
 
     final langLabel =
         (widget.language != null && widget.language!.trim().isNotEmpty)
         ? widget.language!.trim()
         : 'text';
 
+    final langStyle = (textTheme.labelSmall ?? KarmiTypography.toolbarCaption())
+        .copyWith(color: mutedFg, fontWeight: FontWeight.w600);
     final lineCount = const LineSplitter().convert(widget.code).length;
     final isLong = lineCount > 40;
 
@@ -98,7 +104,7 @@ class _CodeBlockState extends State<CodeBlock> {
 
     return Container(
       decoration: BoxDecoration(
-        color: blockBg,
+        color: codeAreaBg,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: borderColor, width: 0.5),
       ),
@@ -107,44 +113,86 @@ class _CodeBlockState extends State<CodeBlock> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          Container(
+            color: headerBg,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
             child: Row(
               children: [
-                Text(
-                  langLabel,
-                  style: (textTheme.labelSmall ?? const TextStyle()).copyWith(
-                    color: mutedFg,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(langLabel, style: langStyle),
                 const Spacer(),
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _isWrapped = !_isWrapped;
-                    });
-                  },
-                  icon: Icon(
-                    _isWrapped ? Icons.wrap_text : Icons.wrap_text_outlined,
-                    size: 16,
+                Tooltip(
+                  message: _isWrapped ? 'Disable line wrap' : 'Wrap long lines',
+                  child: Semantics(
+                    label: _isWrapped ? 'Disable wrap' : 'Wrap code',
+                    button: true,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: mutedFg,
+                          minimumSize: const Size(44, 44),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          textStyle: textTheme.labelSmall,
+                          tapTargetSize: MaterialTapTargetSize.padded,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isWrapped = !_isWrapped;
+                          });
+                        },
+                        icon: Icon(
+                          _isWrapped
+                              ? Icons.wrap_text
+                              : Icons.wrap_text_outlined,
+                          size: 16,
+                        ),
+                        label: Text(_isWrapped ? 'No wrap' : 'Wrap'),
+                      ),
+                    ),
                   ),
-                  label: Text(_isWrapped ? 'No wrap' : 'Wrap'),
                 ),
                 const SizedBox(width: 4),
-                Semantics(
-                  label: 'Copy code',
-                  button: true,
-                  child: TextButton.icon(
-                    onPressed: _handleCopy,
-                    icon: Icon(_copied ? Icons.check : Icons.copy, size: 16),
-                    label: Text(_copied ? 'Copied' : 'Copy'),
+                Tooltip(
+                  message: _copied ? 'Copied' : 'Copy code',
+                  child: Semantics(
+                    label: _copied ? 'Copied' : 'Copy code',
+                    button: true,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: _copied ? successColor : mutedFg,
+                          minimumSize: const Size(44, 44),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          textStyle: textTheme.labelSmall,
+                          tapTargetSize: MaterialTapTargetSize.padded,
+                        ),
+                        onPressed: _handleCopy,
+                        icon: Icon(
+                          _copied ? Icons.check : Icons.copy,
+                          size: 16,
+                        ),
+                        label: Text(_copied ? 'Copied' : 'Copy'),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          Divider(height: 1, thickness: 0.5, color: borderColor),
+          Divider(height: 1, thickness: 0.5, color: hairline),
           content,
         ],
       ),
