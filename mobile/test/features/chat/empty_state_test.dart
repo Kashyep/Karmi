@@ -347,8 +347,12 @@ void main() {
         final dockedBottomDy = tester.getBottomLeft(surfaceFinder).dy;
         expect(screenHeight - dockedBottomDy, lessThanOrEqualTo(120.0));
         expect(dockedBottomDy, greaterThan(initialBottomDy));
-        // Drain the run's pending timers so the test ends with no timers pending.
-        await tester.pumpAndSettle();
+        // The fake run never terminates, so the controller's stall timer is
+        // still pending. Unmount, then dispose the injected controllers (ChatScreen
+        // does not own them) to cancel it.
+        await tester.pumpWidget(const SizedBox.shrink());
+        controller.dispose();
+        convController.dispose();
       },
     );
   });
