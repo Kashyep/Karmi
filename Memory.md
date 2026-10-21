@@ -284,3 +284,12 @@
 - OpenCode adapter/runtime/harness edits were added immediately before the pause and remain unverified:
   `src/daily_agent/opencode.py`, `src/model_lab/opencode_runner.py`, changes to config/services/API/router/CLI, and `tests/unit/test_opencode.py`. No tests or lint ran after these edits. Reinspect current diff and verify before relying on them.
 - No OpenCode key was read and no provider request was made. Continue only with synthetic prompts and explicit bounded free-model requests; keep runtime disabled until privacy, evaluation and routing evidence gates pass.
+
+## Release 1 chat redesign (2026-10-21, branch release1/chat-redesign)
+
+- Verified: `docs/release1/EXECUTION_CONTRACT.md` v1 is committed (5de20a8) with discovery files `docs/release1/discovery/01–05`. Contract deviations D1–D7 are listed in §0 and mapped to R1.1 tickets.
+- Verified: `docs/release1/DEPENDENCY_BOARD.md`, `docs/release1/SCOPE_TIMELINE.md`, `docs/release1/R1_1_BACKLOG.md` exist. The backlog holds implementation-ready R1.1 tickets (R1.1-1..5, R1.1-6..11 follow-ups). Nothing from R1.1 is implemented.
+- Not yet verified: no squad handoffs exist in `docs/release1/handoffs/`; no squad code has landed; no R1 checks have run; `docs/release1/RELEASE_REPORT.md` is not written. Phase 1 build is NOT STARTED.
+- Perf: no frame or startup timings measured. Only `flutter analyze` (0 issues) and two prose-width tests were run during discovery.
+- R-6 resolved by Supervisor: Artifact and Sources drawers are deferred to R1.1 (inside R1.1-5). R1 keeps inline citation chips and file cards. OD-1..OD-5 approved as proposed in `R1_1_BACKLOG.md`.
+- No production deploy, migration, live charge, or real message. Untracked `Claude outputs/` and `docs/release-evidence/device/*.png` preserved.
