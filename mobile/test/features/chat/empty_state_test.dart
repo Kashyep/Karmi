@@ -104,9 +104,13 @@ Widget _wrapWithApp({
       reduceTransparency: false,
       child: MaterialApp(
         theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
-        home: MediaQuery(
-          data: MediaQueryData(disableAnimations: reduceMotion),
-          child: Scaffold(body: child),
+        home: Builder(
+          builder: (context) => MediaQuery(
+            // Copy the real view metrics: a bare MediaQueryData has a zero size,
+            // which would collapse the screen-relative dock padding.
+            data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+            child: Scaffold(body: child),
+          ),
         ),
       ),
     ),
@@ -255,10 +259,13 @@ void main() {
         );
         final dockFinder = find.byKey(const ValueKey('chat-composer-dock'));
         expect(dockFinder, findsOneWidget);
+        // The dock's AnimatedPadding box always spans to the screen bottom; the
+        // visible composer surface is what moves with the dock padding.
+        final surfaceFinder = find.byKey(const ValueKey('composer-surface'));
 
         final screenHeight =
             tester.view.physicalSize.height / tester.view.devicePixelRatio;
-        final initialBottomDy = tester.getBottomLeft(dockFinder).dy;
+        final initialBottomDy = tester.getBottomLeft(surfaceFinder).dy;
 
         // In centered empty state, dock has large bottom padding (> 150px from bottom)
         expect(screenHeight - initialBottomDy, greaterThan(150.0));
@@ -279,7 +286,7 @@ void main() {
         );
 
         // Composer dock is now at the bottom (within 120px of screen bottom)
-        final dockedBottomDy = tester.getBottomLeft(dockFinder).dy;
+        final dockedBottomDy = tester.getBottomLeft(surfaceFinder).dy;
         expect(screenHeight - dockedBottomDy, lessThanOrEqualTo(120.0));
         expect(dockedBottomDy, greaterThan(initialBottomDy));
       },
@@ -316,9 +323,10 @@ void main() {
           findsOneWidget,
         );
         final dockFinder = find.byKey(const ValueKey('chat-composer-dock'));
+        final surfaceFinder = find.byKey(const ValueKey('composer-surface'));
         final screenHeight =
             tester.view.physicalSize.height / tester.view.devicePixelRatio;
-        final initialBottomDy = tester.getBottomLeft(dockFinder).dy;
+        final initialBottomDy = tester.getBottomLeft(surfaceFinder).dy;
         expect(screenHeight - initialBottomDy, greaterThan(150.0));
 
         // Send a message
@@ -336,9 +344,11 @@ void main() {
           find.byKey(const ValueKey('new-chat-empty-state')),
           findsNothing,
         );
-        final dockedBottomDy = tester.getBottomLeft(dockFinder).dy;
+        final dockedBottomDy = tester.getBottomLeft(surfaceFinder).dy;
         expect(screenHeight - dockedBottomDy, lessThanOrEqualTo(120.0));
         expect(dockedBottomDy, greaterThan(initialBottomDy));
+        // Drain the run's pending timers so the test ends with no timers pending.
+        await tester.pumpAndSettle();
       },
     );
   });

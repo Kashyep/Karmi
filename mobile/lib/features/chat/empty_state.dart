@@ -105,10 +105,13 @@ class ChatEmptyState extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      capabilityPillText ?? 'Karmi · Study & code',
-                      style: KarmiTypography.toolbarCaption().copyWith(
-                        color: colors.mutedForeground,
+                    Flexible(
+                      child: Text(
+                        capabilityPillText ?? 'Karmi · Study & code',
+                        textAlign: TextAlign.center,
+                        style: KarmiTypography.toolbarCaption().copyWith(
+                          color: colors.mutedForeground,
+                        ),
                       ),
                     ),
                   ],
@@ -155,8 +158,8 @@ class ChatEmptyState extends StatelessWidget {
                         },
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(
-                            minHeight: 44,
-                            minWidth: 44,
+                            minHeight: 48,
+                            minWidth: 48,
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
