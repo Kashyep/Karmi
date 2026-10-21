@@ -7,11 +7,15 @@ import 'package:flutter/services.dart';
 
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_glass.dart';
+import '../../theme/karmi_motion.dart';
 import '../../theme/karmi_theme.dart';
 import 'composer/attachment_chip.dart';
+import 'composer/composer_fill.dart';
 import 'composer/draft_store.dart';
 import 'composer/paste_chip.dart';
 import 'composer/text_attachment.dart';
+
+export 'composer/composer_fill.dart';
 
 @immutable
 class ComposerSubmit {
@@ -36,8 +40,8 @@ class ComposerSubmit {
       'ComposerSubmit(text: $text, attachments: ${attachments.length})';
 }
 
-/// Chat composer: a glass tray (§5.1) holding an opaque text field,
-/// attachment/paste chips, and a send/stop button.
+/// Chat composer: a floating glass surface (§3.6, §5.5) holding an input field,
+/// attachment/paste tray, and a morphing send/stop button.
 class Composer extends StatefulWidget {
   const Composer({
     super.key,
@@ -47,6 +51,7 @@ class Composer extends StatefulWidget {
     required this.onStop,
     this.draftStore,
     this.onPickAttachments,
+    this.fill,
   });
 
   final String draftKey;
@@ -55,6 +60,7 @@ class Composer extends StatefulWidget {
   final VoidCallback onStop;
   final DraftStore? draftStore;
   final FutureOr<List<TextAttachment>?> Function()? onPickAttachments;
+  final ComposerFill? fill;
 
   @override
   State<Composer> createState() => _ComposerState();
@@ -82,8 +88,26 @@ class _ComposerState extends State<Composer> {
       debugLabel: 'ComposerTextFieldFocus',
       onKeyEvent: _handleKeyEvent,
     );
+    _focusNode.addListener(_onFocusChanged);
     _controller.addListener(_onTextChanged);
+    widget.fill?.addListener(_onFillChanged);
     _loadDraft(widget.draftKey);
+  }
+
+  void _onFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onFillChanged() {
+    final text = widget.fill?.text;
+    if (text != null && text.isNotEmpty) {
+      setState(() {
+        _controller.text = text;
+        _previousText = text;
+        _controller.selection = TextSelection.collapsed(offset: text.length);
+      });
+      _scheduleDraftSave();
+    }
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
@@ -108,6 +132,10 @@ class _ComposerState extends State<Composer> {
   @override
   void didUpdateWidget(Composer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.fill != widget.fill) {
+      oldWidget.fill?.removeListener(_onFillChanged);
+      widget.fill?.addListener(_onFillChanged);
+    }
     if (oldWidget.draftStore != widget.draftStore) {
       _draftStore = widget.draftStore ?? _fallbackDrafts;
     }
@@ -125,7 +153,9 @@ class _ComposerState extends State<Composer> {
     _debounceTimer?.cancel();
     _saveDraft(widget.draftKey, _controller.text);
     _controller.dispose();
+    _focusNode.removeListener(_onFocusChanged);
     _focusNode.dispose();
+    widget.fill?.removeListener(_onFillChanged);
     super.dispose();
   }
 
@@ -266,161 +296,312 @@ class _ComposerState extends State<Composer> {
   @override
   Widget build(BuildContext context) {
     final colors = KarmiColors.of(context);
+    final isDark = colors.brightness == Brightness.dark;
+    final rimColor = _focusNode.hasFocus
+        ? colors.glassSpecularRimFocused
+        : colors.glassSpecularRim;
+    final hasAttachments = _attachments.isNotEmpty || _pasteChips.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: KarmiGlassSurface(
-        key: const ValueKey('composer-tray'),
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_limitError != null)
-              Semantics(
-                liveRegion: true,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 16,
-                        color: colors.destructive,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          _limitError!,
-                          style: TextStyle(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          if (isDark)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(
+                      KarmiShape.composerRadius,
+                    ),
+                    gradient: RadialGradient(
+                      center: const Alignment(0, 1.0),
+                      radius: 1.2,
+                      colors: [
+                        colors.ambientGlow,
+                        colors.ambientGlow.withValues(alpha: 0),
+                      ],
+                      stops: const [0.0, 0.7],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          KarmiGlassSurface(
+            key: const ValueKey('composer-surface'),
+            radius: KarmiShape.composerRadius,
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_limitError != null)
+                  Semantics(
+                    liveRegion: true,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: 16,
                             color: colors.destructive,
-                            fontSize: 12,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _limitError!,
+                              style: TextStyle(
+                                color: colors.destructive,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 14),
+                            tooltip: 'Dismiss error',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 24,
+                              minHeight: 24,
+                            ),
+                            onPressed: () => setState(() => _limitError = null),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                AnimatedSize(
+                  duration: KarmiMotion.duration(
+                    context,
+                    KarmiMotion.composerDuration,
+                  ),
+                  curve: KarmiMotion.composerCurve,
+                  child: KeyedSubtree(
+                    key: const ValueKey('composer-attachment-tray'),
+                    child: hasAttachments
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    for (
+                                      int i = 0;
+                                      i < _attachments.length;
+                                      i++
+                                    )
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 6,
+                                        ),
+                                        child: AttachmentChip(
+                                          attachment: _attachments[i],
+                                          onRemove: () => setState(
+                                            () => _attachments.removeAt(i),
+                                          ),
+                                        ),
+                                      ),
+                                    for (
+                                      int i = 0;
+                                      i < _pasteChips.length;
+                                      i++
+                                    )
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 6,
+                                        ),
+                                        child: PasteChip(
+                                          text: _pasteChips[i],
+                                          onRemove: () => setState(
+                                            () => _pasteChips.removeAt(i),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(height: 1, color: colors.hairline),
+                              const SizedBox(height: 6),
+                            ],
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+                FocusTraversalGroup(
+                  policy: OrderedTraversalPolicy(),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (widget.onPickAttachments != null) ...[
+                        FocusTraversalOrder(
+                          order: const NumericFocusOrder(2),
+                          child: IconButton(
+                            tooltip: 'Attach files',
+                            onPressed: widget.busy ? null : _pickAttachments,
+                            icon: const Icon(Icons.attach_file),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: FocusTraversalOrder(
+                          order: const NumericFocusOrder(1),
+                          child: Focus(
+                            onKeyEvent: _handleKeyEvent,
+                            child: TextField(
+                              focusNode: _focusNode,
+                              controller: _controller,
+                              minLines: 1,
+                              maxLines: 6,
+                              keyboardType: TextInputType.multiline,
+                              decoration: const InputDecoration(
+                                hintText: 'Message Karmi',
+                                labelText: 'Message',
+                                floatingLabelBehavior:
+                                    FloatingLabelBehavior.never,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 14),
-                        tooltip: 'Dismiss error',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 24,
-                          minHeight: 24,
+                      const SizedBox(width: 8),
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(3),
+                        child: Semantics(
+                          button: true,
+                          label: widget.busy ? 'Stop response' : 'Send',
+                          child: AnimatedContainer(
+                            duration: KarmiMotion.duration(
+                              context,
+                              KarmiMotion.composerDuration,
+                            ),
+                            curve: KarmiMotion.composerCurve,
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(
+                                widget.busy ? 8 : 17,
+                              ),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: IconButton.filled(
+                              key: const ValueKey('composer-send-button'),
+                              tooltip: widget.busy
+                                  ? 'Stop generating'
+                                  : 'Send message',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 34,
+                                height: 34,
+                              ),
+                              style: IconButton.styleFrom(
+                                backgroundColor: colors.primary,
+                                foregroundColor: colors.primaryForeground,
+                                disabledBackgroundColor: colors.muted,
+                                disabledForegroundColor: colors.mutedForeground,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(
+                                    widget.busy ? 8 : 17,
+                                  ),
+                                ),
+                                minimumSize: const Size(34, 34),
+                                fixedSize: const Size(34, 34),
+                                padding: EdgeInsets.zero,
+                              ).copyWith(
+                                side: WidgetStateProperty.resolveWith(
+                                  (states) =>
+                                      states.contains(WidgetState.focused)
+                                          ? BorderSide(
+                                              color: colors.primaryForeground,
+                                              width: KarmiShape.of(
+                                                context,
+                                              ).focusRingWidth,
+                                            )
+                                          : null,
+                                ),
+                              ),
+                              onPressed: widget.busy
+                                  ? widget.onStop
+                                  : (_canSend ? _send : null),
+                              icon: AnimatedSwitcher(
+                                duration: KarmiMotion.duration(
+                                  context,
+                                  KarmiMotion.composerDuration,
+                                ),
+                                switchInCurve: KarmiMotion.composerCurve,
+                                switchOutCurve: KarmiMotion.composerCurve,
+                                child: widget.busy
+                                    ? const Icon(
+                                        Icons.stop,
+                                        key: ValueKey('composer-stop-icon'),
+                                        size: 20,
+                                      )
+                                    : const Icon(
+                                        Icons.arrow_upward,
+                                        key: ValueKey('composer-send-icon'),
+                                        size: 20,
+                                      ),
+                              ),
+                            ),
+                          ),
                         ),
-                        onPressed: () => setState(() => _limitError = null),
                       ),
                     ],
                   ),
                 ),
-              ),
-            if (_attachments.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    for (int i = 0; i < _attachments.length; i++)
-                      AttachmentChip(
-                        attachment: _attachments[i],
-                        onRemove: () =>
-                            setState(() => _attachments.removeAt(i)),
-                      ),
-                  ],
+              ],
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _TopSpecularRimPainter(
+                  color: rimColor,
+                  radius: KarmiShape.composerRadius,
                 ),
-              ),
-            if (_pasteChips.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (int i = 0; i < _pasteChips.length; i++)
-                      PasteChip(
-                        text: _pasteChips[i],
-                        onRemove: () => setState(() => _pasteChips.removeAt(i)),
-                      ),
-                  ],
-                ),
-              ),
-            FocusTraversalGroup(
-              policy: OrderedTraversalPolicy(),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (widget.onPickAttachments != null) ...[
-                    FocusTraversalOrder(
-                      order: const NumericFocusOrder(2),
-                      child: IconButton(
-                        tooltip: 'Attach files',
-                        onPressed: widget.busy ? null : _pickAttachments,
-                        icon: const Icon(Icons.attach_file),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  Expanded(
-                    child: FocusTraversalOrder(
-                      order: const NumericFocusOrder(1),
-                      child: Focus(
-                        onKeyEvent: _handleKeyEvent,
-                        child: TextField(
-                          focusNode: _focusNode,
-                          controller: _controller,
-                          minLines: 1,
-                          maxLines: 6,
-                          keyboardType: TextInputType.multiline,
-                          decoration: const InputDecoration(
-                            hintText: 'Message Karmi',
-                            labelText: 'Message',
-                            floatingLabelBehavior: FloatingLabelBehavior.never,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FocusTraversalOrder(
-                    order: const NumericFocusOrder(3),
-                    child: Semantics(
-                      button: true,
-                      label: widget.busy ? 'Stop generating' : 'Send message',
-                      child: IconButton.filled(
-                        tooltip: widget.busy
-                            ? 'Stop generating'
-                            : 'Send message',
-                        style:
-                            IconButton.styleFrom(
-                              backgroundColor: colors.primary,
-                              foregroundColor: colors.primaryForeground,
-                              disabledBackgroundColor: colors.muted,
-                              disabledForegroundColor: colors.mutedForeground,
-                            ).copyWith(
-                              side: WidgetStateProperty.resolveWith(
-                                (states) => states.contains(WidgetState.focused)
-                                    ? BorderSide(
-                                        color: colors.primaryForeground,
-                                        width: KarmiShape.of(
-                                          context,
-                                        ).focusRingWidth,
-                                      )
-                                    : null,
-                              ),
-                            ),
-                        onPressed: widget.busy
-                            ? widget.onStop
-                            : (_canSend ? _send : null),
-                        icon: Icon(
-                          widget.busy ? Icons.stop : Icons.arrow_upward,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _TopSpecularRimPainter extends CustomPainter {
+  const _TopSpecularRimPainter({
+    required this.color,
+    required this.radius,
+  });
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+    final r = radius.clamp(0.0, size.height / 2);
+    final path = Path()
+      ..moveTo(0.5, r)
+      ..arcToPoint(Offset(r, 0.5), radius: Radius.circular(r))
+      ..lineTo(size.width - r - 0.5, 0.5)
+      ..arcToPoint(Offset(size.width - 0.5, r), radius: Radius.circular(r));
+
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_TopSpecularRimPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.radius != radius;
 }

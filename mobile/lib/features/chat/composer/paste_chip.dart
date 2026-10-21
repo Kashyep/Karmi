@@ -4,97 +4,65 @@ import '../../../theme/karmi_colors.dart';
 
 const int longPasteThreshold = 2500;
 
-class PasteChip extends StatefulWidget {
+class PasteChip extends StatelessWidget {
   const PasteChip({super.key, required this.text, required this.onRemove});
 
   final String text;
   final VoidCallback onRemove;
 
   @override
-  State<PasteChip> createState() => _PasteChipState();
-}
-
-class _PasteChipState extends State<PasteChip> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
     final colors = KarmiColors.of(context);
-    final charCount = widget.text.length;
-    final label = 'Pasted text · $charCount chars';
+    final charCount = text.length;
+    final lines = text.split('\n').length;
+    final label = lines > 1
+        ? 'Pasted text · $lines lines'
+        : 'Pasted text · $charCount chars';
 
     return Semantics(
       container: true,
       label: 'Pasted text, $charCount characters',
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        padding: const EdgeInsets.only(left: 8, right: 2, top: 2, bottom: 2),
         decoration: BoxDecoration(
           color: colors.muted,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: colors.borderSubtle),
         ),
-        child: Column(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.content_paste,
-                  size: 16,
-                  color: colors.mutedForeground,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colors.foreground,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 18,
-                    color: colors.foreground,
-                  ),
-                  tooltip: _expanded
-                      ? 'Collapse pasted text'
-                      : 'Expand pasted text',
-                  onPressed: () => setState(() => _expanded = !_expanded),
-                ),
-                IconButton(
-                  icon: Icon(Icons.close, size: 18, color: colors.foreground),
-                  tooltip: 'Remove pasted text',
-                  onPressed: widget.onRemove,
-                ),
-              ],
+            Icon(
+              Icons.content_paste,
+              size: 14,
+              color: colors.mutedForeground,
             ),
-            if (_expanded)
-              Container(
-                constraints: const BoxConstraints(maxHeight: 120),
-                padding: const EdgeInsets.all(8),
-                margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                decoration: BoxDecoration(
-                  color: colors.card,
-                  borderRadius: BorderRadius.circular(4),
+            const SizedBox(width: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 200),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colors.foreground,
+                  fontWeight: FontWeight.w500,
                 ),
-                child: SingleChildScrollView(
-                  child: Text(
-                    widget.text,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colors.cardForeground,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                ),
+                overflow: TextOverflow.ellipsis,
               ),
+            ),
+            Semantics(
+              button: true,
+              label: 'Remove pasted text',
+              child: IconButton(
+                icon: const Icon(Icons.close, size: 14),
+                tooltip: 'Remove pasted text',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                splashRadius: 14,
+                onPressed: onRemove,
+              ),
+            ),
           ],
         ),
       ),

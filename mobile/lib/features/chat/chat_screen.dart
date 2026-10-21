@@ -4,7 +4,9 @@ import '../../api/conversations/conversations_api.dart';
 import '../../api/karmi_api.dart';
 import '../../api/stream/run_stream_client.dart';
 import '../../shell/breakpoints.dart';
-import '../../widgets/feedback.dart';
+import '../../theme/karmi_motion.dart';
+import '../../theme/karmi_theme.dart';
+import 'empty_state.dart';
 import '../../widgets/karmi_card.dart';
 import '../history/conversation_list.dart';
 import '../history/conversation_list_controller.dart';
@@ -31,6 +33,7 @@ class ChatScreen extends StatefulWidget {
     this.runStreamClient,
     this.conversationsApi,
     this.draftStore,
+    this.clock,
   });
 
   final KarmiApi api;
@@ -42,6 +45,7 @@ class ChatScreen extends StatefulWidget {
   final RunStreamClient? runStreamClient;
   final ConversationsApi? conversationsApi;
   final DraftStore? draftStore;
+  final DateTime Function()? clock;
 
   /// Builds a history rail widget for wide layouts.
   static Widget historyRailBuilder({
@@ -484,7 +488,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final insets = karmiPageInsets(context);
+    final insets = _readingInsets(context, karmiPageInsets(context));
     final messages = _chatController.messages;
     final lastAssistantIndex = messages.lastIndexWhere(
       (m) => m.role == 'assistant',
@@ -505,13 +509,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       controller: scrollController,
                       physics: physics,
                       padding: insets.copyWith(bottom: 16),
-                      children: const [
-                        EmptyState(
-                          quote:
-                              'Ask a study question, or get help with maths or code.',
-                          body:
-                              'Each reply shows its status, such as "Completed" or '
-                              '"Awaiting confirmation".',
+                      children: [
+                        ChatEmptyState(
+                          key: const ValueKey('new-chat-empty-state'),
+                          clock: widget.clock,
+                          onStarterPicked: (prompt) =>
+                              _chatController.send(prompt),
                         ),
                       ],
                     );
@@ -546,23 +549,25 @@ class _ChatScreenState extends State<ChatScreen> {
                   );
                 },
               ),
-              Positioned(
-                bottom: 12,
-                right: 16,
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _scrollController.isAtBottom,
-                  builder: (context, isAtBottom, _) {
-                    return ValueListenableBuilder<bool>(
-                      valueListenable: _scrollController.hasNewContent,
-                      builder: (context, hasNewContent, _) {
-                        return JumpToLatestButton(
-                          visible: !isAtBottom,
-                          hasNewContent: hasNewContent,
-                          onTap: _scrollController.jumpToLatest,
-                        );
-                      },
-                    );
-                  },
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: KarmiShape.jumpPillGap),
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _scrollController.isAtBottom,
+                    builder: (context, isAtBottom, _) {
+                      return ValueListenableBuilder<bool>(
+                        valueListenable: _scrollController.hasNewContent,
+                        builder: (context, hasNewContent, _) {
+                          return JumpToLatestButton(
+                            visible: !isAtBottom,
+                            hasNewContent: hasNewContent,
+                            onTap: _scrollController.jumpToLatest,
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
@@ -581,14 +586,66 @@ class _ChatScreenState extends State<ChatScreen> {
               onUpgrade: widget.onOpenPlans,
             ),
           ),
-        Padding(
+        AnimatedPadding(
+          key: const ValueKey('chat-composer-dock'),
+          duration: KarmiMotion.composerDurationOf(context),
+          curve: KarmiMotion.composerCurve,
           padding: EdgeInsets.only(
-            bottom: MediaQuery.paddingOf(context).bottom,
+            bottom: _composerDockBottomPadding(
+              context,
+              messages.isNotEmpty || _isLoadingMessages,
+            ),
           ),
-          child: _buildComposer(),
+          child: _readingColumn(context, _buildComposer()),
         ),
       ],
     );
+  }
+
+  /// Tablet and wider: the reading column is capped at
+  /// [KarmiShape.readableColumnMaxWidth]. Narrower screens stay full width.
+  bool _isReadingColumnCapped(BuildContext context) =>
+      MediaQuery.sizeOf(context).width >= KarmiShape.tabletBreakpoint;
+
+  /// Horizontal list padding that centres the message stream on the reading
+  /// column. Only padding changes, so the scrollbar stays at the viewport edge.
+  EdgeInsets _readingInsets(BuildContext context, EdgeInsets insets) {
+    if (!_isReadingColumnCapped(context)) return insets;
+    final gutter =
+        (MediaQuery.sizeOf(context).width - KarmiShape.readableColumnMaxWidth) /
+        2;
+    return insets.copyWith(
+      left: gutter > insets.left ? gutter : insets.left,
+      right: gutter > insets.right ? gutter : insets.right,
+    );
+  }
+
+  Widget _readingColumn(BuildContext context, Widget child) {
+    if (!_isReadingColumnCapped(context)) return child;
+    return Center(
+      child: ConstrainedBox(
+        key: const ValueKey('chat-reading-column'),
+        constraints: const BoxConstraints(
+          maxWidth: KarmiShape.readableColumnMaxWidth,
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  double _composerDockBottomPadding(BuildContext context, bool isDocked) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom +
+        MediaQuery.viewInsetsOf(context).bottom;
+    if (isDocked) {
+      return bottomInset;
+    }
+    final height = MediaQuery.sizeOf(context).height;
+    final isDesktop = WorkspaceSize.of(context) == WorkspaceSize.expanded;
+    // On desktop, composer is centered slightly above midpoint (~42-45% from top).
+    // On mobile, centered vertically (~48-50%).
+    final factor = isDesktop ? 0.55 : 0.50;
+    final computed = (height * factor - 35).clamp(bottomInset, height * 0.55);
+    return computed;
   }
 }
 
