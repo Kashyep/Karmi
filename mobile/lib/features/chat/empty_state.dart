@@ -93,7 +93,11 @@ class ChatEmptyState extends StatelessWidget {
               Text(
                 'Ask a study question, or get help with maths or code.',
                 style: KarmiTypography.toolbarCaption().copyWith(
-                  color: colors.mutedForeground,
+                  color: Color.lerp(
+                    colors.mutedForeground,
+                    colors.foreground,
+                    0.4,
+                  )!,
                 ),
                 textAlign: TextAlign.center,
               ),
