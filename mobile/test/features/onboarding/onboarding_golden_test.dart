@@ -85,7 +85,7 @@ void main() {
 
     // ── OTP (step 1, awaiting code) ──────────────────────────────────────────
     testWidgets('golden onboarding_otp_${b}_x1.0_glass', (tester) async {
-      final (_, _, widget) = await _setup(0, devAuthEnabled: false);
+      final (_, _, widget) = await _setup(0, devAuthEnabled: true);
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
       // Navigate to auth step
