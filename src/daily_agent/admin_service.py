@@ -264,8 +264,9 @@ def suspend(
     return user_item(user, _subscription(session, user.account_id))
 
 
-def unsuspend(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+def unsuspend(session: Session, settings: Settings, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
     user = _load_user(session, user_id)
+    _refuse_admin_target(session, settings, admin_id, user, "user.unsuspend", reason)
     before = user.disabled
     user.disabled = False
     append_audit(
@@ -282,6 +283,7 @@ def unsuspend(session: Session, admin_id: str, user_id: str, reason: str) -> dic
 
 def revoke_sessions(
     session: Session,
+    settings: Settings,
     admin_id: str,
     user_id: str,
     reason: str,
@@ -461,6 +463,7 @@ def adjust_credits(
     reason: str,
 ) -> dict[str, Any]:
     user = _load_user(session, user_id)
+    _refuse_admin_target(session, settings, admin_id, user, "user.credits", reason)
     subscription = _subscription(session, user.account_id)
     if subscription is None:
         subscription = Subscription(account_id=user.account_id, plan_id="ananta")

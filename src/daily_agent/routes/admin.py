@@ -196,8 +196,9 @@ def unsuspend_user(
     body: ReasonBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    return svc.unsuspend(session, admin.user.id, user_id, body.reason)
+    return svc.unsuspend(session, settings, admin.user.id, user_id, body.reason)
 
 
 @router.post("/users/{user_id}/revoke-sessions")
@@ -206,9 +207,10 @@ def revoke_user_sessions(
     body: ReasonBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
     clerk: ClerkBackend | None = Depends(get_clerk_backend),
 ) -> dict[str, Any]:
-    return svc.revoke_sessions(session, admin.user.id, user_id, body.reason, clerk)
+    return svc.revoke_sessions(session, settings, admin.user.id, user_id, body.reason, clerk)
 
 
 @router.post("/users/{user_id}/tier")
