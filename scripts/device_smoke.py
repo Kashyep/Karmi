@@ -44,6 +44,38 @@ class StepFailed(Exception):
     pass
 
 
+class Abort(Exception):
+    """Stops the run: the app is on a screen this script must not drive."""
+
+
+CLERK_MARKERS = ("Sign in securely", "Welcome back", "Create an account")
+COMPOSER_HINT = "Message Karmi"
+
+
+def guard_not_clerk(nodes: list[Node]) -> None:
+    """Never type into Clerk's sign-in card: the device build must use development sign-in."""
+    for node in nodes:
+        if any(marker in node.label or marker in node.text for marker in CLERK_MARKERS):
+            raise Abort(f"Clerk sign-in is showing ({node.label or node.text!r}); use the development sign-in build")
+
+TESTAUTH_ENV = Path(os.environ.get("KARMI_TESTAUTH_ENV", ROOT / ".env.testauth"))
+
+def read_tester_code() -> str:
+    """KARMI_TEST_AUTH_CODE from the local env file. The value is read, typed, never printed/logged."""
+    try:
+        lines = TESTAUTH_ENV.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise StepFailed(f"cannot read the tester env file: {exc.strerror}") from exc
+    for line in lines:
+        key, sep, value = line.partition("=")
+        if sep and key.strip() == "KARMI_TEST_AUTH_CODE" and value.strip().strip("'\""):
+            return value.strip().strip("'\"")
+    raise StepFailed("KARMI_TEST_AUTH_CODE is missing from the tester env file")
+
+def clerk_showing(nodes: list[Node]) -> bool:
+    return any(marker in f"{n.label} {n.text}" for n in nodes for marker in CLERK_MARKERS)
+
+
 @dataclass
 class Node:
     text: str
@@ -80,6 +112,7 @@ class Device:
         self.serial = serial
         self.shots = shots
         self.count = 0
+        self.guard_clerk = True
         self.width, self.height = self._screen_size()
 
     def adb(self, *args: str, timeout: int = 30) -> subprocess.CompletedProcess[str]:
@@ -117,6 +150,8 @@ class Device:
                 selected=node.get("selected") == "true",
                 checked=node.get("checked") == "true",
             ))
+        if self.guard_clerk:
+            guard_not_clerk(found)
         return found
 
     def find(self, pred: Callable[[Node], bool], timeout: float = 0) -> Node | None:
@@ -142,14 +177,48 @@ class Device:
     def tap_desc(self, prefix: str, timeout: float = 15) -> None:
         self.tap(self.wait(lambda n: n.label.startswith(prefix), repr(prefix), timeout))
 
+    def composer(self, timeout: float = 15) -> Node:
+        """The chat composer: an EditText plus its Send/Stop action on the same screen."""
+        deadline = time.monotonic() + timeout
+        while True:
+            nodes = self.nodes()
+            action = any(n.label.startswith(("Send message", "Stop generating")) for n in nodes)
+            fields = [n for n in nodes if n.kind == "EditText" and n.text in ("", COMPOSER_HINT)]
+            if action and fields:
+                return fields[0]
+            if time.monotonic() >= deadline:
+                raise StepFailed(f"chat composer '{COMPOSER_HINT}' not on screen after {timeout:.0f}s")
+            time.sleep(0.5)
+
+    def type_into(self, field_node: Node, text: str, allowed: str = r"[A-Za-z0-9 ]+") -> None:
+        if not re.fullmatch(allowed, text):
+            raise StepFailed("text has characters adb input cannot type reliably; nothing was typed")
+        self.tap(field_node)
+        time.sleep(0.6)
+        if field_node.text and field_node.text != COMPOSER_HINT:
+            self.adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
+            for _ in range(len(field_node.text)):
+                self.adb("shell", "input", "keyevent", "KEYCODE_DEL")
+        self.adb("shell", "input", "text", text.replace(" ", "%s"))
+        time.sleep(0.4)
+        if self.find(lambda n: n.kind == "EditText" and n.text == text, 5) is None:
+            raise StepFailed("the field did not show the typed text; nothing was sent")
     def type_text(self, text: str) -> None:
         if not re.fullmatch(r"[A-Za-z0-9 ]+", text):
             raise ValueError("adb input text only carries plain ASCII words here")
-        field_node = self.wait(lambda n: n.kind == "EditText", "message field", 15)
+        field_node = self.composer()
         self.tap(field_node)
         time.sleep(0.6)
+        existing = "" if field_node.text in ("", COMPOSER_HINT) else field_node.text
+        if existing:
+            # Clear leftovers from an earlier step so the new text is the whole message.
+            self.adb("shell", "input", "keyevent", "KEYCODE_MOVE_END")
+            for _ in range(len(existing)):
+                self.adb("shell", "input", "keyevent", "KEYCODE_DEL")
         self.adb("shell", "input", "text", text.replace(" ", "%s"))
         time.sleep(0.4)
+        if self.find(lambda n: n.kind == "EditText" and n.text == text, 5) is None:
+            raise StepFailed(f"composer did not show {text!r} after typing; nothing was sent")
 
     def swipe(self, dy: int, duration_ms: int = 350) -> None:
         """Positive dy drags the content up (reveals older messages when scrolled up)."""
@@ -223,19 +292,38 @@ def run(serial: str, out_root: Path) -> Report:
         return {}
 
     def sign_in() -> dict[str, object]:
-        node = device.find(lambda n: n.label.startswith("Continue (development sign-in)"), 25)
-        if node is not None:
-            device.tap(node)
-            device.wait(lambda n: n.kind == "EditText" or n.label.startswith("New chat"), "chat after sign-in", 40)
-            return {"method": "development sign-in"}
-        if device.find(lambda n: "sign-in" in n.label.lower() or "clerk" in n.label.lower(), 0) is not None:
-            raise StepFailed("manual sign-in needed: this build shows only Clerk sign-in, no dev auth")
-        device.wait(lambda n: n.kind == "EditText" or n.label.startswith("New chat"), "chat screen", 20)
-        return {"method": "already signed in"}
+        """Sign in through Clerk's email card with the tester code (never printed)."""
+        def ready(nodes: list[Node]) -> bool:
+            return any(n.label.startswith(("Send message", "Stop generating")) for n in nodes)
+
+        device.guard_clerk = False
+        try:
+            nodes = device.nodes()
+            deadline = time.monotonic() + 25
+            while not ready(nodes) and not clerk_showing(nodes) and time.monotonic() < deadline:
+                time.sleep(1.0)
+                nodes = device.nodes()
+            if ready(nodes):
+                return {"method": "already signed in"}
+            if not clerk_showing(nodes):
+                raise StepFailed("neither chat composer nor Clerk's sign-in card appeared")
+            email = next((n for n in nodes if n.kind == "EditText"), None)
+            if email is None:
+                raise StepFailed("Clerk sign-in card has no email field")
+            device.type_into(email, read_tester_code(), allowed=r"[A-Za-z0-9._@+-]+")
+            device.tap(device.wait(lambda n: n.label == "Continue" or n.text == "Continue", "Clerk Continue button", 10))
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                if ready(device.nodes()):
+                    return {"method": "clerk sign-in with tester code"}
+                time.sleep(1.0)
+            raise StepFailed("Clerk did not reach the chat within 60s after Continue (verification step not handled)")
+        finally:
+            device.guard_clerk = True
 
     def new_chat() -> dict[str, object]:
         device.tap_desc("New chat", timeout=15)
-        device.wait(lambda n: n.kind == "EditText", "composer after New chat", 15)
+        device.composer()
         time.sleep(1.0)
         return {"shot": device.screenshot(report, "empty-chat")}
 
@@ -315,18 +403,23 @@ def run(serial: str, out_root: Path) -> Report:
 
     try:
         launch_and_sign_in()
+        for name, fn in [
+            ("new_chat_empty", new_chat),
+            ("render", render),
+            ("long_scrolled_midstream", long_scrolled),
+            ("long_done", long_done),
+            ("slow_11s", slow),
+            ("fail_error", fail),
+            ("history", history),
+            ("dark_mode", dark_mode),
+        ]:
+            step(name, fn)
+    except Abort as exc:
+        report.outcome = f"aborted: {exc}"
+        return report
     except StepFailed as exc:
         report.outcome = f"stopped: {exc}"
         return report
-
-    step("new_chat_empty", new_chat)
-    step("render", render)
-    step("long_scrolled_midstream", long_scrolled)
-    step("long_done", long_done)
-    step("slow_11s", slow)
-    step("fail_error", fail)
-    step("history", history)
-    step("dark_mode", dark_mode)
     failed = [s["step"] for s in report.steps if s["status"] != "ok"]
     report.outcome = "all steps ok" if not failed else f"steps failed: {', '.join(map(str, failed))}"
     return report

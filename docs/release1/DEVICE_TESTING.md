@@ -58,18 +58,20 @@ curl -sN -X POST http://127.0.0.1:8001/v1/chat/stream \
   -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
   -d '{"text":"render test","clientMessageId":"devharness-probe-001"}'
 
-# 5. profile build from the worktree (run alone; the build needs .env.clerk in the repo root)
-.venv/bin/python mobile/tool/run_android_dev.py build apk --profile \
-  --dart-define=API_BASE_URL=http://127.0.0.1:8000
-adb -s 5B271XEBF3XDF0 install -r mobile/build/app/outputs/flutter-apk/app-profile.apk
+# 5. profile build from the worktree, WITHOUT a Clerk key (the harness never uses Clerk; with no
+#    key a non-release build shows 'Continue (development sign-in)' on Welcome)
+cd mobile && flock /tmp/karmi-heavy.lock flutter build apk --profile --dart-define=API_BASE_URL=http://127.0.0.1:8000
+adb -s 5B271XEBF3XDF0 shell pm clear ai.karmi.app   # wipe any old session and typed text
+adb -s 5B271XEBF3XDF0 install -r build/app/outputs/flutter-apk/app-profile.apk
 
 # 6. drive the app and keep evidence
 .venv/bin/python scripts/device_smoke.py --serial 5B271XEBF3XDF0
 ```
 
-Profile builds keep development sign-in (`KARMI_DEV_AUTH` defaults on outside release mode),
-so the smoke run signs in itself. If a build shows only Clerk sign-in, `device_smoke.py`
-stops with `manual sign-in needed` and writes that into `log.json`.
+Profile builds keep development sign-in (`KARMI_DEV_AUTH` defaults on outside release mode), so
+the smoke run signs in itself. `device_smoke.py` aborts with `manual sign-in needed` if Clerk's
+sign-in card appears, and never types into an unknown screen: it waits for the chat composer
+(`Message Karmi`) and checks the typed text landed before sending.
 
 When finished, restore the phone's mapping: `adb reverse tcp:8000 tcp:8000` (or whichever
 backend the team uses), and stop the backend and fake provider.
