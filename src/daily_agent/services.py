@@ -126,10 +126,17 @@ def subscription_period(anchor: date, now: datetime | None = None) -> tuple[str,
 
 
 def plan_policy(subscription: Subscription | None) -> PlanPolicy:
-    """Effective plan: an active subscription's plan, else the free tier."""
+    """Return the currently effective plan, lazily reverting expired overrides."""
     if subscription is None or subscription.status != "active":
         return SYNTHETIC_POLICIES["ananta"]
-    return SYNTHETIC_POLICIES.get(subscription.plan_id, SYNTHETIC_POLICIES["ananta"])
+    expires_at = subscription.tier_expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at is not None and expires_at <= datetime.now(UTC):
+        plan_id = subscription.revert_plan_id or "ananta"
+    else:
+        plan_id = subscription.plan_id
+    return SYNTHETIC_POLICIES.get(plan_id, SYNTHETIC_POLICIES["ananta"])
 
 
 def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPolicy]:
