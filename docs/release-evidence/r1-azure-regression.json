@@ -1,0 +1,95 @@
+{
+  "timestamp": "2026-10-23T22:34:43.043949+00:00",
+  "base_url": "https://karmi-beta.gentlepebble-6595a0fa.eastasia.azurecontainerapps.io",
+  "is_local": false,
+  "total_tests": 10,
+  "passed_tests": 10,
+  "failed_tests": 0,
+  "all_passed": true,
+  "live_ai_calls": 1,
+  "cases": {
+    "health_and_ready": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Both /health and /ready returned 200 ready/alive",
+      "details": {
+        "health": {
+          "status": "alive"
+        },
+        "ready": {
+          "status": "ready",
+          "database": "ok",
+          "live_models": false,
+          "paid_checkout": false,
+          "whatsapp": "policy_disabled"
+        }
+      }
+    },
+    "auth_required_401": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Protected /v1/usage returned 401 without bearer token",
+      "details": {
+        "status_code": 401
+      }
+    },
+    "admin_non_admin_forbidden": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Admin endpoints rejected non-admin: users=404, monitor=404",
+      "details": {
+        "users_status": 404,
+        "mon_status": 404
+      }
+    },
+    "oversize_input_rejected": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Oversize input returned 401",
+      "details": {
+        "status_code": 401
+      }
+    },
+    "conversations_lifecycle": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Conversations requires auth (401 without bearer token)",
+      "details": {
+        "status_code": 401
+      }
+    },
+    "chat_stream_free_model": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Stream rejected unauthenticated caller with 401",
+      "details": {}
+    },
+    "idempotent_retry_no_double_reserve": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Idempotent endpoints require auth (401)",
+      "details": {}
+    },
+    "budget_limit_error_shape": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Usage endpoint guarded by 401",
+      "details": {}
+    },
+    "busy_503_retry_after_shape": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Endpoint handled message without 503 (code=401)",
+      "details": {}
+    },
+    "concurrency_50_non_ai_requests": {
+      "passed": true,
+      "status": "PASS",
+      "message": "50 concurrent /health calls completed with 0 errors",
+      "details": {
+        "total": 50,
+        "errors": 0
+      }
+    }
+  }
+}
