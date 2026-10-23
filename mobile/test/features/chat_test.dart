@@ -405,7 +405,7 @@ void main() {
     _currentBackend = backend;
     await pumpApp(tester, backend: backend);
     await send(tester, 'Plan my week');
-    expect(find.text('Preparing'), findsOneWidget);
+    expect(find.text('Working…'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.byIcon(Icons.stop), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'second');
@@ -431,8 +431,9 @@ void main() {
     _currentBackend = backend;
     await pumpApp(tester, backend: backend, env: const Env(reduceMotion: true));
     await send(tester, 'Plan my week');
-    expect(find.text('Preparing'), findsOneWidget);
+    expect(find.text('Working…'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byIcon(Icons.more_horiz), findsOneWidget);
     reply.complete(sseResponse('Completed'));
     await settle(tester);
   });

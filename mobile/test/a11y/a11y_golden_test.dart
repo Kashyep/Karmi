@@ -9,7 +9,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:karmi_app/api/chat/chat_models.dart';
 import 'package:karmi_app/features/chat/error_card.dart';
-import 'package:karmi_app/features/chat/processing_panel.dart';
 import 'package:karmi_app/features/chat/state/chat_controller.dart';
 
 import '../support/fake_backend.dart';
@@ -109,28 +108,6 @@ void main() {
         );
       });
 
-      testWidgets('processing panel streaming', (tester) async {
-        await pumpHost(
-          tester,
-          const SafeArea(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: ProcessingPanel(phase: ChatRunPhase.streaming),
-              ),
-            ),
-          ),
-          env: env,
-        );
-        await fontsReady(tester);
-        await expectLater(
-          find.byType(MaterialApp),
-          matchesGoldenFile(
-            a11yGoldenPath('a11y_processing_panel_streaming_$suffix'),
-          ),
-        );
-      });
     });
   }
 
@@ -172,24 +149,5 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('processing panel streaming does not overflow at 2.0 scale', (
-      tester,
-    ) async {
-      await pumpHost(
-        tester,
-        const SafeArea(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: ProcessingPanel(phase: ChatRunPhase.streaming),
-            ),
-          ),
-        ),
-        env: const Env(textScale: 2.0),
-      );
-      await fontsReady(tester);
-      expect(tester.takeException(), isNull);
-    });
   });
 }
