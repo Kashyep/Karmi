@@ -183,6 +183,7 @@ def render_admin_page(*, publishable_key: str | None) -> str:
                   <tbody id="users-body"></tbody>
                 </table>
               </div>
+              <button id="users-more" class="button button-secondary" type="button" hidden>Load more</button>
               <div class="bulk-actions">
                 <label for="bulk-tier">Set plan for selected</label>
                 <select id="bulk-tier" class="input">{_tier_options(include_blank=False)}</select>

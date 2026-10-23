@@ -100,6 +100,7 @@ def test_admin_page_has_all_required_views_and_tabs() -> None:
         "tab-users",
         "tab-monitor",
         "tab-audit",
+        "users-more",
         "confirm-dialog",
         "confirm-reason",
     ):
