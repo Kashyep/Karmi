@@ -157,8 +157,10 @@
     return { payload: { budget_usd: n }, summary: `Set budget to ${formatUsd(n)}` };
   }
 
+  const REASON_MIN_LENGTH = 3;
+
   function canSubmitReason(reason, typed, requireTyped) {
-    if (String(reason ?? '').trim() === '') return false;
+    if (String(reason ?? '').trim().length < REASON_MIN_LENGTH) return false;
     return !requireTyped || typed === DELETE_PHRASE;
   }
 

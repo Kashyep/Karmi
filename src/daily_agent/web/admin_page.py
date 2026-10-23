@@ -217,7 +217,9 @@ def render_admin_page(*, publishable_key: str | None) -> str:
         <p id="confirm-summary"></p>
         <div class="field">
           <label for="confirm-reason">Reason (required, recorded in the audit log)</label>
-          <textarea id="confirm-reason" class="input" rows="3" required></textarea>
+          <textarea id="confirm-reason" class="input" rows="3" maxlength="500" required
+                    aria-describedby="confirm-reason-hint"></textarea>
+          <p id="confirm-reason-hint" class="muted">At least 3 characters</p>
         </div>
         <div id="confirm-typed-wrap" class="field" hidden>
           <label for="confirm-typed">Type DELETE to confirm</label>

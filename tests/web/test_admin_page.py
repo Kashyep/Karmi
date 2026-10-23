@@ -126,3 +126,12 @@ def test_admin_css_has_no_hex_literals_and_is_served(client_factory) -> None:
 def test_admin_js_has_no_hex_literals() -> None:
     source = (STATIC / "admin.js").read_text(encoding="utf-8")
     assert HEX_LITERAL.search(source) is None
+
+
+def test_reason_field_enforces_length_bounds_in_markup_and_script() -> None:
+    html = render_admin_page(publishable_key=None)
+    assert 'maxlength="500"' in html
+    assert "At least 3 characters" in html
+    source = (STATIC / "admin.js").read_text(encoding="utf-8")
+    assert "REASON_MIN_LENGTH = 3" in source
+    assert ".trim().length < REASON_MIN_LENGTH" in source
