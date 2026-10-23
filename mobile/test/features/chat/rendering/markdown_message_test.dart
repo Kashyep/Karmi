@@ -105,10 +105,33 @@ void main() {
     },
   );
 
+  testWidgets('fenced code with entity literals is unchanged', (tester) async {
+    const literal = '&lt;b&gt; &amp;amp; "q"';
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          clipboardText = (methodCall.arguments as Map<dynamic, dynamic>)['text'] as String?;
+        }
+        return null;
+      },
+    );
+
+    await tester.pumpWidget(
+      _host(const MarkdownMessage(text: '```\n$literal\n```', streaming: false)),
+    );
+
+    expect(find.text(literal), findsOneWidget);
+    await tester.tap(find.byTooltip('Copy code'));
+    await tester.pump(const Duration(seconds: 2));
+    expect(clipboardText, literal);
+  });
+
   testWidgets(
-    'fenced code decodes model-escaped entities for display and copy',
+    'fenced code decodes parser escaping for display and copy',
     (tester) async {
-      const source = '&quot; &lt; &amp; &#39; &#x27; 2&#179; &#8594; x';
+      const source = '" < & \' \' 2³ → x';
       const shown = '" < & \' \' 2³ → x';
       String? clipboardText;
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -130,7 +153,6 @@ void main() {
       );
 
       expect(find.text(shown), findsOneWidget);
-      expect(find.textContaining('&quot;'), findsNothing);
 
       await tester.tap(find.byTooltip('Copy code'));
       await tester.pump(const Duration(seconds: 3));

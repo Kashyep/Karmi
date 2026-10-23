@@ -40,8 +40,8 @@ void main() {
   });
 
   group('decodeCodeText', () {
-    test('reverses markdown escaping and model escaping', () {
-      expect(decodeCodeText('&amp;quot; &amp;lt;'), '" <');
+    test('removes one parser-added entity layer only', () {
+      expect(decodeCodeText('&amp;quot; &amp;lt;'), '&quot; &lt;');
       expect(decodeCodeText('&quot; &lt; &amp;'), '" < &');
     });
   });

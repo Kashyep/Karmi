@@ -103,11 +103,10 @@ String unescapeHtmlEntities(String text) {
   });
 }
 
-/// Decodes text taken from a fenced block. The markdown parser escapes code once
-/// (`"` becomes `&quot;`), and the model may have escaped it again (`&quot;` in
-/// the source becomes `&amp;quot;`), so two decode levels are applied.
+/// Removes the one entity-encoding layer added by the markdown parser to fenced code.
+/// A single pass keeps source literals such as `&lt;b&gt;` and `&amp;amp;` intact.
 String decodeCodeText(String markdownEscaped) =>
-    unescapeHtmlEntities(unescapeHtmlEntities(markdownEscaped));
+    unescapeHtmlEntities(markdownEscaped);
 
 /// Renders a code block with language indicator, copy-to-clipboard,
 /// wrap toggle, and folding for outputs over 40 lines.
