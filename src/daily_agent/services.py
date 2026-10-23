@@ -729,23 +729,58 @@ def _utf8_len(value: str) -> int:
 HISTORY_REQUEST_CAP_BYTES = min(ADAPTER_PROMPT_CHARS, OPENCODE_PROMPT_CHARS)
 
 
+TRIMMED_MARKER = "[…trimmed…]"
+
+
+def _truncate_turn_content(content: str, max_bytes: int) -> str | None:
+    marker_bytes = _utf8_len(TRIMMED_MARKER)
+    if max_bytes < marker_bytes:
+        return None
+    content_bytes = content.encode("utf-8")
+    if len(content_bytes) <= max_bytes:
+        return content
+    avail = max_bytes - marker_bytes
+    head_bytes = avail // 2
+    tail_bytes = avail - head_bytes
+    head = content_bytes[:head_bytes].decode("utf-8", errors="ignore")
+    tail = content_bytes[len(content_bytes) - tail_bytes :].decode("utf-8", errors="ignore")
+    res = f"{head}{TRIMMED_MARKER}{tail}"
+    while _utf8_len(res) > max_bytes:
+        if head:
+            head = head[:-1]
+        elif tail:
+            tail = tail[1:]
+        else:
+            return None
+        res = f"{head}{TRIMMED_MARKER}{tail}"
+    return res
+
+
 def trim_history(
     history: Sequence[HistoryTurn], *, text: str, plan: PlanPolicy
 ) -> tuple[HistoryTurn, ...]:
     """Keep the newest whole turns that fit the plan's input budget next to the system prompt and
-    the current message (``bytes // 4`` estimate). Oldest turns go first; ``text`` always stays."""
+    the current message (``bytes // 4`` estimate). Oldest turns go first; ``text`` always stays.
+    If the newest turn alone exceeds the remaining budget, keep a truncated copy
+    (head + '[…trimmed…]' + tail, byte-budget aware for UTF-8 Devanagari) instead of dropping everything."""
     total_bytes = min(plan.input_tokens * 4, HISTORY_REQUEST_CAP_BYTES)
     budget_bytes = total_bytes - SYSTEM_PROMPT_MAX_CHARS - _utf8_len(text)
+    if budget_bytes <= 0:
+        return ()
     kept: list[HistoryTurn] = []
-    for turn in reversed(history):
+    for i, turn in enumerate(reversed(history)):
         size = _utf8_len(turn.content)
         if size > budget_bytes:
+            if i == 0:
+                # Newest turn alone exceeds remaining budget: truncate it
+                truncated = _truncate_turn_content(turn.content, budget_bytes)
+                if truncated is not None:
+                    kept.append(HistoryTurn(role=turn.role, content=truncated))
             break  # dropping a newer turn but keeping an older one would garble the thread
         budget_bytes -= size
         kept.append(turn)
     kept.reverse()
     return tuple(kept)
-
 
 def history_tokens(history: Sequence[HistoryTurn]) -> int:
     return sum(_utf8_len(turn.content) for turn in history) // 4

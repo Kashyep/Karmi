@@ -82,6 +82,7 @@ class StreamRunner:
         reservation_id: str,
         prior_content: str | None = None,
         admission: GatewayAdmission | None = None,
+        history: Sequence[Mapping[str, str]] = (),
     ) -> None:
         self.run_state = run_state
         self.plan = plan
@@ -94,7 +95,7 @@ class StreamRunner:
         self.reservation_id = reservation_id
         self.prior_content = prior_content
         self.admission = admission
-
+        self.history = tuple(history)
         self.seq = 0
         self.accumulated_text = ""
         self.last_flush_time = time.monotonic()
@@ -263,10 +264,10 @@ class StreamRunner:
         if self.prior_content:
             messages = (
                 {"role": "system", "content": build_system_prompt(datetime.now(UTC))},
+                *({"role": turn["role"], "content": turn["content"]} for turn in self.history),
                 {"role": "user", "content": self.text},
                 {"role": "assistant", "content": self.prior_content},
             )
-
         finish_reason: str = FinishReason.STOP.value
         try:
             self.provider_invoked = True
@@ -276,6 +277,7 @@ class StreamRunner:
                 task_type=self.task_type,
                 max_output_tokens=self.max_output_tokens,
                 messages=messages,
+                history=self.history,
             )
             async for chunk in stream_gen:
                 if chunk.text:
@@ -400,6 +402,7 @@ def start_stream_run(
     reservation_id: str,
     prior_content: str | None = None,
     admission: GatewayAdmission | None = None,
+    history: Sequence[Mapping[str, str]] = (),
 ) -> asyncio.Task[None]:
     runner = StreamRunner(
         run_state=run_state,
@@ -413,6 +416,7 @@ def start_stream_run(
         reservation_id=reservation_id,
         prior_content=prior_content,
         admission=admission,
+        history=history,
     )
     task = asyncio.create_task(runner.run())
     run_state.task = task

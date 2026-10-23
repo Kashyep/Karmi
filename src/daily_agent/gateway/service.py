@@ -248,14 +248,18 @@ class Gateway:
         task_type: TaskType,
         max_output_tokens: int,
         messages: tuple[dict[str, str], ...] | None = None,
+        history: Sequence[Mapping[str, str]] = (),
     ) -> AsyncIterator[StreamChunk]:
         if not self.live:
             raise ProviderUnavailableError("gateway is disabled or no configured models")
         system_prompt = build_system_prompt(self._clock())
+        history_bytes = sum(len(turn["content"].encode("utf-8")) for turn in history)
         request = RouteRequest(
             plan=plan,
             task_type=task_type,
-            prompt_tokens=max(1, (len(text.encode("utf-8")) + len(system_prompt)) // 4),
+            prompt_tokens=max(
+                1, (len(text.encode("utf-8")) + len(system_prompt) + history_bytes) // 4
+            ),
             max_output_tokens=max_output_tokens,
         )
         pool = eligible_models(self.registry, request, is_available=self._available)
@@ -267,6 +271,7 @@ class Gateway:
         if messages is None:
             chat_messages: tuple[dict[str, str], ...] = (
                 {"role": "system", "content": system_prompt},
+                *({"role": turn["role"], "content": turn["content"]} for turn in history),
                 {"role": "user", "content": text},
             )
         else:
