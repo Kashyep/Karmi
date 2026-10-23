@@ -59,10 +59,16 @@ class TierBody(ReasonBody):
 
 
 class UserEditBody(ReasonBody):
-    display_name: str | None = Field(default=None, min_length=1, max_length=120)
+    display_name: str | None = Field(default=None, max_length=120)
     tester: bool | None = None
-    tester_label: str | None = Field(default=None, min_length=1, max_length=40)
-    admin_notes: str | None = Field(default=None, min_length=1, max_length=2000)
+    tester_label: str | None = Field(default=None, max_length=40)
+    admin_notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_edit(self) -> UserEditBody:
+        if self.display_name is not None and not self.display_name.strip():
+            raise ValueError("display_name cannot be blank")
+        return self
 
 
 class BulkTierBody(TierBody):

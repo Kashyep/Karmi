@@ -79,7 +79,9 @@ def _bad(message: str) -> HTTPException:
 
 def parse_tier(tier: str | int) -> str:
     """Accept a plan id (``yanta``) or a tier number 1-4; return the plan id."""
-    if isinstance(tier, int) or (isinstance(tier, str) and tier.isdigit()):
+    if isinstance(tier, bool):
+        raise _bad("tier must be 1-4 or a plan id")
+    if isinstance(tier, int) or (isinstance(tier, str) and tier.isascii() and tier.isdigit()):
         number = int(tier)
         if number not in range(1, 5):
             raise _bad("tier must be 1-4 or a plan id")
@@ -336,14 +338,15 @@ def edit_user(
     _refuse_admin_target(session, settings, admin_id, user, "user.edit", reason)
     before = {"display_name": user.display_name, "tester": user.tester, "tester_label": user.tester_label, "admin_notes": user.admin_notes}
     if display_name is not None:
-        user.display_name = display_name
+        user.display_name = display_name.strip()
     if tester is not None:
         user.tester = tester
     if tester_label is not None:
-        user.tester_label = tester_label
+        user.tester_label = tester_label or None
     if admin_notes is not None:
-        user.admin_notes = admin_notes
-    append_audit(session, admin_user_id=admin_id, action="user.edit", target_user_id=user.id, reason=reason, detail={"before": before})
+        user.admin_notes = admin_notes or None
+    after = {"display_name": user.display_name, "tester": user.tester, "tester_label": user.tester_label, "admin_notes": user.admin_notes}
+    append_audit(session, admin_user_id=admin_id, action="user.edit", target_user_id=user.id, reason=reason, detail={"before": before, "after": after})
     session.commit()
     return user_item(user, _subscription(session, user.account_id)) | {"admin_notes": user.admin_notes}
 
@@ -357,6 +360,8 @@ def change_tier(
     tier: str | int,
     reason: str,
     expires_at: datetime | None = None,
+    *,
+    commit: bool = True,
 ) -> dict[str, Any]:
     plan = parse_tier(tier)
     user = _load_user(session, user_id)
@@ -378,7 +383,8 @@ def change_tier(
     subscription.status = "active"
     subscription.policy_version = "admin-override-v1"
     subscription.tier_expires_at = expires_at
-    subscription.revert_plan_id = old_policy.plan_id if expires_at is not None else None
+    base_plan = subscription.revert_plan_id or old_policy.plan_id
+    subscription.revert_plan_id = base_plan if expires_at is not None else None
     new_policy = SYNTHETIC_POLICIES[plan]
     # Entitlements only; billing is never touched. Re-base the live counters on the new plan.
     now = datetime.now(UTC)
@@ -412,7 +418,8 @@ def change_tier(
         reason=reason,
         detail={"before": before, "after": {"plan_id": plan, "tier": tier_for_plan(plan)}},
     )
-    session.commit()
+    if commit:
+        session.commit()
     return user_item(user, subscription)
 
 def bulk_change_tier(
@@ -436,7 +443,8 @@ def bulk_change_tier(
         assert user is not None
         _refuse_admin_target(session, settings, admin_id, user, "user.bulk_tier", reason)
     for uid in user_ids:
-        change_tier(session, settings, admin_id, uid, plan, reason, expires_at)
+        change_tier(session, settings, admin_id, uid, plan, reason, expires_at, commit=False)
+    session.commit()
     return {"updated": len(user_ids), "user_ids": user_ids}
 
 
