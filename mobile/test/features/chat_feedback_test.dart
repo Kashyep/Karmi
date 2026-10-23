@@ -23,7 +23,8 @@ http.Response sseResponse(
   String finishReason = 'stop',
   String outcome = 'success',
 }) {
-  final sse = 'event: run.started\n'
+  final sse =
+      'event: run.started\n'
       'data: {"run_id":"$runId","conversation_id":"conv-1","user_message_id":"$userMessageId","assistant_message_id":"$assistantMessageId","seq":0}\n\n'
       'id: 1\n'
       'event: message.delta\n'
@@ -36,6 +37,7 @@ http.Response sseResponse(
     headers: {'content-type': 'text/event-stream'},
   );
 }
+
 void main() {
   testWidgets(
     'assistant reply displays accessible thumbs and regenerate actions',
@@ -168,12 +170,20 @@ void main() {
       ..on(
         'POST',
         '/v1/chat/stream',
-        (_) => sseResponse('First version', runId: 'run-1', assistantMessageId: 'msg-a'),
+        (_) => sseResponse(
+          'First version',
+          runId: 'run-1',
+          assistantMessageId: 'msg-a',
+        ),
       )
       ..on(
         'POST',
         '/v1/messages/msg-a/regenerate',
-        (_) => sseResponse('Second improved version', runId: 'run-2', assistantMessageId: 'msg-a-2'),
+        (_) => sseResponse(
+          'Second improved version',
+          runId: 'run-2',
+          assistantMessageId: 'msg-a-2',
+        ),
       );
 
     await pumpApp(tester, backend: backend);

@@ -21,31 +21,35 @@ class _FakeApi implements ConversationsApi {
     bool archived = false,
     String? cursor,
     int limit = 20,
-  }) async =>
-      ConversationPage(items: conversations);
+  }) async => ConversationPage(items: conversations);
   @override
-  Future<List<ConversationSearchResult>> search(String q, {int limit = 20}) async =>
-      [];
+  Future<List<ConversationSearchResult>> search(
+    String q, {
+    int limit = 20,
+  }) async => [];
   @override
   Future<ConversationView> get(String id) async =>
       conversations.firstWhere((c) => c.id == id);
   @override
-  Future<MessagePage> messages(String id, {String? before, int limit = 50}) async =>
-      const MessagePage(items: []);
+  Future<MessagePage> messages(
+    String id, {
+    String? before,
+    int limit = 50,
+  }) async => const MessagePage(items: []);
   @override
   Future<ConversationView> update(
     String id, {
     String? title,
     bool? pinned,
     bool? archived,
-  }) async =>
-      conversations.firstWhere((c) => c.id == id);
+  }) async => conversations.firstWhere((c) => c.id == id);
   @override
   Future<void> delete(String id) async {}
   @override
   Future<ConversationView> restore(String id) async =>
       conversations.firstWhere((c) => c.id == id);
 }
+
 void main() {
   group('groupConversationsByDate', () {
     final now = DateTime.utc(2026, 10, 22, 14, 30, 0);
@@ -86,69 +90,84 @@ void main() {
       expect(groups[1].conversations.map((c) => c.id).toList(), ['c1']);
     });
 
-    test('groups conversations into Today, Yesterday, Previous 7 days, and Older', () {
-      final localNow = now.toLocal();
-      final todayStart = DateTime(localNow.year, localNow.month, localNow.day);
+    test(
+      'groups conversations into Today, Yesterday, Previous 7 days, and Older',
+      () {
+        final localNow = now.toLocal();
+        final todayStart = DateTime(
+          localNow.year,
+          localNow.month,
+          localNow.day,
+        );
 
-      final conversations = [
-        // Today
-        ConversationView(
-          id: 'today_1',
-          title: 'Today chat',
-          pinned: false,
-          updatedAt: todayStart.add(const Duration(hours: 3)),
-        ),
-        // Yesterday
-        ConversationView(
-          id: 'yesterday_1',
-          title: 'Yesterday chat',
-          pinned: false,
-          updatedAt: todayStart.subtract(const Duration(hours: 5)),
-        ),
-        // Previous 7 days (3 days ago)
-        ConversationView(
-          id: 'prev7_1',
-          title: '3 days ago',
-          pinned: false,
-          updatedAt: todayStart.subtract(const Duration(days: 3)),
-        ),
-        // Previous 7 days (7 days ago)
-        ConversationView(
-          id: 'prev7_2',
-          title: '7 days ago',
-          pinned: false,
-          updatedAt: todayStart.subtract(const Duration(days: 7)),
-        ),
-        // Older (8 days ago)
-        ConversationView(
-          id: 'older_1',
-          title: '8 days ago',
-          pinned: false,
-          updatedAt: todayStart.subtract(const Duration(days: 8)),
-        ),
-        // Older (40 days ago)
-        ConversationView(
-          id: 'older_2',
-          title: '40 days ago',
-          pinned: false,
-          updatedAt: todayStart.subtract(const Duration(days: 40)),
-        ),
-      ];
+        final conversations = [
+          // Today
+          ConversationView(
+            id: 'today_1',
+            title: 'Today chat',
+            pinned: false,
+            updatedAt: todayStart.add(const Duration(hours: 3)),
+          ),
+          // Yesterday
+          ConversationView(
+            id: 'yesterday_1',
+            title: 'Yesterday chat',
+            pinned: false,
+            updatedAt: todayStart.subtract(const Duration(hours: 5)),
+          ),
+          // Previous 7 days (3 days ago)
+          ConversationView(
+            id: 'prev7_1',
+            title: '3 days ago',
+            pinned: false,
+            updatedAt: todayStart.subtract(const Duration(days: 3)),
+          ),
+          // Previous 7 days (7 days ago)
+          ConversationView(
+            id: 'prev7_2',
+            title: '7 days ago',
+            pinned: false,
+            updatedAt: todayStart.subtract(const Duration(days: 7)),
+          ),
+          // Older (8 days ago)
+          ConversationView(
+            id: 'older_1',
+            title: '8 days ago',
+            pinned: false,
+            updatedAt: todayStart.subtract(const Duration(days: 8)),
+          ),
+          // Older (40 days ago)
+          ConversationView(
+            id: 'older_2',
+            title: '40 days ago',
+            pinned: false,
+            updatedAt: todayStart.subtract(const Duration(days: 40)),
+          ),
+        ];
 
-      final groups = groupConversationsByDate(conversations, now);
+        final groups = groupConversationsByDate(conversations, now);
 
-      expect(groups.map((g) => g.title).toList(), [
-        'Today',
-        'Yesterday',
-        'Previous 7 days',
-        'Older',
-      ]);
+        expect(groups.map((g) => g.title).toList(), [
+          'Today',
+          'Yesterday',
+          'Previous 7 days',
+          'Older',
+        ]);
 
-      expect(groups[0].conversations.map((c) => c.id).toList(), ['today_1']);
-      expect(groups[1].conversations.map((c) => c.id).toList(), ['yesterday_1']);
-      expect(groups[2].conversations.map((c) => c.id).toList(), ['prev7_1', 'prev7_2']);
-      expect(groups[3].conversations.map((c) => c.id).toList(), ['older_1', 'older_2']);
-    });
+        expect(groups[0].conversations.map((c) => c.id).toList(), ['today_1']);
+        expect(groups[1].conversations.map((c) => c.id).toList(), [
+          'yesterday_1',
+        ]);
+        expect(groups[2].conversations.map((c) => c.id).toList(), [
+          'prev7_1',
+          'prev7_2',
+        ]);
+        expect(groups[3].conversations.map((c) => c.id).toList(), [
+          'older_1',
+          'older_2',
+        ]);
+      },
+    );
 
     test('omits empty date buckets', () {
       final localNow = now.toLocal();
@@ -176,7 +195,9 @@ void main() {
   });
 
   group('ConversationList grouped sections & active highlight', () {
-    testWidgets('renders section headers and active row highlight', (tester) async {
+    testWidgets('renders section headers and active row highlight', (
+      tester,
+    ) async {
       final now = DateTime.now();
       final api = _FakeApi();
       api.conversations = [

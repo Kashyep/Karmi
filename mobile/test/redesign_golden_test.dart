@@ -38,7 +38,8 @@ http.Response sseResponse(
     'finish_reason': finishReason,
     'outcome': outcome,
   });
-  final sse = 'event: run.started\n'
+  final sse =
+      'event: run.started\n'
       'data: {"run_id":"$runId","conversation_id":"$conversationId","user_message_id":"msg-u","assistant_message_id":"msg-a","seq":0}\n\n'
       'id: 1\n'
       'event: message.delta\n'
@@ -150,7 +151,11 @@ void main() {
               'next_cursor': null,
             }),
           )
-          ..on('GET', '/v1/conversations/conv-1/messages', (_) => jsonResponse({'items': [], 'has_more_before': false}));
+          ..on(
+            'GET',
+            '/v1/conversations/conv-1/messages',
+            (_) => jsonResponse({'items': [], 'has_more_before': false}),
+          );
 
         await pumpApp(tester, backend: backend, env: env);
         await send(tester, 'Hello');
@@ -174,7 +179,11 @@ void main() {
               'next_cursor': null,
             }),
           )
-          ..on('GET', '/v1/conversations/conv-1/messages', (_) => jsonResponse({'items': [], 'has_more_before': false}));
+          ..on(
+            'GET',
+            '/v1/conversations/conv-1/messages',
+            (_) => jsonResponse({'items': [], 'has_more_before': false}),
+          );
 
         await pumpApp(
           tester,

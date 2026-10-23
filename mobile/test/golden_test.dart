@@ -31,7 +31,8 @@ http.Response sseResponse(
     'finish_reason': finishReason,
     'outcome': outcome,
   });
-  final sse = 'event: run.started\n'
+  final sse =
+      'event: run.started\n'
       'data: {"run_id":"$runId","conversation_id":"$conversationId","user_message_id":"msg-u","assistant_message_id":"msg-a","seq":0}\n\n'
       'id: 1\n'
       'event: message.delta\n'
@@ -72,8 +73,7 @@ void main() {
   for (final env in goldenEnvs) {
     group(env.name, () {
       testWidgets('chat', (tester) async {
-        const replyText =
-            'Which day should I remind you to call the bank?';
+        const replyText = 'Which day should I remind you to call the bank?';
         await pumpApp(
           tester,
           env: env,
@@ -86,12 +86,7 @@ void main() {
             ..on(
               'POST',
               '/v1/messages',
-              (_) => jsonResponse(
-                messageJson(
-                  'ASK_USER',
-                  response: replyText,
-                ),
-              ),
+              (_) => jsonResponse(messageJson('ASK_USER', response: replyText)),
             ),
         );
         await tester.enterText(find.byType(TextField), 'Remind me to call');
@@ -117,11 +112,7 @@ void main() {
 
       if (env.textScale == 1.0 && !env.reduceTransparency) {
         testWidgets('chat_empty_wide', (tester) async {
-          await pumpApp(
-            tester,
-            env: env,
-            size: const Size(1024, 768),
-          );
+          await pumpApp(tester, env: env, size: const Size(1024, 768));
           await fontsReady(tester);
           await expectLater(
             find.byType(MaterialApp),

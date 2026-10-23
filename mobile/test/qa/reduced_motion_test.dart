@@ -34,7 +34,10 @@ void main() {
         await tester.pump();
 
         expect(tester.hasRunningAnimations, isTrue);
-        expect(find.byKey(const ValueKey('karmi-loader-spinner')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('karmi-loader-spinner')),
+          findsOneWidget,
+        );
         expect(find.byKey(const ValueKey('karmi-loader-static')), findsNothing);
       },
     );
@@ -60,14 +63,26 @@ void main() {
         expect(tester.hasRunningAnimations, isFalse);
 
         // 2. Renders static icon rather than infinite spinner
-        expect(find.byKey(const ValueKey('karmi-loader-static')), findsOneWidget);
-        expect(find.byKey(const ValueKey('karmi-loader-spinner')), findsNothing);
+        expect(
+          find.byKey(const ValueKey('karmi-loader-static')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('karmi-loader-spinner')),
+          findsNothing,
+        );
 
         // 3. KarmiMotion and KarmiTokens durations evaluate to Duration.zero
         expect(KarmiMotion.duration(capturedContext), Duration.zero);
-        expect(KarmiMotion.duration(capturedContext, KarmiMotion.fast), Duration.zero);
+        expect(
+          KarmiMotion.duration(capturedContext, KarmiMotion.fast),
+          Duration.zero,
+        );
         expect(KarmiTokens.motion(capturedContext), Duration.zero);
-        expect(KarmiTokens.motion(capturedContext, KarmiTokens.slow), Duration.zero);
+        expect(
+          KarmiTokens.motion(capturedContext, KarmiTokens.slow),
+          Duration.zero,
+        );
       },
     );
 

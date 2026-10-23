@@ -5,11 +5,7 @@ import 'package:karmi_app/shell/workspace_layout.dart';
 
 /// A probe widget that counts how many times its State is built.
 class _ProbePage extends StatefulWidget {
-  const _ProbePage({
-    required this.label,
-    this.onInit,
-    this.onBuilt,
-  });
+  const _ProbePage({required this.label, this.onInit, this.onBuilt});
 
   final String label;
   final VoidCallback? onInit;
@@ -53,7 +49,10 @@ class _TestLazyResponsiveShellState extends State<_TestLazyResponsiveShell> {
   int _index = 0;
   final _bodyKey = GlobalKey();
   final Set<int> _visited = {0};
-  late final List<Widget?> _pages = List.filled(widget.tabBuilders.length, null);
+  late final List<Widget?> _pages = List.filled(
+    widget.tabBuilders.length,
+    null,
+  );
 
   Widget _pageFor(int index) {
     if (!_visited.contains(index)) {
@@ -184,9 +183,14 @@ void main() {
           home: _TestLazyResponsiveShell(
             tabBuilders: [
               (_) => _ProbePage(label: 'Chat Tab', onBuilt: () => tab0Builds++),
-              (_) => _ProbePage(label: 'Tasks Tab', onBuilt: () => tab1Builds++),
-              (_) => _ProbePage(label: 'Usage Tab', onBuilt: () => tab2Builds++),
-              (_) => _ProbePage(label: 'Settings Tab', onBuilt: () => tab3Builds++),
+              (_) =>
+                  _ProbePage(label: 'Tasks Tab', onBuilt: () => tab1Builds++),
+              (_) =>
+                  _ProbePage(label: 'Usage Tab', onBuilt: () => tab2Builds++),
+              (_) => _ProbePage(
+                label: 'Settings Tab',
+                onBuilt: () => tab3Builds++,
+              ),
             ],
           ),
         ),
@@ -326,7 +330,8 @@ void main() {
         MaterialApp(
           home: _TestLazyResponsiveShell(
             tabBuilders: [
-              (_) => _ProbePage(label: 'Chat Content', onInit: () => initCount++),
+              (_) =>
+                  _ProbePage(label: 'Chat Content', onInit: () => initCount++),
               (_) => const Text('Tasks'),
               (_) => const Text('Usage'),
               (_) => const Text('Settings'),

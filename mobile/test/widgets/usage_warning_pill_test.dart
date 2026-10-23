@@ -31,7 +31,10 @@ void main() {
       ) async {
         final handle = tester.ensureSemantics();
         await _pump(tester, 0.8, brightness);
-        expect(find.byKey(const ValueKey('usage-warning-pill')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('usage-warning-pill')),
+          findsOneWidget,
+        );
         expect(find.text('Near limit'), findsOneWidget);
         expect(find.bySemanticsLabel('Near limit'), findsOneWidget);
         handle.dispose();
@@ -40,7 +43,10 @@ void main() {
       testWidgets('shows "Allowance reached" at 1.0', (tester) async {
         final handle = tester.ensureSemantics();
         await _pump(tester, 1.0, brightness);
-        expect(find.byKey(const ValueKey('usage-warning-pill')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('usage-warning-pill')),
+          findsOneWidget,
+        );
         expect(find.text('Allowance reached'), findsOneWidget);
         expect(find.bySemanticsLabel('Allowance reached'), findsOneWidget);
         handle.dispose();

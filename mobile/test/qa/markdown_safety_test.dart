@@ -24,68 +24,80 @@ void main() {
   });
 
   group('MarkdownMessage safety', () {
-    testWidgets('raw HTML <script> and <img onerror> render as literal text, not widgets/HTML', (
-      tester,
-    ) async {
-      const payload =
-          'Safe text <script>alert("xss")</script> middle '
-          '<img src="invalid.png" onerror="alert(1)"> trailing';
+    testWidgets(
+      'raw HTML <script> and <img onerror> render as literal text, not widgets/HTML',
+      (tester) async {
+        const payload =
+            'Safe text <script>alert("xss")</script> middle '
+            '<img src="invalid.png" onerror="alert(1)"> trailing';
 
-      await tester.pumpWidget(_host(const MarkdownMessage(text: payload, streaming: false)));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _host(const MarkdownMessage(text: payload, streaming: false)),
+        );
+        await tester.pumpAndSettle();
 
-      // No HTML image widget or native elements rendered
-      expect(find.byType(Image), findsNothing);
+        // No HTML image widget or native elements rendered
+        expect(find.byType(Image), findsNothing);
 
-      // Verbatim text should appear as text strings
-      expect(find.textContaining('<script>', findRichText: true), findsWidgets);
-      expect(find.textContaining('<img', findRichText: true), findsWidgets);
-      expect(find.textContaining('onerror=', findRichText: true), findsWidgets);
-    });
+        // Verbatim text should appear as text strings
+        expect(
+          find.textContaining('<script>', findRichText: true),
+          findsWidgets,
+        );
+        expect(find.textContaining('<img', findRichText: true), findsWidgets);
+        expect(
+          find.textContaining('onerror=', findRichText: true),
+          findsWidgets,
+        );
+      },
+    );
 
-    testWidgets('javascript: and file: links are not tappable; https: link is tappable', (
-      tester,
-    ) async {
-      const payload =
-          '[Dangerous JS](javascript:alert(1))\n\n'
-          '[Dangerous File](file:///etc/shadow)\n\n'
-          '[Safe Web](https://karmi.ai)\n';
+    testWidgets(
+      'javascript: and file: links are not tappable; https: link is tappable',
+      (tester) async {
+        const payload =
+            '[Dangerous JS](javascript:alert(1))\n\n'
+            '[Dangerous File](file:///etc/shadow)\n\n'
+            '[Safe Web](https://karmi.ai)\n';
 
-      await tester.pumpWidget(_host(const MarkdownMessage(text: payload, streaming: false)));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _host(const MarkdownMessage(text: payload, streaming: false)),
+        );
+        await tester.pumpAndSettle();
 
-      // Inspect RichText spans
-      final richTexts = tester.widgetList<RichText>(find.byType(RichText));
-      TapGestureRecognizer? safeRecognizer;
-      TapGestureRecognizer? jsRecognizer;
-      TapGestureRecognizer? fileRecognizer;
+        // Inspect RichText spans
+        final richTexts = tester.widgetList<RichText>(find.byType(RichText));
+        TapGestureRecognizer? safeRecognizer;
+        TapGestureRecognizer? jsRecognizer;
+        TapGestureRecognizer? fileRecognizer;
 
-      void walk(InlineSpan span) {
-        if (span is TextSpan) {
-          final text = span.toPlainText();
-          if (text.contains('Safe Web') && span.recognizer != null) {
-            safeRecognizer = span.recognizer as TapGestureRecognizer?;
+        void walk(InlineSpan span) {
+          if (span is TextSpan) {
+            final text = span.toPlainText();
+            if (text.contains('Safe Web') && span.recognizer != null) {
+              safeRecognizer = span.recognizer as TapGestureRecognizer?;
+            }
+            if (text.contains('Dangerous JS') && span.recognizer != null) {
+              jsRecognizer = span.recognizer as TapGestureRecognizer?;
+            }
+            if (text.contains('Dangerous File') && span.recognizer != null) {
+              fileRecognizer = span.recognizer as TapGestureRecognizer?;
+            }
+            span.children?.forEach(walk);
           }
-          if (text.contains('Dangerous JS') && span.recognizer != null) {
-            jsRecognizer = span.recognizer as TapGestureRecognizer?;
-          }
-          if (text.contains('Dangerous File') && span.recognizer != null) {
-            fileRecognizer = span.recognizer as TapGestureRecognizer?;
-          }
-          span.children?.forEach(walk);
         }
-      }
 
-      for (final rt in richTexts) {
-        walk(rt.text);
-      }
+        for (final rt in richTexts) {
+          walk(rt.text);
+        }
 
-      // Safe https link has an active TapGestureRecognizer
-      expect(safeRecognizer, isNotNull);
+        // Safe https link has an active TapGestureRecognizer
+        expect(safeRecognizer, isNotNull);
 
-      // Malicious or file links have no TapGestureRecognizer attached
-      expect(jsRecognizer, isNull);
-      expect(fileRecognizer, isNull);
-    });
+        // Malicious or file links have no TapGestureRecognizer attached
+        expect(jsRecognizer, isNull);
+        expect(fileRecognizer, isNull);
+      },
+    );
   });
 }

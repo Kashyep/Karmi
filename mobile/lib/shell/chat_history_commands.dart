@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 /// Bridge between the app-level history rail (app.dart) and ChatScreen.
 class ChatHistoryCommands {
   ChatHistoryCommands({String? activeConversationId})
-      : activeId = ValueNotifier<String?>(activeConversationId);
+    : activeId = ValueNotifier<String?>(activeConversationId);
 
   /// Set by ChatScreen in initState; cleared (null) in dispose.
   ValueChanged<String>? openConversation;

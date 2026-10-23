@@ -97,48 +97,51 @@ void main() {
       expect(find.byType(VerticalDivider), findsNothing);
     });
 
-    testWidgets('medium width (800) renders rail in 80px slot and Expanded main', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(800, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+    testWidgets(
+      'medium width (800) renders rail in 80px slot and Expanded main',
+      (tester) async {
+        tester.view.physicalSize = const Size(800, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: WorkspaceLayout(
-              rail: KeyedSubtree(
-                key: ValueKey('test-rail'),
-                child: Text('RAIL'),
-              ),
-              main: KeyedSubtree(
-                key: ValueKey('test-main'),
-                child: Text('MAIN'),
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: WorkspaceLayout(
+                rail: KeyedSubtree(
+                  key: ValueKey('test-rail'),
+                  child: Text('RAIL'),
+                ),
+                main: KeyedSubtree(
+                  key: ValueKey('test-main'),
+                  child: Text('MAIN'),
+                ),
               ),
             ),
           ),
-        ),
-      );
+        );
 
-      expect(find.byKey(const ValueKey('test-rail')), findsOneWidget);
-      expect(find.byKey(const ValueKey('test-main')), findsOneWidget);
+        expect(find.byKey(const ValueKey('test-rail')), findsOneWidget);
+        expect(find.byKey(const ValueKey('test-main')), findsOneWidget);
 
-      final railSizedBox = tester.widget<SizedBox>(
-        find.ancestor(
-          of: find.byKey(const ValueKey('test-rail')),
-          matching: find.byType(SizedBox),
-        ).first,
-      );
-      expect(railSizedBox.width, 80.0);
+        final railSizedBox = tester.widget<SizedBox>(
+          find
+              .ancestor(
+                of: find.byKey(const ValueKey('test-rail')),
+                matching: find.byType(SizedBox),
+              )
+              .first,
+        );
+        expect(railSizedBox.width, 80.0);
 
-      final mainFinder = find.byKey(const ValueKey('test-main'));
-      expect(
-        find.ancestor(of: mainFinder, matching: find.byType(Expanded)),
-        findsOneWidget,
-      );
-      expect(find.byType(VerticalDivider), findsNothing);
-    });
+        final mainFinder = find.byKey(const ValueKey('test-main'));
+        expect(
+          find.ancestor(of: mainFinder, matching: find.byType(Expanded)),
+          findsOneWidget,
+        );
+        expect(find.byType(VerticalDivider), findsNothing);
+      },
+    );
 
     testWidgets(
       'expanded width (1200) renders rail in 300px slot with vertical divider',
@@ -174,10 +177,12 @@ void main() {
         expect(find.byKey(const ValueKey('test-main')), findsOneWidget);
 
         final railSizedBox = tester.widget<SizedBox>(
-          find.ancestor(
-            of: find.byKey(const ValueKey('test-rail')),
-            matching: find.byType(SizedBox),
-          ).first,
+          find
+              .ancestor(
+                of: find.byKey(const ValueKey('test-rail')),
+                matching: find.byType(SizedBox),
+              )
+              .first,
         );
         expect(railSizedBox.width, 300.0);
 

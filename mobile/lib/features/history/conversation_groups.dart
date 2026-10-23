@@ -2,10 +2,7 @@ import '../../api/chat/chat_models.dart';
 
 /// A labeled bucket of conversations for the history list.
 class ConversationGroup {
-  const ConversationGroup({
-    required this.title,
-    required this.conversations,
-  });
+  const ConversationGroup({required this.title, required this.conversations});
 
   final String title;
   final List<ConversationView> conversations;
@@ -88,10 +85,7 @@ List<ConversationGroup> groupConversationsByDate(
   }
   if (previous7Days.isNotEmpty) {
     groups.add(
-      ConversationGroup(
-        title: 'Previous 7 days',
-        conversations: previous7Days,
-      ),
+      ConversationGroup(title: 'Previous 7 days', conversations: previous7Days),
     );
   }
   if (older.isNotEmpty) {

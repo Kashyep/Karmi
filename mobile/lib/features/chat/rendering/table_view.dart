@@ -145,8 +145,9 @@ class _TableViewState extends State<TableView> {
           child: Container(
             decoration: _focusNode.hasFocus
                 ? BoxDecoration(
-                    borderRadius:
-                        BorderRadius.circular(KarmiShape.controlRadius),
+                    borderRadius: BorderRadius.circular(
+                      KarmiShape.controlRadius,
+                    ),
                     border: Border.all(
                       color: colors?.ring ?? colorScheme.primary,
                       width: 2,

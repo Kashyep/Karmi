@@ -25,6 +25,7 @@ class _ConversationEntry extends _HistoryEntry {
 class _LoadingMoreEntry extends _HistoryEntry {
   const _LoadingMoreEntry();
 }
+
 /// Formats [at] relative to [now] (e.g. 'Just now', '5m ago', '2h ago', '3d ago', '2026-10-21').
 String formatRelativeDate(DateTime at, [DateTime? now]) {
   final current = (now ?? DateTime.now()).toUtc();
@@ -223,12 +224,13 @@ class _ConversationListState extends State<ConversationList> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: karmiColors?.errorSurface ??
+                      color:
+                          karmiColors?.errorSurface ??
                           theme.colorScheme.errorContainer,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: karmiColors?.destructive
-                                .withValues(alpha: 0.3) ??
+                        color:
+                            karmiColors?.destructive.withValues(alpha: 0.3) ??
                             theme.colorScheme.error.withValues(alpha: 0.3),
                       ),
                     ),
@@ -237,7 +239,8 @@ class _ConversationListState extends State<ConversationList> {
                         Icon(
                           Icons.error_outline,
                           size: 16,
-                          color: karmiColors?.destructive ??
+                          color:
+                              karmiColors?.destructive ??
                               theme.colorScheme.error,
                         ),
                         const SizedBox(width: 8),
@@ -245,7 +248,8 @@ class _ConversationListState extends State<ConversationList> {
                           child: Text(
                             '${controller.error}',
                             style: TextStyle(
-                              color: karmiColors?.foreground ??
+                              color:
+                                  karmiColors?.foreground ??
                                   theme.colorScheme.onErrorContainer,
                               fontSize: 13,
                             ),
@@ -340,8 +344,7 @@ class _ConversationListState extends State<ConversationList> {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           child: Material(
             color: isActive
-                ? (karmiColors?.card ??
-                    theme.colorScheme.surfaceContainerHigh)
+                ? (karmiColors?.card ?? theme.colorScheme.surfaceContainerHigh)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             child: Container(
@@ -350,66 +353,69 @@ class _ConversationListState extends State<ConversationList> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border(
                         top: BorderSide(
-                          color: karmiColors?.glassSpecularRim ??
-                              theme.colorScheme.outlineVariant
-                                  .withValues(alpha: 0.25),
+                          color:
+                              karmiColors?.glassSpecularRim ??
+                              theme.colorScheme.outlineVariant.withValues(
+                                alpha: 0.25,
+                              ),
                           width: 1,
                         ),
                       ),
                     )
                   : null,
-            child: ListTile(
-              dense: true,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              title: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: isActive
-                    ? const TextStyle(fontWeight: FontWeight.w500)
-                    : null,
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (result.snippet.isNotEmpty)
+              child: ListTile(
+                dense: true,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                title: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: isActive
+                      ? const TextStyle(fontWeight: FontWeight.w500)
+                      : null,
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (result.snippet.isNotEmpty)
+                      Text(
+                        result.snippet,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: karmiColors?.mutedForeground,
+                        ),
+                      ),
+                    const SizedBox(height: 2),
                     Text(
-                      result.snippet,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: karmiColors?.mutedForeground,
+                      'Matched in ${result.matched}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color:
+                            karmiColors?.primary ?? theme.colorScheme.primary,
                       ),
                     ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Matched in ${result.matched}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: karmiColors?.primary ?? theme.colorScheme.primary,
-                    ),
+                  ],
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: 'Actions',
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
                   ),
-                ],
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.more_vert),
-                tooltip: 'Actions',
-                constraints: const BoxConstraints(
-                  minWidth: 44,
-                  minHeight: 44,
+                  onPressed: () => showConversationActions(
+                    context,
+                    conversation: conv,
+                    controller: controller,
+                  ),
                 ),
-                onPressed: () => showConversationActions(
-                  context,
-                  conversation: conv,
-                  controller: controller,
-                ),
+                onTap: () => widget.onOpen(conv.id),
               ),
-              onTap: () => widget.onOpen(conv.id),
             ),
           ),
-        ),
-      );
+        );
       },
     );
   }
@@ -452,8 +458,8 @@ class _ConversationListState extends State<ConversationList> {
                           ? Icons.archive_outlined
                           : Icons.chat_bubble_outline,
                       size: 40,
-                      color: karmiColors?.mutedForeground ??
-                          theme.disabledColor,
+                      color:
+                          karmiColors?.mutedForeground ?? theme.disabledColor,
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -508,7 +514,8 @@ class _ConversationListState extends State<ConversationList> {
                     child: Text(
                       title,
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: karmiColors?.mutedForeground ??
+                        color:
+                            karmiColors?.mutedForeground ??
                             theme.colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.5,
@@ -542,7 +549,7 @@ class _ConversationListState extends State<ConversationList> {
                 child: Material(
                   color: isActive
                       ? (karmiColors?.card ??
-                          theme.colorScheme.surfaceContainerHigh)
+                            theme.colorScheme.surfaceContainerHigh)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
@@ -551,59 +558,62 @@ class _ConversationListState extends State<ConversationList> {
                             borderRadius: BorderRadius.circular(8),
                             border: Border(
                               top: BorderSide(
-                                color: karmiColors?.glassSpecularRim ??
-                                    theme.colorScheme.outlineVariant
-                                        .withValues(alpha: 0.25),
+                                color:
+                                    karmiColors?.glassSpecularRim ??
+                                    theme.colorScheme.outlineVariant.withValues(
+                                      alpha: 0.25,
+                                    ),
                                 width: 1,
                               ),
                             ),
                           )
                         : null,
-                  child: ListTile(
-                    dense: true,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    leading: conv.pinned
-                        ? Icon(
-                            Icons.push_pin,
-                            size: 20,
-                            color: karmiColors?.primary ??
-                                theme.colorScheme.primary,
-                          )
-                        : null,
-                    title: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: isActive
-                          ? const TextStyle(fontWeight: FontWeight.w500)
+                    child: ListTile(
+                      dense: true,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      leading: conv.pinned
+                          ? Icon(
+                              Icons.push_pin,
+                              size: 20,
+                              color:
+                                  karmiColors?.primary ??
+                                  theme.colorScheme.primary,
+                            )
                           : null,
-                    ),
-                    subtitle: Text(
-                      relativeDate,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: karmiColors?.mutedForeground,
+                      title: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: isActive
+                            ? const TextStyle(fontWeight: FontWeight.w500)
+                            : null,
                       ),
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.more_vert),
-                      tooltip: 'Actions',
-                      constraints: const BoxConstraints(
-                        minWidth: 44,
-                        minHeight: 44,
+                      subtitle: Text(
+                        relativeDate,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: karmiColors?.mutedForeground,
+                        ),
                       ),
-                      onPressed: () => showConversationActions(
-                        context,
-                        conversation: conv,
-                        controller: controller,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.more_vert),
+                        tooltip: 'Actions',
+                        constraints: const BoxConstraints(
+                          minWidth: 44,
+                          minHeight: 44,
+                        ),
+                        onPressed: () => showConversationActions(
+                          context,
+                          conversation: conv,
+                          controller: controller,
+                        ),
                       ),
+                      onTap: () => widget.onOpen(conv.id),
                     ),
-                    onTap: () => widget.onOpen(conv.id),
                   ),
                 ),
-              ),
-            );
+              );
           }
         },
       ),

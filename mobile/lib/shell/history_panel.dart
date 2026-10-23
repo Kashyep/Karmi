@@ -97,12 +97,7 @@ class HistoryPanel extends StatelessWidget {
         decoration: BoxDecoration(
           color: colors.sidebarSurface,
           border: showBorder
-              ? Border(
-                  right: BorderSide(
-                    color: colors.hairline,
-                    width: 1,
-                  ),
-                )
+              ? Border(right: BorderSide(color: colors.hairline, width: 1))
               : null,
         ),
         child: child,
@@ -145,9 +140,7 @@ class HistoryOverlay extends StatelessWidget {
             child: GestureDetector(
               onTap: onClose,
               behavior: HitTestBehavior.opaque,
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.4),
-              ),
+              child: Container(color: Colors.black.withValues(alpha: 0.4)),
             ),
           ),
         ),
@@ -163,10 +156,7 @@ class HistoryOverlay extends StatelessWidget {
           child: Material(
             elevation: 8,
             color: Colors.transparent,
-            child: HistoryPanel(
-              width: width,
-              child: child,
-            ),
+            child: HistoryPanel(width: width, child: child),
           ),
         ),
       ],
@@ -192,9 +182,7 @@ class HistoryDrawer extends StatelessWidget {
     return Drawer(
       backgroundColor: KarmiColors.of(context).sidebarSurface,
       width: width,
-      child: SafeArea(
-        child: child,
-      ),
+      child: SafeArea(child: child),
     );
   }
 }
