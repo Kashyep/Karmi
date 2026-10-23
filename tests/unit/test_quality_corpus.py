@@ -224,3 +224,18 @@ def test_live_runner_budget_hard_stops_at_n_with_mock_adapter(tmp_path: Path) ->
     saved_records = json.loads(run_files[0].read_text(encoding="utf-8"))
     assert len(saved_records) == 2
     assert saved_records[0]["case_id"] == "QC-V1-01"
+
+
+def test_live_runner_zero_budget_makes_no_provider_calls(tmp_path: Path) -> None:
+    provider = MockProvider()
+    gateway = Gateway(
+        registry=_registry(_entry("vendor/m:free")),
+        providers={"openrouter": provider},
+        health=HealthTracker(),
+        clock=lambda: FIXED_NOW,
+    )
+
+    results_dir = tmp_path / "zero-budget-results"
+    assert run_corpus_live(budget=0, gateway=gateway, results_dir=results_dir) == []
+    assert provider.requests == []
+    assert not results_dir.exists()

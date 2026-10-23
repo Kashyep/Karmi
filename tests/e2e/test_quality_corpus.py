@@ -134,6 +134,15 @@ def _ok_reply(content: str = "ok") -> dict[str, Any]:
     }
 
 
+def _sse_reply(content: str) -> httpx.Response:
+    chunk = {
+        "choices": [{"delta": {"content": content}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+    }
+    body = f"data: {json.dumps(chunk, ensure_ascii=False)}\n\ndata: [DONE]\n\n"
+    return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+
 def test_e2e_case_01_reference_resolution(make_harness: Callable[..., Harness]) -> None:
     cases = {c["case_id"]: c for c in load_corpus_v1()}
     c1 = cases["QC-V1-01"]
@@ -242,18 +251,52 @@ def test_e2e_case_03_long_hindi_followup(make_harness: Callable[..., Harness]) -
     assert sent_msgs[2]["content"] == t2["history"][1]["content"]
 
 
-def test_e2e_case_03_long_hindi_stream_xfail(make_harness: Callable[..., Harness]) -> None:
-    # Phase 1 changes streaming history. On base, stream does not send history.
-    harness = make_harness(
-        [_entry("vendor/eco-a:free")],
-        lambda _r: httpx.Response(200, json=_ok_reply("stream reply")),
-    )
-    with harness.factory() as session:
-        _, _, _token = create_identity(session, harness.settings, name="user3s")
+def test_e2e_case_03_long_hindi_stream_history(make_harness: Callable[..., Harness]) -> None:
+    long_hindi = "नमस्ते भारत! यह हिंदी उत्तर इतिहास सीमा जाँचता है। " * 500
+    followup = "इस उत्तर में क्या मुख्य बात थी?"
 
-    # The stream route currently sends no history on release1/chat-redesign base.
-    # We mark this xfail with reason 'needs phase 1'.
-    pytest.xfail("needs phase 1: stream route does not yet wire history on base")
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        answer = (
+            long_hindi
+            if "पहला सवाल" in body["messages"][-1]["content"]
+            else "मुख्य बात हिंदी इतिहास थी।"
+        )
+        return _sse_reply(answer)
+
+    harness = make_harness([_entry("vendor/eco-a:free")], handler)
+    with harness.factory() as session:
+        _, _, token = create_identity(session, harness.settings, name="user3s")
+
+    first = harness.client.post(
+        "/v1/chat/stream",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"text": "पहला सवाल", "clientMessageId": "qc-hindi-stream-01"},
+    )
+    assert first.status_code == 200
+    conversation_id = next(
+        json.loads(line[6:])["conversation_id"]
+        for line in first.text.splitlines()
+        if line.startswith("data: ") and "conversation_id" in line
+    )
+
+    second = harness.client.post(
+        "/v1/chat/stream",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "text": followup,
+            "conversationId": conversation_id,
+            "clientMessageId": "qc-hindi-stream-02",
+        },
+    )
+    assert second.status_code == 200
+    sent = json.loads(harness.seen[1].content)["messages"]
+    assert len(sent) == 3
+    assert sent[0]["role"] == "system"
+    assert sent[1]["role"] == "assistant"
+    assert "[…trimmed…]" in sent[1]["content"]
+    assert "नमस्ते भारत" in sent[1]["content"]
+    assert sent[-1] == {"role": "user", "content": followup}
 
 
 def test_e2e_case_04_date_timezone(make_harness: Callable[..., Harness]) -> None:
