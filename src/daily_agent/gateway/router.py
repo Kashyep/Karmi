@@ -107,4 +107,6 @@ def eligible_models(
         and is_available(m)
     ]
     chosen.sort(key=lambda m: (m.model_class.rank, -m.score(request.task_type.value), m.action))
-    return chosen
+    task_key = getattr(request.task_type, "value", request.task_type)
+    non_zero = [m for m in chosen if m.scores.get(task_key) != 0.0]
+    return non_zero if non_zero else chosen
