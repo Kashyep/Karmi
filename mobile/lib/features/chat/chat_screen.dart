@@ -392,6 +392,7 @@ class _ChatScreenState extends State<ChatScreen> {
         height: MediaQuery.sizeOf(sheetContext).height * 0.8,
         child: ConversationList(
           controller: _conversationListController,
+          clock: widget.clock,
           onOpen: (id) {
             Navigator.of(sheetContext).pop();
             _loadConversationMessages(id);

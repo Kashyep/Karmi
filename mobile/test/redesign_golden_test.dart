@@ -53,7 +53,7 @@ http.Response sseResponse(
 }
 
 List<Map<String, dynamic>> createTestConversations() {
-  final now = DateTime.now();
+  final now = FakeBackend.pinnedNow;
   final todayDate = DateTime(now.year, now.month, now.day, 12);
   final yesterdayDate = todayDate.subtract(const Duration(days: 1));
   final prev7Date = todayDate.subtract(const Duration(days: 3));
