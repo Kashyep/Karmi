@@ -182,6 +182,4 @@ class UserProfileUpdate(BaseModel):
         stripped = v.strip()
         if not stripped:
             raise ValueError("display_name must not be blank or whitespace-only")
-        if len(stripped) < 2:
-            raise ValueError("display_name must be at least 2 characters after stripping whitespace")
         return stripped

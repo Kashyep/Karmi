@@ -225,6 +225,13 @@ void main() {
       expect(find.text("What's your email?"), findsOneWidget);
       expect(find.text('Continue (development sign-in)'), findsNothing);
       expect(find.byKey(const ValueKey('onboarding_dev_signin')), findsNothing);
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_email_field')),
+        'release@example.com',
+      );
+      await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
+      await settle(tester);
+      expect(find.text('Clerk authentication is not configured.'), findsOneWidget);
     });
 
     testWidgets('dev sign-in button is shown when devAuthEnabled is true (debug/profile mode)',
