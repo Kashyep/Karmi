@@ -393,9 +393,7 @@ def _launch_run(
     debug_enabled: bool,
     prior_content: str | None = None,
 ) -> StreamingResponse:
-    session_factory = sessionmaker(
-        bind=session.get_bind(), autoflush=False, expire_on_commit=False
-    )
+    session_factory = sessionmaker(bind=session.get_bind(), autoflush=False, expire_on_commit=False)
     start_kwargs: dict[str, Any] = {
         "run_state": run_state,
         "plan": policy,

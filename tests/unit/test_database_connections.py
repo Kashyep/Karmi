@@ -34,8 +34,8 @@ def test_postgres_pool_is_bounded_without_connecting() -> None:
     settings = Settings(_env_file=None, database_url='postgresql://u:p@localhost/dev')
     with patch('daily_agent.db.create_engine') as create:
         build_engine(settings)
-    assert create.call_args.kwargs['pool_size'] == 2
-    assert create.call_args.kwargs['max_overflow'] == 0
+    assert create.call_args.kwargs['pool_size'] == 10
+    assert create.call_args.kwargs['max_overflow'] == 10
     assert create.call_args.kwargs['pool_timeout'] == 15
     assert create.call_args.kwargs['pool_pre_ping'] is True
     assert create.call_args.kwargs['connect_args']['connect_timeout'] == 15

@@ -63,7 +63,7 @@ async def _interval_loop(
     interval: int,
     action: Callable[[], Awaitable[object]],
 ) -> None:
-    await asyncio.sleep(random.uniform(0, min(float(interval), MAX_STARTUP_JITTER_SECONDS)))
+    await asyncio.sleep(random.uniform(0, min(float(interval), MAX_STARTUP_JITTER_SECONDS)))  # noqa: S311
     while True:
         try:
             if await _acquire_interval_lock(settings, task, interval):
