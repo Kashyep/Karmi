@@ -80,12 +80,14 @@ def _bad(message: str) -> HTTPException:
 def parse_tier(tier: str | int) -> str:
     """Accept a plan id (``yanta``) or a tier number 1-4; return the plan id."""
     if isinstance(tier, bool):
-        raise _bad("tier must be 1-4 or a plan id")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid tier")
     if isinstance(tier, int) or (isinstance(tier, str) and tier.isascii() and tier.isdigit()):
         number = int(tier)
         if number not in range(1, 5):
             raise _bad("tier must be 1-4 or a plan id")
         return plan_for_tier(number)
+    if isinstance(tier, str) and not tier.isascii():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid tier")
     plan = str(tier).strip().lower()
     if plan not in SYNTHETIC_POLICIES:
         raise _bad("unknown tier")
@@ -434,7 +436,7 @@ def bulk_change_tier(
     if len(user_ids) > 100:
         raise _bad("user_ids cannot contain more than 100 users")
     if len(set(user_ids)) != len(user_ids):
-        raise _bad("user_ids must be unique")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="user_ids must be unique")
     plan = parse_tier(tier)
     users = [session.get(User, uid) for uid in user_ids]
     if any(user is None for user in users):

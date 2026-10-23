@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, StrictInt, StringConstraints, model_validator
 from sqlalchemy.orm import Session
 
 from daily_agent import admin_service as svc
@@ -45,7 +45,7 @@ class ReasonBody(BaseModel):
 
 
 class TierBody(ReasonBody):
-    tier: str | int
+    tier: str | StrictInt
     expires_at: datetime | None = None
 
     @model_validator(mode="after")
