@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     clerk_publishable_key: str | None = None
     clerk_issuer: str | None = None
     clerk_jwt_public_key_b64: str | None = None
+    # Clerk Backend API secret (sk_...). Optional: without it admin "revoke sessions" is refused
+    # (409) and suspension is the only hard cut-off.
+    clerk_secret_key: str | None = Field(default=None, repr=False)
     live_models_enabled: bool = False
     opencode_enabled: bool = False
     opencode_api_key: str | None = Field(default=None, repr=False)

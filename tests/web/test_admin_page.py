@@ -135,3 +135,34 @@ def test_reason_field_enforces_length_bounds_in_markup_and_script() -> None:
     source = (STATIC / "admin.js").read_text(encoding="utf-8")
     assert "REASON_MIN_LENGTH = 3" in source
     assert ".trim().length < REASON_MIN_LENGTH" in source
+
+
+def _csp_directives(policy: str) -> dict[str, list[str]]:
+    directives: dict[str, list[str]] = {}
+    for part in policy.split(";"):
+        tokens = part.split()
+        if tokens:
+            directives[tokens[0]] = tokens[1:]
+    return directives
+
+
+def test_admin_response_carries_strict_csp_and_framing_headers(client_factory) -> None:
+    response = client_factory(_publishable_key()).get("/admin")
+    assert response.status_code == 200
+
+    directives = _csp_directives(response.headers["content-security-policy"])
+    assert "'self'" in directives["script-src"]
+    assert "https://clerk.example.test" in directives["script-src"]
+    assert directives["frame-ancestors"] == ["'none'"]
+    assert directives["object-src"] == ["'none'"]
+    assert directives["base-uri"] == ["'none'"]
+
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
+def test_admin_clerk_js_is_pinned_to_exact_version() -> None:
+    source = (STATIC / "admin.js").read_text(encoding="utf-8")
+    assert "CLERK_JS_VERSION = '5.125.11'" in source
+    assert "clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js" in source
+    assert re.search(r"clerk-js@\^?~?5(?![.\d])", source) is None

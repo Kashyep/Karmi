@@ -511,6 +511,19 @@ class AdminCredential(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ErasedClerkSubject(Base):
+    """Tombstone for an erased account: SHA-256 of its Clerk subject, never the subject itself.
+
+    A Clerk sign-in whose subject hashes to a row here is refused instead of provisioning a
+    fresh free account. No foreign keys: the erased user row is gone by design.
+    """
+
+    __tablename__ = "erased_clerk_subjects"
+
+    subject_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    erased_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AdminSession(Base):
     """Server-side admin session; only the SHA-256 of the bearer token is stored."""
 

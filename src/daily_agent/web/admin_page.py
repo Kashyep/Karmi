@@ -7,10 +7,61 @@ API at runtime, authorised per request by the browser.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import re
 from html import escape
 from typing import Final
 
 _TIERS: Final[tuple[str, ...]] = ("ananta", "yanta", "trika", "parth")
+
+_CLERK_DOMAIN: Final = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+", re.IGNORECASE)
+
+
+def clerk_frontend_domain(publishable_key: str | None) -> str | None:
+    """Clerk frontend API host encoded in a publishable key (``pk_<env>_<base64(host$)>``)."""
+    if not publishable_key:
+        return None
+    parts = publishable_key.split("_", 2)
+    if len(parts) != 3 or parts[0] != "pk" or parts[1] not in {"test", "live"}:
+        return None
+    encoded = parts[2]
+    try:
+        decoded = base64.b64decode(encoded + "=" * (-len(encoded) % 4), validate=True).decode()
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        return None
+    if not decoded.endswith("$"):
+        return None
+    domain = decoded[:-1]
+    return domain if _CLERK_DOMAIN.fullmatch(domain) else None
+
+
+def admin_page_headers(*, publishable_key: str | None) -> dict[str, str]:
+    """Headers for ``/admin``: scripts only from this origin and the exact Clerk host.
+
+    The admin page is a single document with no inline script, so ``script-src`` allows
+    only ``'self'`` and the Clerk frontend host derived from the publishable key. Clerk
+    loads its bundle and calls its frontend API from that host, so ``connect-src`` and
+    ``img-src`` name it too. Framing and plugin content are refused outright.
+    """
+    domain = clerk_frontend_domain(publishable_key)
+    clerk_origin = f" https://{domain}" if domain else ""
+    csp = "; ".join(
+        [
+            f"script-src 'self'{clerk_origin}",
+            f"connect-src 'self'{clerk_origin}",
+            f"img-src 'self' data:{clerk_origin}",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+        ]
+    )
+    return {
+        "Content-Security-Policy": csp,
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+    }
 
 
 def _tier_options(include_blank: bool) -> str:

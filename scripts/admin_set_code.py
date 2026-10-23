@@ -18,7 +18,7 @@ import sys
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from daily_agent.admin_auth import append_audit, enroll_code, validate_code
+from daily_agent.admin_auth import append_audit, stage_enroll_code, validate_code
 from daily_agent.config import get_settings
 from daily_agent.db import get_engine
 from daily_agent.models import User
@@ -52,7 +52,8 @@ def main(argv: list[str] | None = None) -> int:
         if user is None or user.role != "admin":
             print("error: no admin-role user with that Clerk subject", file=sys.stderr)
             return 2
-        enroll_code(session, user, code)
+        # One transaction: the code change and its audit row commit together or not at all.
+        stage_enroll_code(session, user, code)
         append_audit(session, admin_user_id=user.id, action="admin.code_set", target_user_id=user.id)
         session.commit()
     print("admin code stored")

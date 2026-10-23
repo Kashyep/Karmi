@@ -50,10 +50,16 @@
     return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain) ? domain : null;
   }
 
+  // Exact pin: the CSP only allows the Clerk frontend domain, so an unpinned bundle could change
+  // code under an authenticated admin session. Bump deliberately, with the CSP test.
+  const CLERK_JS_VERSION = '5.125.11';
+
   /** Clerk browser bundle URL for a publishable key, or null when the key is unusable. */
   function clerkScriptUrl(publishableKey) {
     const domain = clerkFrontendApi(publishableKey);
-    return domain ? `https://${domain}/npm/@clerk/clerk-js@5/dist/clerk.browser.js` : null;
+    return domain
+      ? `https://${domain}/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`
+      : null;
   }
 
   /** Query string (with leading '?') for cursor pagination; empty values are omitted. */
