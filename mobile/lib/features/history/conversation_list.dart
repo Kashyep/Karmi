@@ -1,8 +1,7 @@
-import '../../shell/bottom_chrome.dart';
-
 import 'package:flutter/material.dart';
 
 import '../../api/chat/chat_models.dart';
+import '../../shell/bottom_chrome.dart';
 import '../../theme/karmi_colors.dart';
 import 'conversation_actions.dart';
 import 'conversation_groups.dart';
