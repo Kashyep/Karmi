@@ -44,6 +44,7 @@ class _FakeRunStreamClient extends RunStreamClient {
 }
 
 class _FakeConversationsApi implements ConversationsApi {
+  int requestCount = 0;
   @override
   String baseUrl = 'http://fake.test';
 
@@ -62,6 +63,7 @@ class _FakeConversationsApi implements ConversationsApi {
     String? cursor,
     int limit = 20,
   }) async {
+    requestCount++;
     return const ConversationPage(items: [], nextCursor: null);
   }
 
@@ -71,11 +73,15 @@ class _FakeConversationsApi implements ConversationsApi {
     String? before,
     int limit = 50,
   }) async {
+    requestCount++;
     return const MessagePage(items: [], hasMoreBefore: false);
   }
 
   @override
-  Future<ConversationView> get(String id) async => throw UnimplementedError();
+  Future<ConversationView> get(String id) async {
+    requestCount++;
+    throw UnimplementedError();
+  }
 
   @override
   Future<ConversationView> update(
@@ -96,7 +102,10 @@ class _FakeConversationsApi implements ConversationsApi {
   Future<List<ConversationSearchResult>> search(
     String q, {
     int limit = 20,
-  }) async => [];
+  }) async {
+    requestCount++;
+    return [];
+  }
 }
 
 Widget _wrapWithApp({required Widget child, bool reduceMotion = false}) {
@@ -236,8 +245,9 @@ void main() {
           client: fakeStream,
           deltaFlushInterval: Duration.zero,
         );
+        final fakeConversations = _FakeConversationsApi();
         final convController = ConversationListController(
-          api: _FakeConversationsApi(),
+          api: fakeConversations,
         );
 
         await tester.pumpWidget(
@@ -253,12 +263,16 @@ void main() {
         );
         await tester.pump();
 
+        final runsBefore = fakeStream.startRunCalls;
+        final apiBefore = fakeConversations.requestCount;
+
         // Tap the 'Explain a concept step by step' suggestion chip
         await tester.tap(find.text('Explain a concept step by step'));
         await tester.pump();
 
-        // Zero network/API calls made to backend
-        expect(fakeStream.startRunCalls, equals(0));
+        // Zero run-stream and conversation API requests after the tap
+        expect(fakeStream.startRunCalls, equals(runsBefore));
+        expect(fakeConversations.requestCount, equals(apiBefore));
 
         // Empty state remains visible (not transitioned to transcript)
         expect(
@@ -279,7 +293,8 @@ void main() {
         await tester.tap(find.text('Review my code for bugs'));
         await tester.pump();
 
-        expect(fakeStream.startRunCalls, equals(0));
+        expect(fakeStream.startRunCalls, equals(runsBefore));
+        expect(fakeConversations.requestCount, equals(apiBefore));
         expect(textField.controller!.text, equals('Review  for bugs'));
         expect(
           textField.controller!.selection,
