@@ -119,6 +119,8 @@ class ChatController extends ChangeNotifier {
 
     _cancelStallTimer();
     _stopDeltaFlushTimer();
+    // Cancellation takes effect immediately; waiting for transport cleanup can
+    // block a new send/retry while the old response stream is still closing.
     unawaited(_streamSubscription?.cancel());
     _streamSubscription = null;
 
@@ -237,6 +239,8 @@ class ChatController extends ChangeNotifier {
 
     _cancelStallTimer();
     _stopDeltaFlushTimer();
+    // Cancellation takes effect immediately; waiting for transport cleanup can
+    // block continuation while the old response stream is still closing.
     unawaited(_streamSubscription?.cancel());
     _streamSubscription = null;
 

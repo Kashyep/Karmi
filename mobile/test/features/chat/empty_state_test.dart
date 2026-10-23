@@ -541,6 +541,7 @@ void composerTests() {
 
         await tester.tap(find.text('Retry'));
         await tester.pump();
+        await tester.pump();
         expect(h.stream.startCalls, 1);
         expect(h.stream.continueCalls, 1);
 
