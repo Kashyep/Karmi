@@ -18,6 +18,7 @@ class _FakeRunStreamClient extends RunStreamClient {
   _FakeRunStreamClient() : super(baseUrl: 'http://fake.test');
 
   StreamController<RunEvent>? _activeRunController;
+  int startRunCalls = 0;
 
   @override
   Stream<RunEvent> startRun({
@@ -25,6 +26,7 @@ class _FakeRunStreamClient extends RunStreamClient {
     String? conversationId,
     required String clientMessageId,
   }) {
+    startRunCalls++;
     _activeRunController = StreamController<RunEvent>.broadcast();
     return _activeRunController!.stream;
   }
@@ -224,6 +226,71 @@ void main() {
         await tester.pump();
 
         expect(tappedPrompt, equals(targetPrompt));
+      },
+    );
+    testWidgets(
+      'Case 2b: tapping a chip sends no request and fills composer with starter and topic cursor',
+      (tester) async {
+        final fakeStream = _FakeRunStreamClient();
+        final controller = ChatController(
+          client: fakeStream,
+          deltaFlushInterval: Duration.zero,
+        );
+        final convController = ConversationListController(
+          api: _FakeConversationsApi(),
+        );
+
+        await tester.pumpWidget(
+          _wrapWithApp(
+            reduceMotion: false,
+            child: ChatScreen(
+              api: KarmiApi(baseUrl: 'http://fake.test'),
+              chatController: controller,
+              conversationListController: convController,
+              clock: () => DateTime(2026, 1, 1, 10),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Tap the 'Explain a concept step by step' suggestion chip
+        await tester.tap(find.text('Explain a concept step by step'));
+        await tester.pump();
+
+        // Zero network/API calls made to backend
+        expect(fakeStream.startRunCalls, equals(0));
+
+        // Empty state remains visible (not transitioned to transcript)
+        expect(
+          find.byKey(const ValueKey('new-chat-empty-state')),
+          findsOneWidget,
+        );
+
+        // Composer field contains starter template with cursor placed at topic slot
+        final textField = tester.widget<TextField>(find.byType(TextField));
+        expect(textField.controller!.text, equals('Explain  step by step'));
+        expect(
+          textField.controller!.selection,
+          equals(const TextSelection.collapsed(offset: 8)),
+        );
+        expect(textField.focusNode!.hasFocus, isTrue);
+
+        // Tap another chip to verify it updates the template and cursor position
+        await tester.tap(find.text('Review my code for bugs'));
+        await tester.pump();
+
+        expect(fakeStream.startRunCalls, equals(0));
+        expect(textField.controller!.text, equals('Review  for bugs'));
+        expect(
+          textField.controller!.selection,
+          equals(const TextSelection.collapsed(offset: 7)),
+        );
+        expect(textField.focusNode!.hasFocus, isTrue);
+
+        // Unmount to dispose controllers cleanly
+        await tester.pumpWidget(const SizedBox.shrink());
+        controller.dispose();
+        convController.dispose();
       },
     );
   });
