@@ -248,11 +248,10 @@ void main() {
       await expectA11yGuidelines(tester);
     });
 
-    testWidgets('opens from the overflow menu', (tester) async {
+    testWidgets('opens from Settings', (tester) async {
       await pumpApp(tester, env: const Env(reduceTransparency: true));
-      await tester.tap(find.byTooltip('More options'));
-      await settle(tester);
-      await tester.tap(find.text('Plans').last);
+      await openTab(tester, 'Settings');
+      await tester.tap(find.text('Plans and access code'));
       await settle(tester);
       expect(find.byType(PlanSelectionScreen), findsOneWidget);
     });

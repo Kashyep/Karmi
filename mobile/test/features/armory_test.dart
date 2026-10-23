@@ -38,8 +38,7 @@ Future<void> tapInArmory(WidgetTester tester, Finder target) async {
 }
 
 Future<void> openArmory(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('More options'));
-  await settle(tester);
+  await openTab(tester, 'Settings');
   await tester.tap(find.text('Armory').last);
   await settle(tester);
 }

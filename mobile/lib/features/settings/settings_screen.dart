@@ -37,7 +37,6 @@ class SettingsScreen extends StatelessWidget {
       builder: (context, _) => ListView(
         padding: karmiPageInsets(context),
         children: [
-          const KarmiHeading('Settings'),
           KarmiGlassSurface(
             key: const ValueKey('settings-header'),
             padding: const EdgeInsets.all(16),

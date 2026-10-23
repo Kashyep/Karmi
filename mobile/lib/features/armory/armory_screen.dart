@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 
 import '../../api/karmi_api.dart';
 import '../../armory/armory_controller.dart';
+import '../../armory/preview_banner.dart';
+export '../../armory/preview_banner.dart';
 import '../../theme/karmi_colors.dart';
-import '../../theme/karmi_glass.dart';
 import '../../theme/karmi_theme.dart';
 import '../../theme/karmi_tier.dart';
 import '../../widgets/feedback.dart';
@@ -357,63 +358,3 @@ class TierPreviewArt extends StatelessWidget {
   }
 }
 
-/// Glass banner shown while a locked tier is being previewed: tier name, a
-/// live countdown and an "End preview" control.
-class ArmoryPreviewBanner extends StatefulWidget {
-  const ArmoryPreviewBanner({super.key, required this.armory});
-
-  final ArmoryController armory;
-
-  @override
-  State<ArmoryPreviewBanner> createState() => _ArmoryPreviewBannerState();
-}
-
-class _ArmoryPreviewBannerState extends State<ArmoryPreviewBanner> {
-  Timer? _tick;
-
-  @override
-  void initState() {
-    super.initState();
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _tick?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final tier = widget.armory.previewTier;
-    if (tier == null) return const SizedBox.shrink();
-    final text = Theme.of(context).textTheme;
-    final seconds = (widget.armory.previewRemaining.inMilliseconds / 1000)
-        .ceil();
-    return KarmiGlassSurface(
-      key: const ValueKey('armory-preview-banner'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-      child: Row(
-        children: [
-          const Icon(Icons.visibility),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Semantics(
-              liveRegion: true,
-              child: Text(
-                'Previewing ${tier.label} · ${seconds}s left',
-                style: text.titleMedium,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: widget.armory.endPreview,
-            child: const Text('End preview'),
-          ),
-        ],
-      ),
-    );
-  }
-}

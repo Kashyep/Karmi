@@ -166,23 +166,21 @@ void main() {
   // Device (TalkBack / uiautomator): with the glass overflow menu open, its
   // items were missing from the accessibility tree, so screen-reader users
   // could not reach Plans or Licences.
-  testWidgets('overflow menu items are reachable by screen readers', (
+  testWidgets('Settings reaches Armory, Plans, Licences', (
     tester,
   ) async {
     final handle = tester.ensureSemantics();
     await pumpApp(tester);
-    await tester.tap(find.byTooltip('More options'));
+    await openTab(tester, 'Settings');
     await settle(tester);
-    for (final label in ['Plans', 'Licences']) {
-      // Search the real semantics tree (what TalkBack sees), not widgets.
-      // Offstage tabs (e.g. the Usage "Plans" heading) are not in the tree.
+    for (final label in ['Armory', 'Plans and access code', 'Licences']) {
       final nodes = find.semantics
           .byLabel(label)
           .evaluate()
           .where((n) => n.getSemanticsData().hasAction(SemanticsAction.tap));
       expect(nodes, isNotEmpty, reason: '$label not in the semantics tree');
     }
-    await tester.tap(find.text('Plans').last);
+    await tester.tap(find.text('Plans and access code').last);
     await settle(tester);
     expect(
       find.text(
