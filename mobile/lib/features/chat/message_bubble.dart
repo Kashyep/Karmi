@@ -8,6 +8,7 @@ import '../../api/models.dart';
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_motion.dart';
 import '../../theme/karmi_theme.dart';
+import '../../widgets/karmi_logo.dart';
 import 'chat_entry.dart';
 import 'debug_meta_line.dart';
 import 'rendering/markdown_message.dart';
@@ -243,28 +244,7 @@ class _KarmiAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = KarmiColors.of(context);
-    return Semantics(
-      excludeSemantics: true,
-      child: Container(
-        width: 24,
-        height: 24,
-        decoration: BoxDecoration(
-          color: colors.primary,
-          shape: BoxShape.circle,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          'K',
-          style: TextStyle(
-            color: colors.primaryForeground,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            height: 1,
-          ),
-        ),
-      ),
-    );
+    return const KarmiLogo(size: 24, semanticLabel: null);
   }
 }
 

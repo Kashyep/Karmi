@@ -17,6 +17,7 @@ headings), ``render`` (markdown rendering probe), ``hindi`` (long Devanagari), o
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -46,7 +47,7 @@ RENDER_TEXT = (
     "After the quote, a line with a break.\n"
     "\n"
     "```python\n"
-    'if a < b and c & d:\n'
+    "if a < b and c & d:\n"
     '    print("ok")\n'
     "```\n"
     "\n"
@@ -64,8 +65,12 @@ _SENTENCES = [
     "Rolling hashes let a search slide a window across text without recomputing the whole digest.",
 ]
 _TOPICS = [
-    "Foundations", "Collisions", "Hash tables", "Cryptographic digests",
-    "Password storage", "Practical choices",
+    "Foundations",
+    "Collisions",
+    "Hash tables",
+    "Cryptographic digests",
+    "Password storage",
+    "Practical choices",
 ]
 
 
@@ -106,9 +111,7 @@ def _last_user_text(messages: list[Any]) -> str:
             if isinstance(content, str):
                 return content
             if isinstance(content, list):
-                return "".join(
-                    part.get("text", "") for part in content if isinstance(part, dict)
-                )
+                return "".join(part.get("text", "") for part in content if isinstance(part, dict))
             return ""
     return ""
 
@@ -126,7 +129,7 @@ def _choose(user_text: str, model: str) -> tuple[int, str, float]:
         return 200, RENDER_TEXT, 0.0
     if "hindi" in lowered:
         return 200, _hindi_reply(), 0.0
-    return 200, f"Fake echo from {model}: {user_text.strip()}", 0.0
+    return 200, f"Karmi: {user_text.strip()}", 0.0
 
 
 def _pieces(text: str) -> list[str]:
@@ -211,9 +214,20 @@ class FakeHandler(BaseHTTPRequestHandler):
 
         base = {"id": completion_id, "object": "chat.completion.chunk", "model": model}
         for piece in _pieces(text):
-            emit({**base, "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}]})
+            emit(
+                {
+                    **base,
+                    "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}],
+                }
+            )
             time.sleep(TOKEN_DELAY_S)
-        emit({**base, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": usage})
+        emit(
+            {
+                **base,
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": usage,
+            }
+        )
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
         self.close_connection = True
@@ -222,10 +236,8 @@ class FakeHandler(BaseHTTPRequestHandler):
 def serve_fake(args: argparse.Namespace) -> int:
     server = ThreadingHTTPServer((args.host, args.port), FakeHandler)
     print(f"fake OpenRouter-compatible provider on {FAKE_CHAT_URL}", flush=True)
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()
-    except KeyboardInterrupt:
-        pass
     return 0
 
 
@@ -272,7 +284,10 @@ def serve_backend(args: argparse.Namespace) -> int:
 
     adapters.OPENROUTER_BASE_URL = FAKE_BASE_URL
     adapters.OPENROUTER_CHAT_URL = FAKE_CHAT_URL
-    if REAL_HOST_SUFFIX in adapters.OPENROUTER_CHAT_URL or REAL_HOST_SUFFIX in adapters.OPENROUTER_BASE_URL:
+    if (
+        REAL_HOST_SUFFIX in adapters.OPENROUTER_CHAT_URL
+        or REAL_HOST_SUFFIX in adapters.OPENROUTER_BASE_URL
+    ):
         sys.stderr.write("refusing to start: OpenRouter URL still points at openrouter.ai\n")
         return 2
     blocked = _install_url_guard(httpx)
@@ -300,7 +315,9 @@ def serve_backend(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     fake = sub.add_parser("fake", help="run the fake provider")
     fake.add_argument("--host", default=FAKE_HOST)

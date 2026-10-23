@@ -481,6 +481,12 @@ class _ComposerState extends State<Composer> {
                                 labelText: 'Message',
                                 floatingLabelBehavior:
                                     FloatingLabelBehavior.never,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                errorBorder: InputBorder.none,
+                                focusedErrorBorder: InputBorder.none,
                               ),
                             ),
                           ),
@@ -493,8 +499,8 @@ class _ComposerState extends State<Composer> {
                           button: true,
                           label: actionLabel,
                           child: SizedBox(
-                            width: 44,
-                            height: 44,
+                            width: 48,
+                            height: 48,
                             child: Center(
                               child: AnimatedContainer(
                                 duration: KarmiMotion.duration(

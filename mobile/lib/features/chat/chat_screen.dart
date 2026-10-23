@@ -823,7 +823,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_chatController.phase == ChatRunPhase.stalled) {
       return 'Connection slow, still trying…';
     }
-    if (_chatController.isSlow) return 'Still working, free models can be slow';
+    if (_chatController.isSlow) return 'Still working, Karmi can be slow';
     return 'Working…';
   }
 

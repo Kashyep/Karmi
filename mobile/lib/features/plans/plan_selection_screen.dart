@@ -81,8 +81,8 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
           children: [
             Text(
               'Compare plans. Purchases are unavailable in this beta. '
-              'Every plan uses free models; higher plans get more usage and '
-              'stronger model classes.',
+              'Every plan is powered by Karmi; higher plans get more usage '
+              'and stronger Karmi models.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 16),

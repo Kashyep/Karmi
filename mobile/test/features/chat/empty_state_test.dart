@@ -507,13 +507,10 @@ void composerTests() {
       await tester.pump();
 
       expect(find.text('Working…'), findsOneWidget);
-      expect(find.text('Still working, free models can be slow'), findsNothing);
+      expect(find.text('Still working, Karmi can be slow'), findsNothing);
 
       await tester.pump(const Duration(seconds: 10));
-      expect(
-        find.text('Still working, free models can be slow'),
-        findsOneWidget,
-      );
+      expect(find.text('Still working, Karmi can be slow'), findsOneWidget);
 
       await _unmount(tester, h);
     });

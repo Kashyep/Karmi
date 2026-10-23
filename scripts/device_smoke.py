@@ -28,8 +28,8 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,9 +56,13 @@ def guard_not_clerk(nodes: list[Node]) -> None:
     """Never type into Clerk's sign-in card: the device build must use development sign-in."""
     for node in nodes:
         if any(marker in node.label or marker in node.text for marker in CLERK_MARKERS):
-            raise Abort(f"Clerk sign-in is showing ({node.label or node.text!r}); use the development sign-in build")
+            raise Abort(
+                f"Clerk sign-in is showing ({node.label or node.text!r}); use the development sign-in build"
+            )
+
 
 TESTAUTH_ENV = Path(os.environ.get("KARMI_TESTAUTH_ENV", ROOT / ".env.testauth"))
+
 
 def read_tester_code() -> str:
     """KARMI_TEST_AUTH_CODE from the local env file. The value is read, typed, never printed/logged."""
@@ -71,6 +75,7 @@ def read_tester_code() -> str:
         if sep and key.strip() == "KARMI_TEST_AUTH_CODE" and value.strip().strip("'\""):
             return value.strip().strip("'\"")
     raise StepFailed("KARMI_TEST_AUTH_CODE is missing from the tester env file")
+
 
 def clerk_showing(nodes: list[Node]) -> bool:
     return any(marker in f"{n.label} {n.text}" for n in nodes for marker in CLERK_MARKERS)
@@ -104,7 +109,9 @@ class Report:
     outcome: str = "running"
 
     def add(self, step: str, status: str, **details: object) -> None:
-        self.steps.append({"step": step, "status": status, "at": datetime.now(UTC).isoformat(), **details})
+        self.steps.append(
+            {"step": step, "status": status, "at": datetime.now(UTC).isoformat(), **details}
+        )
 
 
 class Device:
@@ -116,9 +123,13 @@ class Device:
         self.width, self.height = self._screen_size()
 
     def adb(self, *args: str, timeout: int = 30) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(  # fixed argv, no shell
-            ["adb", "-s", self.serial, *args], capture_output=True, text=True,
-            errors="replace", timeout=timeout, check=False,
+        return subprocess.run(  # noqa: S603 - fixed argv, no shell
+            ["adb", "-s", self.serial, *args],  # noqa: S607 - adb from PATH
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=timeout,
+            check=False,
         )
 
     def _screen_size(self) -> tuple[int, int]:
@@ -136,20 +147,23 @@ class Device:
             time.sleep(0.5)
         else:
             return []
-        tree = ET.fromstring(raw[start:end + 1])  # uiautomator output from the attached device
+        # uiautomator output from the attached device over adb, not remote XML.
+        tree = ET.fromstring(raw[start : end + 1])  # noqa: S314
         found: list[Node] = []
         for node in tree.iter("node"):
             numbers = [int(v) for v in re.findall(r"\d+", node.get("bounds", ""))]
             if len(numbers) != 4:
                 continue
-            found.append(Node(
-                text=node.get("text") or "",
-                desc=node.get("content-desc") or "",
-                kind=(node.get("class") or "").rsplit(".", 1)[-1],
-                bounds=(numbers[0], numbers[1], numbers[2], numbers[3]),
-                selected=node.get("selected") == "true",
-                checked=node.get("checked") == "true",
-            ))
+            found.append(
+                Node(
+                    text=node.get("text") or "",
+                    desc=node.get("content-desc") or "",
+                    kind=(node.get("class") or "").rsplit(".", 1)[-1],
+                    bounds=(numbers[0], numbers[1], numbers[2], numbers[3]),
+                    selected=node.get("selected") == "true",
+                    checked=node.get("checked") == "true",
+                )
+            )
         if self.guard_clerk:
             guard_not_clerk(found)
         return found
@@ -187,12 +201,16 @@ class Device:
             if action and fields:
                 return fields[0]
             if time.monotonic() >= deadline:
-                raise StepFailed(f"chat composer '{COMPOSER_HINT}' not on screen after {timeout:.0f}s")
+                raise StepFailed(
+                    f"chat composer '{COMPOSER_HINT}' not on screen after {timeout:.0f}s"
+                )
             time.sleep(0.5)
 
     def type_into(self, field_node: Node, text: str, allowed: str = r"[A-Za-z0-9 ]+") -> None:
         if not re.fullmatch(allowed, text):
-            raise StepFailed("text has characters adb input cannot type reliably; nothing was typed")
+            raise StepFailed(
+                "text has characters adb input cannot type reliably; nothing was typed"
+            )
         self.tap(field_node)
         time.sleep(0.6)
         if field_node.text and field_node.text != COMPOSER_HINT:
@@ -203,6 +221,7 @@ class Device:
         time.sleep(0.4)
         if self.find(lambda n: n.kind == "EditText" and n.text == text, 5) is None:
             raise StepFailed("the field did not show the typed text; nothing was sent")
+
     def type_text(self, text: str) -> None:
         if not re.fullmatch(r"[A-Za-z0-9 ]+", text):
             raise ValueError("adb input text only carries plain ASCII words here")
@@ -224,8 +243,16 @@ class Device:
         """Positive dy drags the content up (reveals older messages when scrolled up)."""
         x = self.width // 2
         y_mid = self.height // 2
-        self.adb("shell", "input", "swipe", str(x), str(y_mid + dy // 2), str(x), str(y_mid - dy // 2),
-                 str(duration_ms))
+        self.adb(
+            "shell",
+            "input",
+            "swipe",
+            str(x),
+            str(y_mid + dy // 2),
+            str(x),
+            str(y_mid - dy // 2),
+            str(duration_ms),
+        )
 
     def back(self) -> None:
         self.adb("shell", "input", "keyevent", "KEYCODE_BACK")
@@ -234,9 +261,11 @@ class Device:
         self.count += 1
         target = self.shots / f"{self.count:02d}-{name}.png"
         with target.open("wb") as sink:
-            subprocess.run(  # fixed argv
-                ["adb", "-s", self.serial, "exec-out", "screencap", "-p"], stdout=sink,
-                timeout=30, check=False,
+            subprocess.run(  # noqa: S603 - fixed argv, no shell
+                ["adb", "-s", self.serial, "exec-out", "screencap", "-p"],  # noqa: S607
+                stdout=sink,
+                timeout=30,
+                check=False,
             )
         report.screenshots.append(target.name)
         return target.name
@@ -293,6 +322,7 @@ def run(serial: str, out_root: Path) -> Report:
 
     def sign_in() -> dict[str, object]:
         """Sign in through Clerk's email card with the tester code (never printed)."""
+
         def ready(nodes: list[Node]) -> bool:
             return any(n.label.startswith(("Send message", "Stop generating")) for n in nodes)
 
@@ -311,13 +341,21 @@ def run(serial: str, out_root: Path) -> Report:
             if email is None:
                 raise StepFailed("Clerk sign-in card has no email field")
             device.type_into(email, read_tester_code(), allowed=r"[A-Za-z0-9._@+-]+")
-            device.tap(device.wait(lambda n: n.label == "Continue" or n.text == "Continue", "Clerk Continue button", 10))
+            device.tap(
+                device.wait(
+                    lambda n: n.label == "Continue" or n.text == "Continue",
+                    "Clerk Continue button",
+                    10,
+                )
+            )
             deadline = time.monotonic() + 60
             while time.monotonic() < deadline:
                 if ready(device.nodes()):
                     return {"method": "clerk sign-in with tester code"}
                 time.sleep(1.0)
-            raise StepFailed("Clerk did not reach the chat within 60s after Continue (verification step not handled)")
+            raise StepFailed(
+                "Clerk did not reach the chat within 60s after Continue (verification step not handled)"
+            )
         finally:
             device.guard_clerk = True
 
@@ -340,17 +378,28 @@ def run(serial: str, out_root: Path) -> Report:
         time.sleep(0.5)
         device.swipe(int(device.height * 0.30))
         time.sleep(2.5)
-        pill = device.find(lambda n: n.label.startswith("New messages") or n.label.startswith("Jump to latest"), 0)
+        pill = device.find(
+            lambda n: n.label.startswith("New messages") or n.label.startswith("Jump to latest"), 0
+        )
         shot = device.screenshot(report, "long-midstream-scrolled")
-        return {"pill_visible": pill is not None, "pill_label": pill.label if pill else None,
-                "still_streaming": any(busy(n) for n in device.nodes()), "shot": shot}
+        return {
+            "pill_visible": pill is not None,
+            "pill_label": pill.label if pill else None,
+            "still_streaming": any(busy(n) for n in device.nodes()),
+            "shot": shot,
+        }
 
     def long_done() -> dict[str, object]:
         done = wait_until_done(device, 150)
         time.sleep(1.0)
-        pill = device.find(lambda n: n.label.startswith("New messages") or n.label.startswith("Jump to latest"), 0)
-        return {"completed": done, "pill_label": pill.label if pill else None,
-                "shot": device.screenshot(report, "long-done")}
+        pill = device.find(
+            lambda n: n.label.startswith("New messages") or n.label.startswith("Jump to latest"), 0
+        )
+        return {
+            "completed": done,
+            "pill_label": pill.label if pill else None,
+            "shot": device.screenshot(report, "long-done"),
+        }
 
     def slow() -> dict[str, object]:
         started = send(device, "slow test")
@@ -360,16 +409,30 @@ def run(serial: str, out_root: Path) -> Report:
         status = [n.label for n in device.nodes() if busy(n) or "Status" in n.label][:3]
         shot = device.screenshot(report, "slow-11s")
         done = wait_until_done(device, 60)
-        return {"at_seconds": round(time.monotonic() - started, 1), "status_labels": status,
-                "completed": done, "shot": shot}
+        return {
+            "at_seconds": round(time.monotonic() - started, 1),
+            "status_labels": status,
+            "completed": done,
+            "shot": shot,
+        }
 
     def fail() -> dict[str, object]:
         send(device, "fail test")
-        node = device.wait(lambda n: n.label in {"Retry", "Try again", "Regenerate"} or n.text in {"Retry", "Try again"}
-                           or "went wrong" in n.label.lower() or "unavailable" in n.label.lower(),
-                           "error card", 60)
+        node = device.wait(
+            lambda n: (
+                n.label in {"Retry", "Try again", "Regenerate"}
+                or n.text in {"Retry", "Try again"}
+                or "went wrong" in n.label.lower()
+                or "unavailable" in n.label.lower()
+            ),
+            "error card",
+            60,
+        )
         time.sleep(1.0)
-        return {"retry_label": node.label or node.text, "shot": device.screenshot(report, "fail-error-retry")}
+        return {
+            "retry_label": node.label or node.text,
+            "shot": device.screenshot(report, "fail-error-retry"),
+        }
 
     def history() -> dict[str, object]:
         device.tap_desc("Conversation history", timeout=15)
@@ -386,7 +449,11 @@ def run(serial: str, out_root: Path) -> Report:
         else:
             device.tap_desc("Settings tab", timeout=10)
         device.wait(lambda n: n.text == "Dark", "dark theme control", 15)
-        selected = [n.text for n in device.nodes() if n.text in {"System", "Light", "Dark"} and (n.selected or n.checked)]
+        selected = [
+            n.text
+            for n in device.nodes()
+            if n.text in {"System", "Light", "Dark"} and (n.selected or n.checked)
+        ]
         device.tap(device.wait(lambda n: n.text == "Dark", "Dark control", 5))
         time.sleep(1.5)
         shot = device.screenshot(report, "dark-mode")
@@ -421,19 +488,30 @@ def run(serial: str, out_root: Path) -> Report:
         report.outcome = f"stopped: {exc}"
         return report
     failed = [s["step"] for s in report.steps if s["status"] != "ok"]
-    report.outcome = "all steps ok" if not failed else f"steps failed: {', '.join(map(str, failed))}"
+    report.outcome = (
+        "all steps ok" if not failed else f"steps failed: {', '.join(map(str, failed))}"
+    )
     return report
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--serial", default=os.environ.get("ANDROID_SERIAL", DEFAULT_SERIAL))
     parser.add_argument("--out-root", type=Path, default=ROOT / "docs" / "release1" / "device-runs")
     args = parser.parse_args()
     report = run(args.serial, args.out_root)
     target = args.out_root / report.started / "log.json"
-    target.write_text(json.dumps(asdict(report), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(json.dumps({"outcome": report.outcome, "log": str(target), "screenshots": report.screenshots}, indent=2))
+    target.write_text(
+        json.dumps(asdict(report), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    print(
+        json.dumps(
+            {"outcome": report.outcome, "log": str(target), "screenshots": report.screenshots},
+            indent=2,
+        )
+    )
     return 0 if report.outcome == "all steps ok" else 1
 
 

@@ -7,6 +7,7 @@ import 'package:karmi_app/features/chat/debug_meta_line.dart';
 import 'package:karmi_app/features/chat/message_bubble.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
+import 'package:karmi_app/widgets/karmi_logo.dart';
 
 const _meta = DebugMeta(
   servedModel: 'model-x',
@@ -33,8 +34,26 @@ void main() {
     test('joins present parts and omits null parts', () {
       expect(
         debugMetaSummary(_meta),
-        'model-x · attempts 1 · 1234 ms · 10/? tokens · harness 4.1.0',
+        'attempts 1 · 1234 ms · 10/? tokens · harness 4.1.0',
       );
+    });
+
+    test('never exposes the served model or provider name', () {
+      final summary = debugMetaSummary(
+        const DebugMeta(
+          servedModel: 'nvidia/nemotron-3.5-lightning:free',
+          servedProvider: 'openrouter',
+          attemptCount: 1,
+          fallbackUsed: false,
+          latencyMs: null,
+          inputTokens: null,
+          outputTokens: null,
+          harnessVersion: '',
+        ),
+      );
+      expect(summary, 'attempts 1');
+      expect(summary, isNot(contains('nemotron')));
+      expect(summary, isNot(contains('openrouter')));
     });
 
     test('includes fallback marker when used', () {
@@ -64,6 +83,9 @@ void main() {
       ),
     );
     expect(find.textContaining('harness 4.1.0'), findsOneWidget);
+    expect(find.byType(KarmiLogo), findsOneWidget);
+    expect(find.text('Karmi'), findsOneWidget);
+    expect(find.textContaining('model-x'), findsNothing);
   });
 
   testWidgets(
