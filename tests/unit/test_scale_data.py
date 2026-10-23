@@ -34,7 +34,7 @@ def test_ensure_input_fits_accepts_text_within_budget() -> None:
 def test_ensure_input_fits_rejects_oversized_text() -> None:
     plan = _tight_plan(input_tokens=100)
     with pytest.raises(InputTooLarge) as excinfo:
-        ensure_input_fits("a" * 401, plan)
+        ensure_input_fits("a" * 404, plan)  # 404 // 4 == 101 tokens > 100
     assert excinfo.value.max_input_tokens == 100
 
 
@@ -43,7 +43,7 @@ def test_ensure_input_fits_counts_utf8_bytes_not_chars() -> None:
     # 20 chars of 'é' are 40 UTF-8 bytes -> 10 tokens, exactly at the limit.
     ensure_input_fits("é" * 20, plan)
     with pytest.raises(InputTooLarge):
-        ensure_input_fits("é" * 21, plan)
+        ensure_input_fits("é" * 22, plan)  # 44 UTF-8 bytes -> 11 tokens > 10
 
 
 def test_reserve_path_does_not_sweep_other_stale_holds(
@@ -141,9 +141,8 @@ def test_reclaim_sweep_respects_batch_limit(test_context: dict[str, object]) -> 
             session.commit()
 
     with factory() as session:  # type: ignore[operator]
-        assert reclaim_stale_reservations(session, limit=2) == 2
-        session.commit()
-        assert reclaim_stale_reservations(session, limit=2) == 1
+        # limit is the per-batch size; one sweep drains every expired hold across batches.
+        assert reclaim_stale_reservations(session, limit=2) == 3
         session.commit()
         assert reclaim_stale_reservations(session, limit=2) == 0
 

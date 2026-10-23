@@ -88,7 +88,7 @@ def test_inbox_routing_and_batching_delete_only_expired_rows(
                     accepted_at=fresh,
                 )
             )
-        session.add(_routing_record("run-old", old))
+        session.add(_routing_record("run-old", NOW - timedelta(days=200)))
         session.add(_routing_record("run-new", fresh))
         session.commit()
 

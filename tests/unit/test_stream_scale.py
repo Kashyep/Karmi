@@ -39,7 +39,9 @@ def test_chat_stream_oversize_returns_413_and_creates_nothing(
     headers = {"Authorization": f"Bearer {token}"}
 
     tiny_policy = SimpleNamespace(input_tokens=5)
-    monkeypatch.setattr(stream_routes, "policy_for", lambda session, account_id: (None, tiny_policy))
+    monkeypatch.setattr(
+        stream_routes, "policy_for", lambda session, account_id: (None, tiny_policy)
+    )
 
     resp = client.post(
         "/v1/chat/stream",
