@@ -353,13 +353,16 @@ def test_export_returns_json_and_is_audited(env: Env) -> None:
         session.add(Conversation(account_id=acc, user_id=uid, title="Trip"))
         session.commit()
     headers = env.headers()
-    r = env.client.get(f"/v1/admin/users/{uid}/export", headers=headers)
+    assert env.client.get(f"/v1/admin/users/{uid}/export", headers=headers).status_code == 422
+    r = env.client.get(f"/v1/admin/users/{uid}/export?reason=subject+access+request", headers=headers)
     assert r.status_code == 200
     body = r.json()
     assert body["user"]["id"] == uid and body["conversations"][0]["title"] == "Trip"
     assert body["message_bodies_included"] is False
     assert "attachment" in r.headers["content-disposition"]
-    assert env.audit("user.export")[0].target_user_id == uid
+    audit = env.audit("user.export")
+    assert len(audit) == 1 and audit[0].target_user_id == uid
+    assert audit[0].reason == "subject access request"
 
 
 def test_erasure_removes_everything_and_keeps_audit(env: Env) -> None:

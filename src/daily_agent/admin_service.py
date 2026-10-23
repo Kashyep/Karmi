@@ -360,7 +360,7 @@ def adjust_credits(
     }
 
 
-def export_user(session: Session, admin_id: str, user_id: str) -> dict[str, Any]:
+def export_user(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
     user = _load_user(session, user_id)
     account = session.get(Account, user.account_id)
     subscription = _subscription(session, user.account_id)
@@ -438,6 +438,7 @@ def export_user(session: Session, admin_id: str, user_id: str) -> dict[str, Any]
         admin_user_id=admin_id,
         action="user.export",
         target_user_id=user.id,
+        reason=reason,
         detail={"runs": len(runs), "conversations": len(conversations)},
     )
     session.commit()

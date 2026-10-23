@@ -197,11 +197,12 @@ def set_user_credits(
 @router.get("/users/{user_id}/export")
 def export_user_data(
     user_id: str,
+    reason: Annotated[str, Query(min_length=3, max_length=500)],
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
 ) -> JSONResponse:
     return JSONResponse(
-        svc.export_user(session, admin.user.id, user_id),
+        svc.export_user(session, admin.user.id, user_id, reason.strip()),
         headers={
             "Content-Disposition": f'attachment; filename="user-{user_id}.json"',
             "Cache-Control": "no-store",
