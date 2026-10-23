@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../api/debug_meta.dart';
 import '../../theme/karmi_colors.dart';
-import '../../widgets/karmi_logo.dart';
+import 'provider_identity.dart';
 
 /// Compile-time gate for the tester-only debug line (`--dart-define`).
 const bool kDebugMetaEnabled = bool.fromEnvironment('KARMI_DEBUG_META');
@@ -29,8 +29,8 @@ String debugMetaSummary(DebugMeta meta) {
   return parts.join(' · ');
 }
 
-/// Muted, small, single-line diagnostics under an assistant reply, always
-/// presented as Karmi with the logo mark.
+/// Muted, small, single-line diagnostics under an assistant reply, presented
+/// under the short provider nickname and its generated avatar.
 class DebugMetaLine extends StatelessWidget {
   const DebugMetaLine({super.key, required this.meta});
 
@@ -41,14 +41,18 @@ class DebugMetaLine extends StatelessWidget {
     final colors = KarmiColors.of(context);
     final text = Theme.of(context).textTheme;
     final style = text.labelSmall?.copyWith(color: colors.mutedForeground);
+    final name = providerNickname(
+      model: meta.servedModel,
+      provider: meta.servedProvider,
+    );
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const KarmiLogo(size: 14, semanticLabel: null),
+          ProviderAvatar(name: name, size: 14),
           const SizedBox(width: 6),
-          Text('Karmi', style: style?.copyWith(fontWeight: FontWeight.w600)),
+          Text(name, style: style?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(width: 6),
           Flexible(
             child: Text(

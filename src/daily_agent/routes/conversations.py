@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from daily_agent.conversations.service import (
@@ -25,6 +26,7 @@ from daily_agent.schemas_chat import (
     MessagePage,
 )
 from daily_agent.security import Principal
+from daily_agent.models import Run
 
 router = APIRouter(prefix="/v1/conversations", tags=["conversations"])
 
@@ -102,7 +104,16 @@ def list_messages_endpoint(
         before=before,
         limit=limit,
     )
-    items = [to_message_view(m) for m in msgs]
+    run_ids = [m.run_id for m in msgs if m.run_id]
+    models: dict[str, str | None] = {}
+    if run_ids:
+        models = {
+            run_id: served_model
+            for run_id, served_model in session.execute(
+                select(Run.id, Run.served_model).where(Run.id.in_(run_ids))
+            ).all()
+        }
+    items = [to_message_view(m, models.get(m.run_id or "")) for m in msgs]
     return MessagePage(items=items, hasMoreBefore=has_more_before)
 
 

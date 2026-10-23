@@ -97,7 +97,7 @@ def to_conversation_view(conv: Conversation, message_count: int = 0) -> Conversa
     )
 
 
-def to_message_view(msg: ChatMessage) -> ChatMessageView:
+def to_message_view(msg: ChatMessage, model: str | None = None) -> ChatMessageView:
     """Map ChatMessage ORM entity to ChatMessageView schema."""
     return ChatMessageView(
         id=msg.id,
@@ -107,6 +107,7 @@ def to_message_view(msg: ChatMessage) -> ChatMessageView:
         content=msg.content or "",
         finishReason=msg.finish_reason,
         runId=msg.run_id,
+        model=model,
         parentMessageId=msg.parent_message_id,
         variantIndex=msg.variant_index,
         clientMessageId=msg.client_message_id,

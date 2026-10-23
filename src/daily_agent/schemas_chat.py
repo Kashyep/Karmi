@@ -79,6 +79,7 @@ class ChatMessageView(ChatBaseModel):
     content: str = ""
     finish_reason: FinishReason | str | None = Field(default=None, alias="finishReason")
     run_id: str | None = Field(default=None, alias="runId")
+    model: str | None = Field(default=None, alias="model")
     parent_message_id: str | None = Field(default=None, alias="parentMessageId")
     variant_index: int = Field(default=0, alias="variantIndex")
     client_message_id: str | None = Field(default=None, alias="clientMessageId")

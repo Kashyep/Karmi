@@ -55,7 +55,7 @@ void main() {
     );
 
     testWidgets(
-      '2. Assistant reply renders text, Karmi header, and readable column constraint without card decoration',
+      '2. Assistant reply renders text, a provider header, and readable column constraint without card decoration',
       (tester) async {
         tester.view.physicalSize = const Size(1000, 800);
         tester.view.devicePixelRatio = 1.0;
@@ -80,7 +80,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text(replyText), findsOneWidget);
-        expect(find.text('Karmi'), findsOneWidget);
+        expect(find.text('Assistant'), findsOneWidget);
 
         // Verify no Material Card
         expect(find.byType(Card), findsNothing);
@@ -291,7 +291,7 @@ void main() {
         await tester.pumpAndSettle();
 
         final streamingNode = tester.getSemantics(
-          find.bySemanticsLabel(RegExp('^Karmi replied')),
+          find.bySemanticsLabel(RegExp('^Assistant replied')),
         );
         // ignore: deprecated_member_use
         expect(streamingNode.hasFlag(SemanticsFlag.isLiveRegion), isFalse);
@@ -318,7 +318,7 @@ void main() {
         await tester.pumpAndSettle();
 
         final finishedNode = tester.getSemantics(
-          find.bySemanticsLabel(RegExp('^Karmi replied')),
+          find.bySemanticsLabel(RegExp('^Assistant replied')),
         );
         // ignore: deprecated_member_use
         expect(finishedNode.hasFlag(SemanticsFlag.isLiveRegion), isTrue);

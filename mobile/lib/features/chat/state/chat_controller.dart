@@ -485,6 +485,7 @@ class ChatController extends ChangeNotifier {
             status: MessageStatus.failed,
             finishReason: FinishReason.error,
             outcome: outcome,
+            model: event.model,
           );
           _setPhase(ChatRunPhase.error);
           break;
@@ -517,6 +518,7 @@ class ChatController extends ChangeNotifier {
               ? null
               : Outcome.fromWire(event.outcome),
           debug: event.debug,
+          model: event.model,
         );
         _setPhase(ChatRunPhase.finished);
         break;
@@ -617,6 +619,7 @@ class ChatController extends ChangeNotifier {
     required FinishReason finishReason,
     Outcome? outcome,
     DebugMeta? debug,
+    String? model,
   }) {
     final targetId = assistantMessageId ?? _currentAssistantMessageId;
     final index = _messages.indexWhere((m) => m.id == targetId);
@@ -627,6 +630,7 @@ class ChatController extends ChangeNotifier {
         finishReason: finishReason,
         outcome: outcome ?? current.outcome,
         debug: debug ?? current.debug,
+        model: model ?? current.model,
         updatedAt: DateTime.now(),
       );
     }

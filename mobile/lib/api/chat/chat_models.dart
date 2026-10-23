@@ -161,6 +161,7 @@ class ChatMessageView {
     required this.updatedAt,
     this.clientMessageId,
     this.debug,
+    this.model,
   });
 
   factory ChatMessageView.fromJson(Map<String, dynamic> json) =>
@@ -181,6 +182,7 @@ class ChatMessageView {
             (json['variantIndex'] ?? json['variant_index'] as int?) ?? 0,
         clientMessageId:
             (json['clientMessageId'] ?? json['client_message_id']) as String?,
+        model: json['model'] as String?,
         createdAt: DateTime.parse(
           (json['createdAt'] ?? json['created_at']) as String,
         ),
@@ -210,6 +212,10 @@ class ChatMessageView {
   /// only: not part of the message JSON.
   final DebugMeta? debug;
 
+  /// Model id that answered. Public: used only to derive a short display
+  /// nickname for the reply header, never rendered raw.
+  final String? model;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'conversationId': conversationId,
@@ -234,6 +240,7 @@ class ChatMessageView {
     FinishReason? finishReason,
     Outcome? outcome,
     DebugMeta? debug,
+    String? model,
     String? runId,
     String? parentMessageId,
     int? variantIndex,
@@ -249,6 +256,7 @@ class ChatMessageView {
     finishReason: finishReason ?? this.finishReason,
     outcome: outcome ?? this.outcome,
     debug: debug ?? this.debug,
+    model: model ?? this.model,
     runId: runId ?? this.runId,
     parentMessageId: parentMessageId ?? this.parentMessageId,
     variantIndex: variantIndex ?? this.variantIndex,

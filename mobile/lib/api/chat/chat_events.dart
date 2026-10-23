@@ -90,6 +90,7 @@ class RunFinishedEvent extends ChatStreamEvent {
     this.outputTokens,
     this.assistantMessageId,
     this.debug,
+    this.model,
   });
 
   factory RunFinishedEvent.fromJson(
@@ -104,6 +105,7 @@ class RunFinishedEvent extends ChatStreamEvent {
     assistantMessageId:
         (json['assistant_message_id'] ?? json['assistantMessageId']) as String?,
     debug: DebugMeta.fromJson(json['debug']),
+    model: json['model'] as String?,
   );
 
   final FinishReason finishReason;
@@ -112,6 +114,7 @@ class RunFinishedEvent extends ChatStreamEvent {
   final int? outputTokens;
   final DebugMeta? debug;
   final String? assistantMessageId;
+  final String? model;
 }
 
 class RunErrorEvent extends ChatStreamEvent {

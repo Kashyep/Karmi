@@ -87,6 +87,7 @@ class MessageView {
     this.route,
     this.previousRunId,
     this.debug,
+    this.model,
   });
 
   factory MessageView.fromJson(Map<String, dynamic> json) => MessageView(
@@ -97,6 +98,7 @@ class MessageView {
     route: json['route'] as String?,
     previousRunId: json['previous_run_id'] as String?,
     debug: DebugMeta.fromJson(json['debug']),
+    model: json['model'] as String?,
   );
 
   final String runId;
@@ -106,6 +108,9 @@ class MessageView {
   final String? route;
   final String? previousRunId;
   final DebugMeta? debug;
+
+  /// Model id that answered, for the short display nickname.
+  final String? model;
 }
 
 class UsageView {

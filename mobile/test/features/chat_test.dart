@@ -478,7 +478,7 @@ void main() {
     expect(replies, hasLength(2));
     expect(replies.first.announce, isFalse);
     expect(replies.last.announce, isTrue);
-    final replyNodes = find.bySemanticsLabel(RegExp('^Karmi replied'));
+    final replyNodes = find.bySemanticsLabel(RegExp('^Assistant replied'));
     expect(replyNodes, findsNWidgets(2));
     bool live(Finder f) =>
         tester.getSemantics(f).getSemanticsData().flagsCollection.isLiveRegion;

@@ -9,7 +9,7 @@ import '../features/armory/armory_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/plans/plan_selection_screen.dart';
 import '../features/settings/settings_screen.dart';
-import '../features/tasks/tasks_screen.dart';
+import '../features/tasks/tasks_coming_soon_screen.dart';
 import '../features/usage/usage_screen.dart';
 import '../settings/karmi_settings.dart';
 import '../theme/karmi_colors.dart';
@@ -151,7 +151,7 @@ class _KarmiShellState extends State<KarmiShell> {
           clock: widget.clock,
         );
       case 1:
-        return TasksScreen(api: widget.api);
+        return const TasksComingSoonScreen();
       case 2:
         return UsageScreen(api: widget.api);
       case 3:

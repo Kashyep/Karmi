@@ -7,7 +7,7 @@ import 'package:karmi_app/features/chat/debug_meta_line.dart';
 import 'package:karmi_app/features/chat/message_bubble.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
-import 'package:karmi_app/widgets/karmi_logo.dart';
+import 'package:karmi_app/features/chat/provider_identity.dart';
 
 const _meta = DebugMeta(
   servedModel: 'model-x',
@@ -83,8 +83,8 @@ void main() {
       ),
     );
     expect(find.textContaining('harness 4.1.0'), findsOneWidget);
-    expect(find.byType(KarmiLogo), findsOneWidget);
-    expect(find.text('Karmi'), findsOneWidget);
+    expect(find.byType(ProviderAvatar), findsOneWidget);
+    expect(find.text('Model'), findsOneWidget);
     expect(find.textContaining('model-x'), findsNothing);
   });
 

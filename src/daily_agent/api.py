@@ -412,6 +412,7 @@ def create_app() -> FastAPI:
                 response=existing.response_text or "",
                 route=_route_for(session, existing.id),
                 previous_run_id=existing.previous_run_id,
+                model=existing.served_model,
                 debug=run_debug_view(existing) if principal.tester else None,
             )
         _subscription, policy = policy_for(session, principal.account_id)
@@ -558,6 +559,7 @@ def create_app() -> FastAPI:
                 response=recovered.response_text or "",
                 route=_route_for(session, recovered.id),
                 previous_run_id=recovered.previous_run_id,
+                model=recovered.served_model,
                 debug=run_debug_view(recovered) if principal.tester else None,
             )
         except Exception:
@@ -576,6 +578,7 @@ def create_app() -> FastAPI:
             response=result.response,
             route=result.route,
             previous_run_id=run.previous_run_id,
+            model=run.served_model,
             debug=run_debug_view(run) if principal.tester else None,
         )
 

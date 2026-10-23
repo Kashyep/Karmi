@@ -70,6 +70,9 @@ class MessageView(BaseModel):
     response: str
     route: str | None = None
     previous_run_id: str | None = None
+    # Model id that answered, for client-side display. Not a secret; no key or
+    # provider account data is exposed.
+    model: str | None = None
     # Present only for testers: the key is omitted entirely otherwise, never sent as null.
     debug: ServedDebugView | None = None
 

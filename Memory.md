@@ -325,3 +325,15 @@
 - R-6 resolved by Supervisor: Artifact and Sources drawers deferred to R1.1 (inside R1.1-5). R1 keeps inline citation chips and file cards.
 - No production deploy, migration, live charge, or real message. R1.1 NOT started. Untracked `Claude outputs/` and `docs/release-evidence/device/*.png` preserved; `docs/release-evidence/device/01-launch.png` shows modified in the working tree and was not changed by this work.
 
+
+## Release 1 integration (2026-10-23, branch release1/integration, worktree /tmp/wt2-int)
+
+- Merged into integration: P1, P3, P4 (debug meta + history; 3 conflicts resolved keeping `history` and `debug_enabled`), P5, P6, P7, P9, P10, and the device harness (`scripts/dev_fake_provider.py`, `scripts/device_smoke.py`, `docs/release1/DEVICE_TESTING.md`). Base HEAD before this entry: `a89fe20`.
+- Reply identity (owner correction): replies show a provider nickname + generated avatar, never the product name and never the raw model id. `mobile/lib/features/chat/provider_identity.dart` (new); `message_bubble.dart` header/semantics label; `debug_meta_line.dart`; `karmi_logo.dart` removed. Backend exposes `model` on `MessageView`/`ChatMessageView`, on history (join on `Run.served_model`) and on `run.finished`.
+- Tasks tab now routes to `TasksComingSoonScreen` (`karmi_shell.dart`); `TasksScreen` is retained but unexercised by widget tests until the real feature lands.
+- Retry fix `56f71cb`: transport failures resume the idempotent start request (`clientMessageId`); only server-backed terminal failures use `/v1/chat/continue`.
+- Golden set regenerated for chat (provider header) and tasks (construction page), Linux host goldens. Owner visual review R-9 still pending.
+- `screens_test.dart` deliberately skips `textContrastGuideline` for the tasks placeholder: the guideline reports a false 2.66:1 while the render-tree style is `#050806` on `#F2F7F4` (18.9:1) and is unchanged by text/card/background edits. Tap-target and labelling guidelines still run. Documented in the test and in `release_completion.md` §3.1.
+- Not verified: device pass after the provider-identity change (Pixel 9a `5B271XEBF3XDF0` dropped off USB); local test auth (needs owner's test code in ignored `.env.testauth`).
+- Open owner decisions: P2 free-pool exclusions (reverted at `f5d2794`), composer attachment button (kept), iOS distribution, Android release keystore, public repo for Obtainium, golden review, analytics/admin scope.
+- Handover document: `release_completion.md` (repo root; copy also at `/home/rosso/Projects/Karmi/release_completion.md`).

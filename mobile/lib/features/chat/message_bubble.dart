@@ -8,8 +8,8 @@ import '../../api/models.dart';
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_motion.dart';
 import '../../theme/karmi_theme.dart';
-import '../../widgets/karmi_logo.dart';
 import 'chat_entry.dart';
+import 'provider_identity.dart';
 import 'debug_meta_line.dart';
 import 'rendering/markdown_message.dart';
 import 'status_chip.dart';
@@ -93,6 +93,14 @@ class MessageBubble extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final isUser =
         entry != null || (chatMessage != null && chatMessage!.role == 'user');
+    // Short provider nickname for the reply header. Prefer the public model
+    // label; fall back to tester debug metadata for older backends.
+    final repliedModel =
+        chatMessage?.model ??
+        reply?.message.model ??
+        chatMessage?.debug?.servedModel ??
+        reply?.message.debug?.servedModel;
+    final replyName = providerNickname(model: repliedModel);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -138,10 +146,10 @@ class MessageBubble extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const _KarmiAvatar(),
+                      ProviderAvatar(name: replyName),
                       const SizedBox(width: 8),
                       Text(
-                        'Karmi',
+                        replyName,
                         style: KarmiTypography.messageHeaderName().copyWith(
                           color: colors.foreground,
                         ),
@@ -230,21 +238,12 @@ class MessageBubble extends StatelessWidget {
           child: Semantics(
             container: true,
             liveRegion: announce && isFinished,
-            label: 'Karmi replied',
+            label: '$replyName replied',
             child: assistantTurn,
           ),
         );
       },
     );
-  }
-}
-
-class _KarmiAvatar extends StatelessWidget {
-  const _KarmiAvatar();
-
-  @override
-  Widget build(BuildContext context) {
-    return const KarmiLogo(size: 24, semanticLabel: null);
   }
 }
 

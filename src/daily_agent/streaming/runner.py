@@ -357,6 +357,7 @@ class StreamRunner:
                 "input_tokens": in_tokens,
                 "output_tokens": out_tokens,
                 "assistant_message_id": self.run_state.assistant_message_id,
+                "model": served.served_model if served is not None else None,
             }
             if self.debug_enabled:
                 finished["debug"] = served.model_dump()
