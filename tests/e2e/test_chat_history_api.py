@@ -624,20 +624,20 @@ def test_stream_history_excludes_other_users_and_conversations(
     with harness.factory() as session:
         _account_b, _user_b, token_b = create_identity(session, harness.settings, name="B")
 
-    res_a1, conv_a1 = stream_turn(harness, token_a, "alpha question", "iso-a1")
+    res_a1, conv_a1 = stream_turn(harness, token_a, "alpha question", "iso-client-a1")
     assert res_a1.status_code == 200
-    res_b1, _conv_b1 = stream_turn(harness, token_b, "bravo question", "iso-b1")
+    res_b1, _conv_b1 = stream_turn(harness, token_b, "bravo question", "iso-client-b1")
     assert res_b1.status_code == 200
     # A new conversation of user A starts with no history from conversation A1 or user B.
-    res_a2, _conv_a2 = stream_turn(harness, token_a, "gamma question", "iso-a2")
+    res_a2, _conv_a2 = stream_turn(harness, token_a, "gamma question", "iso-client-a2")
     assert res_a2.status_code == 200
     assert sent_turns(harness, 2) == [("user", "gamma question")]
 
     # User B cannot reach user A's conversation at all.
-    res_cross, _ = stream_turn(harness, token_b, "bravo follow-up", "iso-b2", conv_a1)
+    res_cross, _ = stream_turn(harness, token_b, "bravo follow-up", "iso-client-b2", conv_a1)
     assert res_cross.status_code == 404
 
-    res_a3, _ = stream_turn(harness, token_a, "delta question", "iso-a3", conv_a1)
+    res_a3, _ = stream_turn(harness, token_a, "delta question", "iso-client-a3", conv_a1)
     assert res_a3.status_code == 200
     assert sent_turns(harness, 3) == [
         ("user", "alpha question"),
@@ -661,9 +661,9 @@ def test_continue_and_regenerate_send_history_without_duplicates(
         ),
     )
     _account_id, token = identity(harness)
-    res_1, conv_id = stream_turn(harness, token, "first question", "dup-01")
+    res_1, conv_id = stream_turn(harness, token, "first question", "dup-client-01")
     assert res_1.status_code == 200
-    res_2, _ = stream_turn(harness, token, "second question", "dup-02", conv_id)
+    res_2, _ = stream_turn(harness, token, "second question", "dup-client-02", conv_id)
     assert res_2.status_code == 200
     prior = [("user", "first question"), ("assistant", "first answer")]
     assert sent_turns(harness, 1) == [*prior, ("user", "second question")]
@@ -671,7 +671,12 @@ def test_continue_and_regenerate_send_history_without_duplicates(
     truncated_id = reply_id(harness, "second question")
     cont = harness.client.post(f"/v1/messages/{truncated_id}/continue", headers=auth(token))
     assert cont.status_code == 200
-    assert sent_turns(harness, 2) == [*prior, ("user", "second question")]
+    # Continue sends the truncated reply as the assistant prefix; history stops before the turn.
+    assert sent_turns(harness, 2) == [
+        *prior,
+        ("user", "second question"),
+        ("assistant", "second answer"),
+    ]
 
     regen = harness.client.post(f"/v1/messages/{truncated_id}/regenerate", headers=auth(token))
     assert regen.status_code == 200
@@ -693,9 +698,9 @@ def test_next_turn_after_regenerate_sends_single_reply(
         ),
     )
     _account_id, token = identity(harness)
-    res_1, conv_id = stream_turn(harness, token, "first question", "next-01")
+    res_1, conv_id = stream_turn(harness, token, "first question", "next-client-01")
     assert res_1.status_code == 200
-    res_2, _ = stream_turn(harness, token, "second question", "next-02", conv_id)
+    res_2, _ = stream_turn(harness, token, "second question", "next-client-02", conv_id)
     assert res_2.status_code == 200
 
     regen = harness.client.post(
@@ -703,7 +708,7 @@ def test_next_turn_after_regenerate_sends_single_reply(
     )
     assert regen.status_code == 200
 
-    res_3, _ = stream_turn(harness, token, "third question", "next-03", conv_id)
+    res_3, _ = stream_turn(harness, token, "third question", "next-client-03", conv_id)
     assert res_3.status_code == 200
     assert sent_turns(harness, 3) == [
         ("user", "first question"),

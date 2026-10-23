@@ -112,6 +112,7 @@ class StreamRunner:
         self._sqlite_singleton_memory: bool = self._detect_sqlite_singleton_memory()
         if self.run_state.on_finalize is None:
             self.run_state.on_finalize = self.finalize
+
     @property
     def budget_settled(self) -> bool:
         return self._budget_settled
@@ -146,6 +147,7 @@ class StreamRunner:
         if self._is_sqlite_singleton_memory():
             return fn(*args, **kwargs)
         return await asyncio.to_thread(fn, *args, **kwargs)
+
     def _flush_db(
         self,
         *,
@@ -170,7 +172,9 @@ class StreamRunner:
                 if run_status == RunStatus.COMPLETED:
                     run.response_text = text
 
-            msg = session.scalar(select(ChatMessage).where(ChatMessage.id == self.run_state.assistant_message_id))
+            msg = session.scalar(
+                select(ChatMessage).where(ChatMessage.id == self.run_state.assistant_message_id)
+            )
             if msg is not None:
                 # If continuing, full content includes prior text
                 full_content = (self.prior_content or "") + text
@@ -201,7 +205,9 @@ class StreamRunner:
                     else:
                         calls = [self.final_call] if self.final_call is not None else []
                         cost = measured_cost_micro(calls) if calls else 0
-                        tokens = measured_tokens(calls) if calls else len(self.accumulated_text) // 4
+                        tokens = (
+                            measured_tokens(calls) if calls else len(self.accumulated_text) // 4
+                        )
                         settle_budget(
                             session,
                             reservation,
@@ -288,7 +294,11 @@ class StreamRunner:
                     if not self.first_delta_recorded:
                         self.first_delta_recorded = True
                         first_delta_ms = int((now - self.start_time) * 1000)
-                        logger.info("stream.first_delta_ms run_id=%s ms=%d", self.run_state.run_id, first_delta_ms)
+                        logger.info(
+                            "stream.first_delta_ms run_id=%s ms=%d",
+                            self.run_state.run_id,
+                            first_delta_ms,
+                        )
 
                     await self.run_state.publish(
                         "message.delta",
@@ -297,7 +307,9 @@ class StreamRunner:
                     )
 
                     # Flush partial text at most once per 1.0 s or per 1 KB of new text
-                    if (now - self.last_flush_time >= 1.0) or (len(self.accumulated_text) - self.last_flushed_len >= 1024):
+                    if (now - self.last_flush_time >= 1.0) or (
+                        len(self.accumulated_text) - self.last_flushed_len >= 1024
+                    ):
                         await self._run_in_thread(
                             self._flush_db,
                             text=self.accumulated_text,
@@ -334,7 +346,9 @@ class StreamRunner:
                     "assistant_message_id": self.run_state.assistant_message_id,
                 },
             )
-            logger.info("stream.finished run_id=%s finish_reason=%s", self.run_state.run_id, finish_reason)
+            logger.info(
+                "stream.finished run_id=%s finish_reason=%s", self.run_state.run_id, finish_reason
+            )
 
         except asyncio.CancelledError:
             # Stop requested: cancels the provider call. Finish_reason=cancelled, message status=stopped, partial kept
@@ -373,7 +387,9 @@ class StreamRunner:
                 message_finish_reason=FinishReason.ERROR.value,
                 outcome="FAILED",
             )
-            await self._run_in_thread(self._settle_or_release_budget, release=not bool(self.accumulated_text))
+            await self._run_in_thread(
+                self._settle_or_release_budget, release=not bool(self.accumulated_text)
+            )
             if not self.run_state.terminal:
                 await self.run_state.publish(
                     "run.error",
