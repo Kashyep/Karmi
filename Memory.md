@@ -2,7 +2,7 @@
 
 ## Active Release 1 chat redesign resume (2026-10-23)
 
-- Integration checkout: `/tmp/wt2-int`, branch `release1/integration`. Current local HEAD: `f5d2794` (P2 policy revert); no push/deploy/hosted migration/PR action.
+- Integration checkout: `/tmp/wt2-int`, branch `release1/integration`. Current local HEAD: `4ec67f7` (temporary progress record); no push/deploy/hosted migration/PR action.
 - User asked to continue without a supervisor system; scoped workers requested `gpt-5.6-luna`. Effective runtime model metadata is unavailable, so only requested model is recorded.
 - P1 `c0a529e` is integrated; a long saved reply over 8,000 characters exposed premature DTO validation. Fix `fedc2b1` passes focused Hindi stream/unit regression while retaining the client cap.
 - P6 app-bar/banner candidate integrated through `20d82bf`; integrated combined focused Flutter suite passed 25 tests. P9 `9338561` is integrated and its focused tests/analyzer passed.

@@ -85,14 +85,14 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    final snackRect = tester.getRect(find.byType(SnackBar));
+    final snackContentRect = tester.getRect(find.text('Chat deleted'));
     final composerTop = tester
         .getTopLeft(find.byKey(const ValueKey('fake-composer')))
         .dy;
     final tabBarTop = tester
         .getTopLeft(find.byKey(const ValueKey('fake-tab-bar')))
         .dy;
-    expect(snackRect.bottom, lessThanOrEqualTo(composerTop));
-    expect(snackRect.bottom, lessThanOrEqualTo(tabBarTop));
+    expect(snackContentRect.bottom, lessThanOrEqualTo(composerTop));
+    expect(snackContentRect.bottom, lessThanOrEqualTo(tabBarTop));
   });
 }

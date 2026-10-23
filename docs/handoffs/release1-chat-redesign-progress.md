@@ -1,7 +1,7 @@
 # Release 1 chat redesign — temporary progress
 
 Updated: 2026-10-23 14:02 UTC  
-Integration worktree: `/tmp/wt2-int`, branch `release1/integration`, HEAD `f5d2794`  
+Integration worktree: `/tmp/wt2-int`, branch `release1/integration`, HEAD `4ec67f7`  
 Policy: no supervisor system; low-cost Luna workers only. No push, deploy, hosted migration, live provider calls, paid spend, or PR action.
 
 ## Verified / locally integrated
