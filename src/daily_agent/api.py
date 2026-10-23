@@ -87,8 +87,10 @@ from daily_agent.services import (
     release_budget,
     reserve_budget,
     return_gateway_requests,
+    run_debug_view,
     scoped_task_query,
     seed_development_identity,
+    served_debug,
     settle_budget,
     subscription_period,
     sync_account_progression,
@@ -410,6 +412,7 @@ def create_app() -> FastAPI:
                 response=existing.response_text or "",
                 route=_route_for(session, existing.id),
                 previous_run_id=existing.previous_run_id,
+                debug=run_debug_view(existing) if principal.tester else None,
             )
         _subscription, policy = policy_for(session, principal.account_id)
         amount = estimate_request_cost_micro(policy, settings)
@@ -500,6 +503,9 @@ def create_app() -> FastAPI:
                 request_hash=request_hash,
                 previous_run_id=previous_run_id,
                 regenerate_reason=regenerate_reason,
+                served=served_debug(
+                    result.provider_calls, attempts=result.attempts, latency_ms=timing.latency_ms
+                ),
             )
             record_routing_evidence(
                 session,
@@ -552,6 +558,7 @@ def create_app() -> FastAPI:
                 response=recovered.response_text or "",
                 route=_route_for(session, recovered.id),
                 previous_run_id=recovered.previous_run_id,
+                debug=run_debug_view(recovered) if principal.tester else None,
             )
         except Exception:
             session.rollback()
@@ -569,6 +576,7 @@ def create_app() -> FastAPI:
             response=result.response,
             route=result.route,
             previous_run_id=run.previous_run_id,
+            debug=run_debug_view(run) if principal.tester else None,
         )
 
     @app.post("/v1/messages", response_model=MessageView)

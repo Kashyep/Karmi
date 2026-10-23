@@ -1,8 +1,8 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, StrictInt, model_serializer
 
 
 class Outcome(StrEnum):
@@ -50,6 +50,19 @@ class MessageCreate(BaseModel):
     history: list[HistoryTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
 
 
+class ServedDebugView(BaseModel):
+    """Tester-only: what the provider actually served, mirrors the run's debug columns."""
+
+    served_model: str | None = None
+    served_provider: str | None = None
+    attempt_count: int | None = None
+    fallback_used: bool | None = None
+    latency_ms: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    harness_version: str | None = None
+
+
 class MessageView(BaseModel):
     run_id: str
     status: str
@@ -57,6 +70,15 @@ class MessageView(BaseModel):
     response: str
     route: str | None = None
     previous_run_id: str | None = None
+    # Present only for testers: the key is omitted entirely otherwise, never sent as null.
+    debug: ServedDebugView | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_debug(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if self.debug is None:
+            data.pop("debug", None)
+        return data
 
 
 FeedbackRating = Literal["up", "down"]

@@ -27,6 +27,8 @@ class Principal:
     user_id: str
     account_id: str
     role: str
+    # Manual server-side flag (users.tester); gates the debug serving metadata.
+    tester: bool = False
 
 
 def issue_development_token(user: User, settings: Settings, ttl_seconds: int = 3600) -> str:
@@ -55,7 +57,9 @@ def verify_token(token: str, settings: Settings, session: Session) -> Principal:
     user = session.get(User, user_id)
     if user is None or user.role != role or user.token_version != token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid session")
-    return Principal(user_id=user.id, account_id=user.account_id, role=user.role)
+    return Principal(
+        user_id=user.id, account_id=user.account_id, role=user.role, tester=user.tester
+    )
 
 
 def verify_clerk_token(token: str, settings: Settings, session: Session) -> Principal:
@@ -110,7 +114,9 @@ def verify_clerk_token(token: str, settings: Settings, session: Session) -> Prin
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="account setup temporarily unavailable",
                 ) from exc
-    return Principal(user_id=user.id, account_id=user.account_id, role=user.role)
+    return Principal(
+        user_id=user.id, account_id=user.account_id, role=user.role, tester=user.tester
+    )
 
 
 def require_principal(

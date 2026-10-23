@@ -300,3 +300,30 @@ def test_unmeasured_task_scores_fall_back_to_the_mean_of_measured_ones() -> None
 
 def test_every_plan_uses_the_gateway_output_maximum() -> None:
     assert {p.output_tokens for p in SYNTHETIC_POLICIES.values()} == {MAX_OUTPUT_TOKENS}
+
+
+def test_openrouter_reports_the_model_and_provider_actually_served() -> None:
+    body = {**ok_body(), "model": "vendor/served-m:free", "provider": "Upstream"}
+    result = provider(lambda _r: httpx.Response(200, json=body)).complete(REQUEST, MODEL)
+    assert result.call.model_id == "vendor/m:free"
+    assert result.call.served_model == "vendor/served-m:free"
+    assert result.call.served_provider == "Upstream"
+
+
+def test_openrouter_served_fields_stay_none_when_the_provider_omits_them() -> None:
+    result = provider(lambda _r: httpx.Response(200, json=ok_body())).complete(REQUEST, MODEL)
+    assert (result.call.served_model, result.call.served_provider) == (None, None)
+
+
+def test_openrouter_stream_reports_the_served_model_from_its_frames() -> None:
+    frames = (
+        b'data: {"model": "vendor/served-m:free", "choices": [{"delta": {"content": "hi"}}]}\n\n'
+        b'data: {"choices": [{"delta": {}, "finish_reason": "stop"}],'
+        b' "usage": {"prompt_tokens": 3, "completion_tokens": 1}}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    chunks = list(provider(lambda _r: httpx.Response(200, content=frames)).stream(REQUEST, MODEL))
+    final = chunks[-1].call
+    assert final is not None
+    assert final.model_id == "vendor/m:free"
+    assert final.served_model == "vendor/served-m:free"

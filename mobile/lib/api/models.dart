@@ -2,6 +2,7 @@
 library;
 
 import '../theme/karmi_tier.dart';
+import 'debug_meta.dart';
 
 /// `schemas.Outcome`. Unknown wire values parse to [Outcome.unknown] instead of throwing.
 enum Outcome {
@@ -85,6 +86,7 @@ class MessageView {
     required this.response,
     this.route,
     this.previousRunId,
+    this.debug,
   });
 
   factory MessageView.fromJson(Map<String, dynamic> json) => MessageView(
@@ -94,6 +96,7 @@ class MessageView {
     response: json['response'] as String,
     route: json['route'] as String?,
     previousRunId: json['previous_run_id'] as String?,
+    debug: DebugMeta.fromJson(json['debug']),
   );
 
   final String runId;
@@ -102,6 +105,7 @@ class MessageView {
   final String response;
   final String? route;
   final String? previousRunId;
+  final DebugMeta? debug;
 }
 
 class UsageView {

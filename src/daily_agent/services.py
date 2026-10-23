@@ -11,6 +11,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from daily_agent import HARNESS_VERSION
 from daily_agent.config import Settings
 from daily_agent.gateway import Gateway
 from daily_agent.gateway.adapters import MAX_PROMPT_CHARS as ADAPTER_PROMPT_CHARS
@@ -42,7 +43,7 @@ from daily_agent.providers import (
     ProviderCall,
     classify_intent,
 )
-from daily_agent.schemas import HistoryTurn, Outcome
+from daily_agent.schemas import HistoryTurn, Outcome, ServedDebugView
 from daily_agent.schemas_chat import MessageStatus
 
 logger = logging.getLogger(__name__)
@@ -690,6 +691,8 @@ class GenerationResult:
     provider_calls: tuple[ProviderCall, ...] = ()
     # No usable reply was produced and nothing may be charged: the caller releases the reservation.
     release_reservation: bool = False
+    # Provider attempts the gateway made for the reply (0 when no live call was made).
+    attempts: int = 0
 
 
 DEFERRED_TEXT = (
@@ -903,10 +906,12 @@ def generate_reply(
             route=route,
             provider_calls=calls_all,
             release_reservation=True,
+            attempts=outcome.attempts,
         )
     assert outcome.action is not None
     return GenerationResult(
-        outcome.text, Outcome.ACCEPT, intent=intent, route=outcome.action, provider_calls=calls_all
+        outcome.text, Outcome.ACCEPT, intent=intent, route=outcome.action, provider_calls=calls_all,
+        attempts=outcome.attempts,
     )
 
 
@@ -962,6 +967,37 @@ def accept_internal_event(
     return event, True
 
 
+SERVED_OPERATION = "generate"
+
+
+def served_debug(
+    calls: Sequence[ProviderCall], *, attempts: int, latency_ms: float | None
+) -> ServedDebugView:
+    """Serving metadata for a reply, from the accepted generate call (last one wins).
+
+    The served model is only what the upstream reported; the provider falls back to the gateway
+    provider name because that is the only provider we know answered.
+    """
+    served = next((c for c in reversed(calls) if c.operation == SERVED_OPERATION), None)
+    return ServedDebugView(
+        served_model=served.served_model if served else None,
+        served_provider=(served.served_provider or served.provider) if served else None,
+        attempt_count=attempts,
+        fallback_used=attempts > 1,
+        latency_ms=None if latency_ms is None else round(latency_ms),
+        input_tokens=served.input_tokens if served else None,
+        output_tokens=served.output_tokens if served else None,
+        harness_version=HARNESS_VERSION,
+    )
+
+
+def run_debug_view(run: Run) -> ServedDebugView:
+    """Serving metadata stored on a run (tester-only callers decide whether to expose it)."""
+    return ServedDebugView(
+        **{name: getattr(run, name) for name in ServedDebugView.model_fields}
+    )
+
+
 def persist_completed_run(
     session: Session,
     *,
@@ -973,6 +1009,7 @@ def persist_completed_run(
     request_hash: str | None = None,
     previous_run_id: str | None = None,
     regenerate_reason: str | None = None,
+    served: ServedDebugView | None = None,
 ) -> Run:
     run = Run(
         account_id=account_id,
@@ -984,6 +1021,7 @@ def persist_completed_run(
         response_text=response,
         previous_run_id=previous_run_id,
         regenerate_reason=regenerate_reason,
+        **(served.model_dump() if served is not None else {}),
     )
     session.add(run)
     session.flush()

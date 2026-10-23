@@ -52,6 +52,7 @@ from daily_agent.services import (
     history_tokens,
     policy_for,
     reserve_budget,
+    run_debug_view,
     trim_history,
 )
 from daily_agent.streaming.registry import RunState, StreamEvent, get_stream_registry
@@ -108,6 +109,8 @@ async def _replay_from_db(
     user_msg: ChatMessage,
     assistant_msg: ChatMessage | None,
     run: Run | None,
+    *,
+    debug_enabled: bool = False,
 ) -> AsyncIterator[str]:
     run_id = (run.id if run else None) or user_msg.run_id or "run_unknown"
     assistant_id = assistant_msg.id if assistant_msg else "msg_unknown"
@@ -145,14 +148,14 @@ async def _replay_from_db(
             or FinishReason.STOP.value
         )
         outcome = (run.outcome if run else None) or "COMPLETED"
-        yield encode_sse_event(
-            "run.finished",
-            {
-                "finish_reason": finish_reason,
-                "outcome": outcome,
-                "assistant_message_id": assistant_id,
-            },
-        )
+        finished: dict[str, Any] = {
+            "finish_reason": finish_reason,
+            "outcome": outcome,
+            "assistant_message_id": assistant_id,
+        }
+        if debug_enabled and run is not None:
+            finished["debug"] = run_debug_view(run).model_dump()
+        yield encode_sse_event("run.finished", finished)
 
 
 @router.post("/v1/chat/stream")
@@ -234,7 +237,9 @@ async def chat_stream(
                 )
             )
             return StreamingResponse(
-                _replay_from_db(existing_user_msg, assistant_msg, run),
+                _replay_from_db(
+                    existing_user_msg, assistant_msg, run, debug_enabled=principal.tester
+                ),
                 media_type="text/event-stream",
                 headers=SSE_HEADERS,
             )
@@ -360,6 +365,7 @@ async def chat_stream(
         "session_factory": session_factory,
         "reservation_id": reservation.id,
         "history": history_payload,
+        "debug_enabled": principal.tester,
     }
     if "admission" in inspect.signature(start_stream_run).parameters:
         start_kwargs["admission"] = admission
@@ -607,6 +613,7 @@ async def continue_message(
         "settings": settings,
         "session_factory": session_factory,
         "reservation_id": reservation.id,
+        "debug_enabled": principal.tester,
         "prior_content": msg.content,
         "history": history_payload,
     }
@@ -771,6 +778,7 @@ async def regenerate_message(
         "settings": settings,
         "session_factory": session_factory,
         "reservation_id": reservation.id,
+        "debug_enabled": principal.tester,
         "prior_content": None,
         "history": history_payload,
     }

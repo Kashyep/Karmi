@@ -9,6 +9,7 @@ import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_motion.dart';
 import '../../theme/karmi_theme.dart';
 import 'chat_entry.dart';
+import 'debug_meta_line.dart';
 import 'rendering/markdown_message.dart';
 import 'status_chip.dart';
 
@@ -168,6 +169,11 @@ class MessageBubble extends StatelessWidget {
                       onSelectReason: onSelectReason,
                       onRegenerate: onRegenerate,
                     ),
+                    if (showDebugMeta(
+                      envFlag: kDebugMetaEnabled,
+                      debug: reply!.message.debug,
+                    ))
+                      DebugMetaLine(meta: reply!.message.debug!),
                   ] else if (chatMessage != null) ...[
                     if (StatusChip.hasVisibleOutcome(chatMessage!.outcome) &&
                         chatMessage!.outcome != Outcome.askUser) ...[
@@ -202,6 +208,11 @@ class MessageBubble extends StatelessWidget {
                         isFeedbackInFlight: isFeedbackInFlight,
                       ),
                     ],
+                    if (showDebugMeta(
+                      envFlag: kDebugMetaEnabled,
+                      debug: chatMessage!.debug,
+                    ))
+                      DebugMetaLine(meta: chatMessage!.debug!),
                   ],
                 ],
               ),
