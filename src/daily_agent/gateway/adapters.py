@@ -26,6 +26,9 @@ OPENROUTER_CHAT_URL = f"{OPENROUTER_BASE_URL}/chat/completions"
 MAX_PROMPT_CHARS = 120_000
 MAX_OUTPUT_TOKENS = 4_096
 FREE_MEASUREMENT = "registry-free-model"
+# Column widths of runs.served_model / runs.served_provider.
+SERVED_MODEL_CHARS = 200
+SERVED_PROVIDER_CHARS = 40
 
 
 class ChatProvider(Protocol):
@@ -78,6 +81,14 @@ def _status_error(response: httpx.Response) -> ProviderError:
     if status == 408 or status >= 500:
         return ProviderError(ProviderError.SERVER, f"provider error (HTTP {status})")
     return ProviderError(ProviderError.REJECTED, f"provider rejected the request (HTTP {status})")
+
+
+def _served_field(payload: Any, key: str, limit: int) -> str | None:
+    """The non-empty string ``key`` a provider reports at top level, bounded to the DB column."""
+    value = payload.get(key) if isinstance(payload, dict) else None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()[:limit]
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -169,6 +180,8 @@ class OpenRouterProvider:
             cost_micro=0,
             measurement=FREE_MEASUREMENT,
             rate_version=f"registry-{model.snapshot_date}",
+            served_model=_served_field(payload, "model", SERVED_MODEL_CHARS),
+            served_provider=_served_field(payload, "provider", SERVED_PROVIDER_CHARS),
         )
         return ChatResult(
             text=text,
@@ -205,6 +218,8 @@ class OpenRouterProvider:
                 finish_reason: str | None = None
                 prompt_tokens: int | None = None
                 completion_tokens: int | None = None
+                served_model: str | None = None
+                served_provider: str | None = None
                 for line in response.iter_lines():
                     line = line.strip()
                     if not line or line.startswith(":"):
@@ -220,6 +235,10 @@ class OpenRouterProvider:
                             continue
                         if not isinstance(payload, dict):
                             continue
+                        served_model = served_model or _served_field(payload, "model", SERVED_MODEL_CHARS)
+                        served_provider = served_provider or _served_field(
+                            payload, "provider", SERVED_PROVIDER_CHARS
+                        )
                         usage = payload.get("usage")
                         if isinstance(usage, dict):
                             reported_cost = usage.get("cost")
@@ -258,6 +277,8 @@ class OpenRouterProvider:
                     cost_micro=0,
                     measurement=FREE_MEASUREMENT,
                     rate_version=f"registry-{model.snapshot_date}",
+                    served_model=served_model,
+                    served_provider=served_provider,
                 )
                 yield StreamChunk(finish_reason=finish_reason, call=call)
         except httpx.TimeoutException as exc:

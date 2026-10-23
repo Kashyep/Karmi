@@ -29,6 +29,7 @@ from daily_agent.gateway.types import (
 )
 from daily_agent.models import BudgetReservation, ChatMessage, Conversation, Run, RunStatus, utcnow
 from daily_agent.plans import PlanPolicy
+from daily_agent.schemas import ServedDebugView
 from daily_agent.schemas_chat import ErrorCategory, FinishReason, MessageStatus
 from daily_agent.services import (
     GatewayAdmission,
@@ -36,6 +37,7 @@ from daily_agent.services import (
     measured_tokens,
     release_budget,
     return_gateway_requests,
+    served_debug,
     settle_budget,
 )
 from daily_agent.streaming.registry import RunState
@@ -82,6 +84,7 @@ class StreamRunner:
         reservation_id: str,
         prior_content: str | None = None,
         admission: GatewayAdmission | None = None,
+        debug_enabled: bool = False,
     ) -> None:
         self.run_state = run_state
         self.plan = plan
@@ -94,6 +97,7 @@ class StreamRunner:
         self.reservation_id = reservation_id
         self.prior_content = prior_content
         self.admission = admission
+        self.debug_enabled = debug_enabled
 
         self.seq = 0
         self.accumulated_text = ""
@@ -154,12 +158,16 @@ class StreamRunner:
         message_status: str | None = None,
         message_finish_reason: str | None = None,
         outcome: str | None = None,
+        served: ServedDebugView | None = None,
     ) -> None:
         with self._flush_lock, self.session_factory() as session:
             run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
             if run is not None:
                 run.partial_text = text
                 run.last_seq = self.seq
+                if served is not None:
+                    for name, value in served.model_dump().items():
+                        setattr(run, name, value)
                 if run_status is not None:
                     run.status = run_status
                 if run_finish_reason is not None:
@@ -308,7 +316,13 @@ class StreamRunner:
                 if chunk.call is not None:
                     self.final_call = chunk.call
 
-            # Stream finished normally
+            # Stream finished normally. The stream path only ever tries the first pool entry,
+            # so a provider call that happened was exactly one attempt.
+            served = served_debug(
+                [self.final_call] if self.final_call is not None else [],
+                attempts=1 if self.final_call is not None else 0,
+                latency_ms=(time.monotonic() - self.start_time) * 1000,
+            )
             await self._run_in_thread(
                 self._flush_db,
                 text=self.accumulated_text,
@@ -317,21 +331,22 @@ class StreamRunner:
                 message_status=MessageStatus.COMPLETE.value,
                 message_finish_reason=finish_reason,
                 outcome="COMPLETED",
+                served=served,
             )
             await self._run_in_thread(self._settle_or_release_budget, release=False)
 
             in_tokens = self.final_call.input_tokens if self.final_call else None
             out_tokens = self.final_call.output_tokens if self.final_call else None
-            await self.run_state.publish(
-                "run.finished",
-                {
-                    "finish_reason": finish_reason,
-                    "outcome": "COMPLETED",
-                    "input_tokens": in_tokens,
-                    "output_tokens": out_tokens,
-                    "assistant_message_id": self.run_state.assistant_message_id,
-                },
-            )
+            finished: dict[str, Any] = {
+                "finish_reason": finish_reason,
+                "outcome": "COMPLETED",
+                "input_tokens": in_tokens,
+                "output_tokens": out_tokens,
+                "assistant_message_id": self.run_state.assistant_message_id,
+            }
+            if self.debug_enabled:
+                finished["debug"] = served.model_dump()
+            await self.run_state.publish("run.finished", finished)
             logger.info("stream.finished run_id=%s finish_reason=%s", self.run_state.run_id, finish_reason)
 
         except asyncio.CancelledError:
@@ -400,6 +415,7 @@ def start_stream_run(
     reservation_id: str,
     prior_content: str | None = None,
     admission: GatewayAdmission | None = None,
+    debug_enabled: bool = False,
 ) -> asyncio.Task[None]:
     runner = StreamRunner(
         run_state=run_state,
@@ -413,6 +429,7 @@ def start_stream_run(
         reservation_id=reservation_id,
         prior_content=prior_content,
         admission=admission,
+        debug_enabled=debug_enabled,
     )
     task = asyncio.create_task(runner.run())
     run_state.task = task
