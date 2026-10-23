@@ -25,7 +25,6 @@ from daily_agent.gateway import Gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
 from daily_agent.gzip_middleware import SSEAwareGZip
 from daily_agent.models import (
-    Account,
     BillingEvent,
     MessageFeedback,
     Reminder,
@@ -112,24 +111,10 @@ logger = logging.getLogger(__name__)
 
 
 def _profile_user(session: Session, principal: Principal) -> User:
-    """Return the authenticated user, repairing a missing Clerk row if needed."""
+    """Return the authenticated user provisioned by the authentication layer."""
     user = session.get(User, principal.user_id)
-    if user is not None:
-        return user
-    account = session.get(Account, principal.account_id)
-    if account is None:
-        account = Account(id=principal.account_id, name="Karmi user's account")
-        session.add(account)
-        session.flush()
-    user = User(
-        id=principal.user_id,
-        account_id=account.id,
-        display_name="Karmi user",
-        role=principal.role,
-    )
-    session.add(user)
-    session.add(Subscription(account_id=account.id, plan_id="ananta"))
-    session.commit()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
     return user
 
 

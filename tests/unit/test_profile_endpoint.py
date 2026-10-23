@@ -50,7 +50,6 @@ def test_patch_profile_requires_auth(test_context: dict[str, object]) -> None:
     resp = client.patch("/v1/user/profile", json={"display_name": "NoAuth"})
     assert resp.status_code == 401
 
-
 @pytest.mark.parametrize(
     "bad_name",
     [
@@ -58,8 +57,6 @@ def test_patch_profile_requires_auth(test_context: dict[str, object]) -> None:
         " ",          # single space
         "   ",        # all whitespace
         "\t\n",       # tabs + newlines
-        "a",          # too short after strip (1 char)
-        " b ",        # 1 char after strip
     ],
 )
 def test_patch_profile_rejects_blank_or_too_short(
@@ -78,6 +75,19 @@ def test_patch_profile_rejects_blank_or_too_short(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 422, f"Expected 422 for name={bad_name!r}, got {resp.status_code}"
+def test_patch_profile_accepts_single_character_name(test_context: dict[str, object]) -> None:
+    factory = test_context["factory"]
+    settings = test_context["settings"]
+    client: TestClient = test_context["client"]  # type: ignore[assignment]
+    with factory() as session:  # type: ignore[operator]
+        _, _, token = create_identity(session, settings, name="SingleCharTarget")  # type: ignore[arg-type]
+    response = client.patch(
+        "/v1/user/profile",
+        json={"display_name": " A "},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "A"
 
 
 def test_patch_profile_rejects_too_long_name(test_context: dict[str, object]) -> None:
@@ -143,9 +153,9 @@ def test_patch_profile_updates_display_name(test_context: dict[str, object]) -> 
     assert resp2.json()["display_name"] == "AfterUpdate"
 
 
-def test_profile_repairs_missing_user_row(test_context: dict[str, object]) -> None:
-    """An authenticated Clerk principal can initialize its profile on first read."""
-    from daily_agent.models import Account
+def test_profile_does_not_create_missing_user_row(test_context: dict[str, object]) -> None:
+    """A principal missing its provisioned user row is not repaired by profile reads."""
+    from daily_agent.models import Account, User
     from daily_agent.security import Principal, require_principal
 
     client: TestClient = test_context["client"]  # type: ignore[assignment]
@@ -154,18 +164,12 @@ def test_profile_repairs_missing_user_row(test_context: dict[str, object]) -> No
         account = Account(name="Fresh Clerk account")
         session.add(account)
         session.commit()
-        principal = Principal(
-            user_id="fresh-clerk-user",
-            account_id=account.id,
-            role="customer",
-        )
+        principal = Principal(user_id="fresh-clerk-user", account_id=account.id, role="customer")
     client.app.dependency_overrides[require_principal] = lambda: principal
     try:
         response = client.get("/v1/user/profile")
-        assert response.status_code == 200
-        assert response.json()["display_name"] == "Karmi user"
-        response = client.patch("/v1/user/profile", json={"display_name": "Fresh User"})
-        assert response.status_code == 200
-        assert response.json()["display_name"] == "Fresh User"
+        assert response.status_code == 404
+        with factory() as session:  # type: ignore[operator]
+            assert session.get(User, principal.user_id) is None
     finally:
         client.app.dependency_overrides.pop(require_principal, None)
