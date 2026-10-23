@@ -543,9 +543,8 @@ class _ComposerState extends State<Composer> {
                                               ? BorderSide(
                                                   color:
                                                       colors.primaryForeground,
-                                                  width: KarmiShape.of(
-                                                    context,
-                                                  ).focusRingWidth,
+                                                  width: KarmiShape.of(context)
+                                                      .focusRingWidth,
                                                 )
                                               : null,
                                         ),
