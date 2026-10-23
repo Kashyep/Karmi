@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../api/debug_meta.dart';
 import '../../../api/models.dart';
 import '../../../api/stream/run_stream_client.dart';
 
@@ -483,6 +484,7 @@ class ChatController extends ChangeNotifier {
           outcome: event.outcome == null
               ? null
               : Outcome.fromWire(event.outcome),
+          debug: event.debug,
         );
         _setPhase(ChatRunPhase.finished);
         break;
@@ -582,6 +584,7 @@ class ChatController extends ChangeNotifier {
     required MessageStatus status,
     required FinishReason finishReason,
     Outcome? outcome,
+    DebugMeta? debug,
   }) {
     final targetId = assistantMessageId ?? _currentAssistantMessageId;
     final index = _messages.indexWhere((m) => m.id == targetId);
@@ -591,6 +594,7 @@ class ChatController extends ChangeNotifier {
         status: status,
         finishReason: finishReason,
         outcome: outcome ?? current.outcome,
+        debug: debug ?? current.debug,
         updatedAt: DateTime.now(),
       );
     }

@@ -1,6 +1,7 @@
 /// SSE event models for Karmi chat streaming.
 library;
 
+import '../debug_meta.dart';
 import 'chat_models.dart';
 
 sealed class ChatStreamEvent {
@@ -88,6 +89,7 @@ class RunFinishedEvent extends ChatStreamEvent {
     this.inputTokens,
     this.outputTokens,
     this.assistantMessageId,
+    this.debug,
   });
 
   factory RunFinishedEvent.fromJson(
@@ -101,12 +103,14 @@ class RunFinishedEvent extends ChatStreamEvent {
     outputTokens: (json['output_tokens'] ?? json['outputTokens']) as int?,
     assistantMessageId:
         (json['assistant_message_id'] ?? json['assistantMessageId']) as String?,
+    debug: DebugMeta.fromJson(json['debug']),
   );
 
   final FinishReason finishReason;
   final String? outcome;
   final int? inputTokens;
   final int? outputTokens;
+  final DebugMeta? debug;
   final String? assistantMessageId;
 }
 
