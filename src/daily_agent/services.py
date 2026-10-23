@@ -68,6 +68,20 @@ class ReservationInFlight(Exception):
     """Another live request already holds the reservation for this key."""
 
 
+class InputTooLarge(Exception):
+    """Request text exceeds the plan's input-token allowance (estimated at 4 bytes/token)."""
+
+    def __init__(self, max_input_tokens: int) -> None:
+        super().__init__(f"input exceeds {max_input_tokens} tokens")
+        self.max_input_tokens = max_input_tokens
+
+
+def ensure_input_fits(text: str, plan: PlanPolicy) -> None:
+    """Raise InputTooLarge when the UTF-8 byte length, at 4 bytes/token, exceeds the plan."""
+    if len(text.encode("utf-8")) // 4 > plan.input_tokens:
+        raise InputTooLarge(plan.input_tokens)
+
+
 # How long a committed reservation may stay RESERVED before another request
 # may reclaim it (provider timeout is 15s; this covers retries + jitter).
 RESERVATION_LEASE_SECONDS = 120
@@ -346,32 +360,51 @@ def _reservation_is_live(reservation: BudgetReservation, now: datetime) -> bool:
     return (now - created).total_seconds() < RESERVATION_LEASE_SECONDS
 
 
-def _reclaim_stale_reservations(
-    session: Session, window_key: str, now: datetime, limit: int = 100
-) -> int:
-    """Settle-as-unknown abandoned RESERVED rows attached to this window.
+def _lease_cutoff(now: datetime) -> datetime:
+    """UTC instant before which an unrenewed RESERVED hold has lost its lease."""
+    return now.astimezone(UTC) - timedelta(seconds=RESERVATION_LEASE_SECONDS)
 
-    Provider work behind them may already have run, so the held estimate is
-    charged rather than refunded. Bounds the damage of a worker that died
-    between committing its reservation and settling.
+
+def reclaim_stale_reservations(
+    session: Session, now: datetime | None = None, limit: int = 200
+) -> int:
+    """Settle-as-unknown every abandoned RESERVED row across all windows.
+
+    Runs as a maintenance sweep, never on the reserve hot path. Provider work
+    behind an abandoned hold may already have run, so the held estimate is
+    charged rather than refunded. Each batch of ``limit`` rows is committed
+    before the next is fetched; the settle claim UPDATE remains the atomic
+    guard against concurrent settlers.
     """
-    candidates = session.scalars(
-        select(BudgetReservation)
-        .join(UsageWindow, BudgetReservation.usage_window_id == UsageWindow.id)
-        .where(
-            UsageWindow.window_key == window_key,
-            BudgetReservation.status == ReservationStatus.RESERVED,
-        )
-    ).all()
-    reclaimed = 0
-    for row in candidates[:limit]:
-        if _reservation_is_live(row, now):
-            continue
-        settle_budget(session, row, attempt_id=f"{row.id}:lease-expired", actual_micro=None)
-        reclaimed += 1
-    if reclaimed:
-        logger.warning("reclaimed %d abandoned reservations in window %s", reclaimed, window_key)
-    return reclaimed
+    current = now if now is not None else datetime.now(UTC)
+    cutoff = _lease_cutoff(current)
+    total = 0
+    while True:
+        stale = session.scalars(
+            select(BudgetReservation)
+            .where(
+                BudgetReservation.status == ReservationStatus.RESERVED,
+                BudgetReservation.created_at < cutoff,
+            )
+            .order_by(BudgetReservation.created_at, BudgetReservation.id)
+            .limit(limit)
+            .execution_options(populate_existing=True)
+        ).all()
+        if not stale:
+            break
+        reclaimed = 0
+        for row in stale:
+            before = row.status
+            settle_budget(session, row, attempt_id=f"{row.id}:lease-expired", actual_micro=None)
+            if before == ReservationStatus.RESERVED and row.status != ReservationStatus.RESERVED:
+                reclaimed += 1
+        session.commit()
+        total += reclaimed
+        if reclaimed:
+            logger.warning("reclaimed %d abandoned reservations", reclaimed)
+        if reclaimed == 0 or len(stale) < limit:
+            break
+    return total
 
 
 def _reserve_hold(
@@ -384,7 +417,6 @@ def _reserve_hold(
 ) -> tuple[UsageWindow, UsagePeriod]:
     """Apply the guarded counter updates on the current window/period/platform."""
     window = ensure_usage_window(session, account_id, settings)
-    _reclaim_stale_reservations(session, window.window_key, now)
     token_guard = (
         [
             UsageWindow.tokens_reserved + UsageWindow.tokens_settled + tokens

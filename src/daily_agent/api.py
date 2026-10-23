@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -8,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -20,6 +22,7 @@ from daily_agent.db import create_schema, get_engine, get_session
 from daily_agent.deps import gateway_dependency, limited_principal, own_run
 from daily_agent.gateway import Gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
+from daily_agent.gzip_middleware import SSEAwareGZip
 from daily_agent.models import (
     Account,
     BillingEvent,
@@ -36,7 +39,7 @@ from daily_agent.models import (
 )
 from daily_agent.parakh.routing import RunTiming, record_routing_evidence, route_for_action
 from daily_agent.plans import SYNTHETIC_POLICIES
-from daily_agent.ratelimit import SlidingWindowLimiter, install_log_redaction
+from daily_agent.ratelimit import RateLimiter, build_limiter, install_log_redaction
 from daily_agent.routes.admin import router as admin_router
 from daily_agent.routes.conversations import router as conversations_router
 from daily_agent.routes.stream import router as stream_router
@@ -70,12 +73,14 @@ from daily_agent.services import (
     GatewayAdmission,
     GatewayCapacityFull,
     IdempotencyConflict,
+    InputTooLarge,
     ReservationInFlight,
     accept_internal_event,
     admit_gateway_requests,
     create_task_idempotent,
     current_period_key,
     current_window_key,
+    ensure_input_fits,
     estimate_request_cost_micro,
     gateway_requests_made,
     generate_reply,
@@ -114,19 +119,47 @@ def create_app() -> FastAPI:
             create_schema()
         try:
             with Session(get_engine()) as session:
-                swept = sweep_interrupted_runs(session)
+                swept = sweep_interrupted_runs(
+                    session, older_than_seconds=settings.run_stale_seconds
+                )
             if swept:
                 logger.info("stream.swept_interrupted runs=%s", swept)
         except SQLAlchemyError:
             logger.warning("stream.sweep_failed (schema not migrated?)", exc_info=True)
-        yield
+        # Imported lazily: the maintenance loops are worker code, not request-path code.
+        from daily_agent.background import run_maintenance_loops
+
+        maintenance = asyncio.create_task(run_maintenance_loops(settings))
+        try:
+            yield
+        finally:
+            maintenance.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await maintenance
 
     app = FastAPI(title="Daily Agent", version="0.1.0", lifespan=lifespan)
+
+    app_settings = get_settings()
+    if app_settings.gzip_enabled:
+        app.add_middleware(SSEAwareGZip, minimum_size=app_settings.gzip_min_size)
 
     app.include_router(stream_router)
     app.include_router(conversations_router)
     app.include_router(admin_router)
     app.add_middleware(MetricsMiddleware)
+
+    @app.exception_handler(InputTooLarge)
+    def input_too_large(_request: Request, exc: InputTooLarge) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            content={
+                "detail": {
+                    "code": "INPUT_TOO_LARGE",
+                    "message": str(exc),
+                    "max_input_tokens": exc.max_input_tokens,
+                }
+            },
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -299,6 +332,8 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> TaskView:
+        _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.title, policy)
         try:
             task = create_task_idempotent(
                 session,
@@ -351,6 +386,8 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> dict[str, object]:
+        _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.text, policy)
         if body.due_at.tzinfo is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -420,6 +457,7 @@ def create_app() -> FastAPI:
                 debug=run_debug_view(existing) if principal.tester else None,
             )
         _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.text, policy)
         amount = estimate_request_cost_micro(policy, settings)
         # Earlier turns are client-supplied and never stored; only what fits the plan's input
         # budget is sent, and it counts toward the token hold like the message itself.
@@ -605,9 +643,9 @@ def create_app() -> FastAPI:
         settings: Settings = Depends(get_settings),
     ) -> AccessCodeView:
         """Unlock a higher beta tier with a secret code. Never downgrades; guesses are throttled."""
-        guesses: SlidingWindowLimiter | None = getattr(app.state, "code_limiter", None)
+        guesses: RateLimiter | None = getattr(app.state, "code_limiter", None)
         if guesses is None:
-            guesses = SlidingWindowLimiter(limit=5)
+            guesses = build_limiter(settings, name="code", limit=5)
             app.state.code_limiter = guesses
         retry_after = guesses.check(principal.user_id)
         if retry_after is not None:

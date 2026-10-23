@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from daily_agent.config import Settings, get_settings
 from daily_agent.gateway import Gateway, build_gateway
 from daily_agent.models import Run
-from daily_agent.ratelimit import SlidingWindowLimiter
+from daily_agent.ratelimit import RateLimiter, build_limiter
 from daily_agent.security import Principal, require_principal
 
 
@@ -26,9 +26,10 @@ def limited_principal(
     principal: Principal = Depends(require_principal),
     settings: Settings = Depends(get_settings),
 ) -> Principal:
-    limiter: SlidingWindowLimiter | None = getattr(request.app.state, "limiter", None)
+    # Shared across workers/replicas when redis_url is set; in-process otherwise.
+    limiter: RateLimiter | None = getattr(request.app.state, "limiter", None)
     if limiter is None:
-        limiter = SlidingWindowLimiter(limit=settings.rate_limit_per_minute)
+        limiter = build_limiter(settings, name="api", limit=settings.rate_limit_per_minute)
         request.app.state.limiter = limiter
     retry_after = limiter.check(principal.user_id)
     if retry_after is not None:

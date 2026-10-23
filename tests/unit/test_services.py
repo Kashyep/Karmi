@@ -16,6 +16,7 @@ from daily_agent.services import (
     RESERVATION_LEASE_SECONDS,
     BudgetDenied,
     ReservationInFlight,
+    reclaim_stale_reservations,
     release_budget,
     reserve_budget,
     settle_budget,
@@ -321,7 +322,7 @@ def test_reclaim_sweeps_other_stale_holds_in_window(test_context: dict[str, obje
         )
         stale.created_at = datetime.now(UTC) - timedelta(seconds=RESERVATION_LEASE_SECONDS + 10)
         session.commit()
-        # An unrelated reservation for the account sweeps the stale hold.
+        # A fresh reservation no longer sweeps on the hot path; the maintenance sweep does.
         reserve_budget(
             session,
             settings=settings,  # type: ignore[arg-type]
@@ -330,6 +331,8 @@ def test_reclaim_sweeps_other_stale_holds_in_window(test_context: dict[str, obje
             stage="execution",
             amount_micro=100,
         )
+        session.commit()
+        assert reclaim_stale_reservations(session) == 1
         session.commit()
         swept = session.get(BudgetReservation, stale.id)
         assert swept is not None and swept.status == "unknown"

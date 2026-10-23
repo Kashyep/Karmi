@@ -176,7 +176,10 @@ class GatewayRequestDay(Base):
 
 class BudgetReservation(Base):
     __tablename__ = "budget_reservations"
-    __table_args__ = (UniqueConstraint("account_id", "logical_request_id", "stage"),)
+    __table_args__ = (
+        UniqueConstraint("account_id", "logical_request_id", "stage"),
+        Index("ix_budget_reservations_status_created", "status", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     logical_request_id: Mapped[str] = mapped_column(String(160), index=True)
@@ -426,6 +429,13 @@ class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (
         Index("ix_conversations_user_deleted_updated", "user_id", "deleted_at", "updated_at"),
+        # PostgreSQL-only trigram GIN index (pg_trgm) backing case-insensitive title search.
+        Index(
+            "ix_conversations_title_trgm",
+            "title",
+            postgresql_using="gin",
+            postgresql_ops={"title": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=conversation_id_str)
@@ -454,6 +464,17 @@ class ChatMessage(Base):
             "conversation_id", "client_message_id", name="uq_chat_messages_conversation_client_message_id"
         ),
         Index("ix_chat_messages_conversation_created", "conversation_id", "created_at"),
+        Index("ix_chat_messages_account_id", "account_id"),
+        Index("ix_chat_messages_run_id", "run_id"),
+        Index("ix_chat_messages_parent_message_id", "parent_message_id"),
+        Index("ix_chat_messages_client_message_id", "client_message_id"),
+        # PostgreSQL-only trigram GIN index (pg_trgm) backing case-insensitive substring search.
+        Index(
+            "ix_chat_messages_content_trgm",
+            "content",
+            postgresql_using="gin",
+            postgresql_ops={"content": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=chat_message_id_str)

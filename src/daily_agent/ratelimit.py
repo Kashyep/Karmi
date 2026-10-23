@@ -1,7 +1,15 @@
 """Per-user request rate limiting and log redaction.
 
-The limiter is in-process: with several API replicas each enforces its own window, so the
-effective limit is ``replicas * limit``. A shared (Redis) limiter is a deliberate later step.
+Two limiters share the ``check(key) -> int | None`` contract (``None`` = allowed, otherwise the
+whole seconds to wait):
+
+* ``SlidingWindowLimiter`` is in-process. Each replica enforces its own window, so the effective
+  limit is ``replicas * limit``.
+* ``RedisSlidingWindowLimiter`` keeps the window in a Redis sorted set shared by every replica.
+  It runs as one Lua script, so the check is atomic. On any Redis error it falls back to an
+  in-process limiter and logs the failure at most once a minute.
+
+``build_limiter`` picks the Redis-backed limiter when ``redis_url`` is configured.
 """
 
 from __future__ import annotations
@@ -11,8 +19,21 @@ import math
 import re
 import threading
 import time
+import uuid
 from collections import deque
 from collections.abc import Callable
+from typing import Protocol
+
+import redis
+
+from daily_agent.config import Settings
+from daily_agent.redis_client import get_redis
+
+logger = logging.getLogger(__name__)
+
+
+class RateLimiter(Protocol):
+    def check(self, key: str) -> int | None: ...
 
 
 class SlidingWindowLimiter:
@@ -45,6 +66,94 @@ class SlidingWindowLimiter:
                 ]:
                     del self._hits[idle]
             return None
+
+
+# KEYS[1]=sorted set, ARGV: now_ms, window_ms, limit, unique member.
+# Returns {1, 0} when the hit is recorded, else {0, retry_after_ms}.
+_SLIDING_WINDOW_LUA = """
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - window)
+if redis.call('ZCARD', KEYS[1]) >= limit then
+  local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+  return {0, tonumber(oldest[2]) + window - now}
+end
+redis.call('ZADD', KEYS[1], now, ARGV[4])
+redis.call('PEXPIRE', KEYS[1], window)
+return {1, 0}
+"""
+
+_LOG_INTERVAL_SECONDS = 60.0
+
+
+class RedisSlidingWindowLimiter:
+    """Sliding-window limiter shared across processes through Redis."""
+
+    def __init__(
+        self,
+        redis_client: redis.Redis,
+        *,
+        name: str,
+        limit: int,
+        window_seconds: float,
+        fallback: RateLimiter,
+    ) -> None:
+        self._redis = redis_client
+        self._prefix = f"karmi:rl:{name}:"
+        self._limit = limit
+        self._window_ms = max(1, round(window_seconds * 1000))
+        self._fallback = fallback
+        self._script = redis_client.register_script(_SLIDING_WINDOW_LUA)
+        self._last_error_log = float("-inf")
+        self._log_lock = threading.Lock()
+
+    def check(self, key: str) -> int | None:
+        now_ms = time.time_ns() // 1_000_000
+        try:
+            allowed, retry_after_ms = self._script(
+                keys=[f"{self._prefix}{key}"],
+                args=[now_ms, self._window_ms, self._limit, f"{now_ms}-{uuid.uuid4().hex}"],
+            )
+        except redis.RedisError as error:
+            self._log_failure(error)
+            return self._fallback.check(key)
+        if int(allowed) == 1:
+            return None
+        return max(1, math.ceil(int(retry_after_ms) / 1000))
+
+    def _log_failure(self, error: Exception) -> None:
+        now = time.monotonic()
+        with self._log_lock:
+            if now - self._last_error_log < _LOG_INTERVAL_SECONDS:
+                return
+            self._last_error_log = now
+        logger.warning(
+            "ratelimit.redis_unavailable prefix=%s falling_back_to_process_limiter error=%s",
+            self._prefix,
+            type(error).__name__,
+        )
+
+
+def build_limiter(
+    settings: Settings,
+    *,
+    name: str,
+    limit: int,
+    window_seconds: float = 60.0,
+) -> RateLimiter:
+    """Shared Redis limiter when ``redis_url`` is set, else a per-process limiter."""
+    fallback = SlidingWindowLimiter(limit=limit, window_seconds=window_seconds)
+    client = get_redis(settings)
+    if client is None:
+        return fallback
+    return RedisSlidingWindowLimiter(
+        client,
+        name=name,
+        limit=limit,
+        window_seconds=window_seconds,
+        fallback=fallback,
+    )
 
 
 _REDACTIONS = (

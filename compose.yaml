@@ -26,3 +26,35 @@ services:
       timeout: 3s
       retries: 20
 
+  # Load-test backing services, started only with `docker compose --profile load up`.
+  # postgres-load is sized for 500 concurrent SSE chats across several replicas: its
+  # max_connections must exceed the sum of replicas * WEB_CONCURRENCY * (pool + overflow).
+  postgres-load:
+    profiles: ["load"]
+    image: postgres:17-alpine
+    command: ["postgres", "-c", "max_connections=300"]
+    environment:
+      POSTGRES_DB: daily_agent_load
+      POSTGRES_USER: daily_agent_load
+      POSTGRES_PASSWORD: daily_agent_load
+    ports:
+      - "55433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daily_agent_load -d daily_agent_load"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  redis-load:
+    profiles: ["load"]
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxclients", "10000"]
+    ports:
+      - "56380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20

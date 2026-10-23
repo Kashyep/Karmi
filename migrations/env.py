@@ -20,10 +20,18 @@ config.set_main_option("sqlalchemy.url", Settings().migration_url.replace("%", "
 target_metadata = Base.metadata
 
 
+def include_object(obj: object, name: str | None, type_: str, *_: object) -> bool:
+    # Trigram indexes exist only on PostgreSQL (see models.py); skip them elsewhere.
+    if type_ == "index" and name and name.endswith("_trgm"):
+        return context.get_context().dialect.name == "postgresql"
+    return True
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
@@ -39,7 +47,12 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            include_object=include_object,
+        )
         with context.begin_transaction():
             context.run_migrations()
 

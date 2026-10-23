@@ -27,6 +27,7 @@ from daily_agent.schemas_chat import (
     MessagePage,
 )
 from daily_agent.security import Principal
+from daily_agent.services import ensure_input_fits, policy_for
 
 router = APIRouter(prefix="/v1/conversations", tags=["conversations"])
 
@@ -124,6 +125,9 @@ def update_conversation_endpoint(
     session: Session = Depends(get_session),
     principal: Principal = Depends(limited_principal),
 ) -> ConversationView:
+    if body.title is not None:
+        _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.title, policy)
     conv = update_conversation(
         session=session,
         principal=principal,
