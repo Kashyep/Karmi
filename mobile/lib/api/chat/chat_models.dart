@@ -51,7 +51,9 @@ enum ErrorCategory {
   unauthorized('unauthorized'),
   resumeUnavailable('resume_unavailable'),
   internal('internal'),
-  network('network');
+  network('network'),
+  // Client-only: the request was sent but the client gave up waiting. Never sent by the server.
+  timeout('timeout');
 
   const ErrorCategory(this.wireName);
 

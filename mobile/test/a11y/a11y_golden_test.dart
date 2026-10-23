@@ -9,7 +9,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:karmi_app/api/chat/chat_models.dart';
 import 'package:karmi_app/features/chat/error_card.dart';
-import 'package:karmi_app/features/chat/state/chat_controller.dart';
 
 import '../support/fake_backend.dart';
 import '../support/harness.dart';
@@ -107,7 +106,6 @@ void main() {
           matchesGoldenFile(a11yGoldenPath('a11y_error_card_network_$suffix')),
         );
       });
-
     });
   }
 
@@ -148,6 +146,5 @@ void main() {
       await fontsReady(tester);
       expect(tester.takeException(), isNull);
     });
-
   });
 }
