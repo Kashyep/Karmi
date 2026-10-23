@@ -119,7 +119,7 @@ class ChatController extends ChangeNotifier {
 
     _cancelStallTimer();
     _stopDeltaFlushTimer();
-    await _streamSubscription?.cancel();
+    unawaited(_streamSubscription?.cancel());
     _streamSubscription = null;
 
     final clientMsgId = _generateClientMessageId();
@@ -237,7 +237,7 @@ class ChatController extends ChangeNotifier {
 
     _cancelStallTimer();
     _stopDeltaFlushTimer();
-    await _streamSubscription?.cancel();
+    unawaited(_streamSubscription?.cancel());
     _streamSubscription = null;
 
     _currentAssistantMessageId = id;
@@ -702,7 +702,9 @@ class ChatController extends ChangeNotifier {
 
     if (e.category == ErrorCategory.unauthorized ||
         e.category == ErrorCategory.quotaExhausted ||
-        e.category == ErrorCategory.resumeUnavailable) {
+        e.category == ErrorCategory.resumeUnavailable ||
+        e.category == ErrorCategory.providerUnavailable ||
+        e.category == ErrorCategory.timeout) {
       _cancelStallTimer();
       _stopDeltaFlushTimer();
       _error = e.category;

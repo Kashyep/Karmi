@@ -280,6 +280,28 @@ class _KarmiShellState extends State<KarmiShell> {
     final content = _buildContent(context, body);
     final isChat = _index == 0;
     if (KarmiAccessibility.reduceTransparencyOf(context)) {
+      final navigationBar = isCompactNav
+          ? NavigationBar(
+              selectedIndex: _index,
+              onDestinationSelected: _select,
+              destinations: [
+                for (final d in _destinations)
+                  NavigationDestination(
+                    icon: Icon(d.icon),
+                    selectedIcon: Icon(d.selectedIcon),
+                    label: d.label,
+                  ),
+              ],
+            )
+          : null;
+      // Snackbars are positioned by the root messenger, so publish the solid
+      // navigation bar's full occupied height just as the glass bar does
+      // below. This keeps errors and undo actions above bottom chrome when
+      // reduced-transparency mode is enabled.
+      BottomChrome.tabBarHeight = navigationBar == null
+          ? 0
+          : MediaQuery.paddingOf(context).bottom +
+                (navigationBar.height ?? kBottomNavigationBarHeight);
       return HistoryPanelScope(
         isOpen: _isHistoryOverlayOpen,
         openHistory: _openHistory,
@@ -304,20 +326,7 @@ class _KarmiShellState extends State<KarmiShell> {
             content,
             top: (isChat ? mq.padding.top + _chatHeaderExtent : 0) + 8,
           ),
-          bottomNavigationBar: isCompactNav
-              ? NavigationBar(
-                  selectedIndex: _index,
-                  onDestinationSelected: _select,
-                  destinations: [
-                    for (final d in _destinations)
-                      NavigationDestination(
-                        icon: Icon(d.icon),
-                        selectedIcon: Icon(d.selectedIcon),
-                        label: d.label,
-                      ),
-                  ],
-                )
-              : null,
+          bottomNavigationBar: navigationBar,
         ),
       );
     }

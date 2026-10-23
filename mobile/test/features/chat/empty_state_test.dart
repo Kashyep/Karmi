@@ -22,7 +22,9 @@ class _FakeRunStreamClient extends RunStreamClient {
   int startRunCalls = 0;
   int startCalls = 0;
   int resumeCalls = 0;
+  int continueCalls = 0;
   StreamController<RunEvent>? _resumeController;
+  StreamController<RunEvent>? _continueController;
 
   @override
   Stream<RunEvent> resumeRun({required String runId, required int afterSeq}) {
@@ -41,6 +43,13 @@ class _FakeRunStreamClient extends RunStreamClient {
     startCalls++;
     _activeRunController = StreamController<RunEvent>.broadcast();
     return _activeRunController!.stream;
+  }
+
+  @override
+  Stream<RunEvent> continueMessage(String assistantMessageId) {
+    continueCalls++;
+    _continueController = StreamController<RunEvent>.broadcast();
+    return _continueController!.stream;
   }
 
   void emitStarted() {
@@ -353,8 +362,11 @@ Future<_ChatHarness> _pumpChat(
   bool reduceMotion = false,
   double textScale = 1.0,
   double bottomInset = 0,
+  double devicePixelRatio = 1.0,
   int maxResumeRetries = 3,
 }) async {
+  tester.view.devicePixelRatio = devicePixelRatio;
+  addTearDown(tester.view.resetDevicePixelRatio);
   tester.view.viewInsets = FakeViewPadding(bottom: bottomInset);
   addTearDown(tester.view.resetViewInsets);
 
@@ -470,6 +482,22 @@ void composerTests() {
   });
 
   group('ChatScreen honest status', () {
+    testWidgets('keyboard inset stays in logical units at 2x DPR', (
+      tester,
+    ) async {
+      final h = await _pumpChat(tester, devicePixelRatio: 2, bottomInset: 150);
+      final screenHeight =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio;
+      final composer = tester.getRect(
+        find.byKey(const ValueKey('composer-surface')),
+      );
+      // FakeViewPadding is expressed in view pixels; MediaQuery converts it
+      // to 75 logical pixels at 2x. Multiplying it again would move the dock
+      // far too high and violate this screen-relative gap.
+      expect(screenHeight - composer.bottom, lessThan(120));
+      await _unmount(tester, h);
+    });
+
     testWidgets('after 10 s with no reply the placeholder says still working', (
       tester,
     ) async {
@@ -513,7 +541,8 @@ void composerTests() {
 
         await tester.tap(find.text('Retry'));
         await tester.pump();
-        expect(h.stream.startCalls, 2);
+        expect(h.stream.startCalls, 1);
+        expect(h.stream.continueCalls, 1);
 
         await _unmount(tester, h);
       },

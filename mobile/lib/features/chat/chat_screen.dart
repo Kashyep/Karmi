@@ -5,7 +5,6 @@ import '../../api/karmi_api.dart';
 import '../../api/stream/run_stream_client.dart';
 import '../../shell/bottom_chrome.dart';
 import '../../shell/breakpoints.dart';
-import '../../theme/karmi_motion.dart';
 import '../../shell/chat_header.dart';
 import '../../shell/chat_history_commands.dart';
 import '../../shell/history_panel.dart';
@@ -366,6 +365,18 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _retryLast() {
+    // A terminal provider/deferred failure is retried through the server's
+    // continuation endpoint. It creates a new run without replaying the
+    // idempotent start request or duplicating the user message.
+    if (_chatController.phase == ChatRunPhase.error) {
+      final failedAssistant = _chatController.messages
+          .where((message) => message.role == 'assistant')
+          .lastOrNull;
+      if (failedAssistant != null) {
+        _chatController.continueMessage(failedAssistant.id);
+      }
+      return;
+    }
     if (_chatController.currentClientMessageId != null ||
         _chatController.currentRunId != null) {
       _chatController.resume();
@@ -719,12 +730,13 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             KeyedSubtree(
               key: _dockKey,
-              child: AnimatedPadding(
+              child: Padding(
                 key: const ValueKey('chat-composer-dock'),
-                duration: KarmiMotion.composerDurationOf(context),
-                curve: KarmiMotion.composerCurve,
                 padding: EdgeInsets.only(
-                  bottom: _composerDockBottomPadding(context),
+                  bottom: _composerDockBottomPadding(
+                    context,
+                    constraints.maxHeight,
+                  ),
                 ),
                 child: _readingColumn(context, _buildComposer(), paneWidth),
               ),
@@ -773,8 +785,23 @@ class _ChatScreenState extends State<ChatScreen> {
   /// above it rather than pushing it to mid-screen.
   /// The keyboard is handled by the enclosing Scaffold's body resize, so only
   /// the system bottom padding is added here (adding the inset would double-count).
-  double _composerDockBottomPadding(BuildContext context) =>
-      MediaQuery.paddingOf(context).bottom;
+  double _composerDockBottomPadding(
+    BuildContext context,
+    double availableHeight,
+  ) {
+    final padding = MediaQuery.paddingOf(context).bottom;
+    final rootView = View.of(context);
+    final rootHeight = rootView.physicalSize.height / rootView.devicePixelRatio;
+    // MediaQueryData and layout constraints are both logical coordinates.
+    final keyboardInset = MediaQueryData.fromView(rootView).viewInsets.bottom;
+    // Scaffold may already have resized this body for the keyboard. Compare
+    // the body's available height with the root view before adding the inset,
+    // which keeps this dock correct in both nested shells and plain screens.
+    final bodyAlreadyResized =
+        rootHeight - availableHeight >= keyboardInset - 1;
+    final effectiveInset = bodyAlreadyResized ? 0.0 : keyboardInset;
+    return padding > effectiveInset ? padding : effectiveInset;
+  }
 
   /// Account-level failures (plan allowance, server capacity) apply to the whole chat.
   static bool _isAccountError(ErrorCategory? category) =>
