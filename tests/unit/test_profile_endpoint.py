@@ -89,6 +89,20 @@ def test_patch_profile_accepts_single_character_name(test_context: dict[str, obj
     assert response.status_code == 200
     assert response.json()["display_name"] == "A"
 
+def test_patch_profile_accepts_single_character_name(test_context: dict[str, object]) -> None:
+    factory = test_context["factory"]
+    settings = test_context["settings"]
+    client: TestClient = test_context["client"]  # type: ignore[assignment]
+    with factory() as session:  # type: ignore[operator]
+        _, _, token = create_identity(session, settings, name="SingleCharTarget")  # type: ignore[arg-type]
+    response = client.patch(
+        "/v1/user/profile",
+        json={"display_name": " A "},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "A"
+
 
 def test_patch_profile_rejects_too_long_name(test_context: dict[str, object]) -> None:
     factory = test_context["factory"]
