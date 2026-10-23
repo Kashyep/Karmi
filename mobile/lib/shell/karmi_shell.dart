@@ -6,6 +6,7 @@ import '../auth/session.dart';
 import '../armory/armory_controller.dart';
 import '../armory/preview_banner.dart';
 import '../features/armory/armory_screen.dart';
+import '../features/admin/admin_controller.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/plans/plan_selection_screen.dart';
 import '../features/settings/settings_screen.dart';
@@ -48,6 +49,7 @@ class KarmiShell extends StatefulWidget {
     this.historyRailBuilder,
     this.historyCommands,
     this.clock,
+    this.admin,
   });
 
   final KarmiApi api;
@@ -59,6 +61,9 @@ class KarmiShell extends StatefulWidget {
 
   /// Injected into the chat empty-state greeting; null uses the wall clock.
   final DateTime Function()? clock;
+
+  /// Admin console controller; null hides the Settings entry point.
+  final AdminController? admin;
 
   @override
   State<KarmiShell> createState() => _KarmiShellState();
@@ -161,6 +166,7 @@ class _KarmiShellState extends State<KarmiShell> {
           armory: widget.armory,
           onOpenArmory: _openArmory,
           onOpenPlans: _openPlans,
+          admin: widget.admin,
         );
       default:
         return const SizedBox.shrink();

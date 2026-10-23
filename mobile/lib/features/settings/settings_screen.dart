@@ -7,6 +7,8 @@ import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_glass.dart';
 import '../../widgets/focus_ring.dart';
 import '../../widgets/karmi_card.dart';
+import '../admin/admin_code_screen.dart';
+import '../admin/admin_controller.dart';
 
 /// Settings (T4.3): theme mode, tier theme (Armory), reduce transparency,
 /// licences, sign out.
@@ -21,6 +23,7 @@ class SettingsScreen extends StatelessWidget {
     required this.armory,
     required this.onOpenArmory,
     this.onOpenPlans,
+    this.admin,
   });
 
   final KarmiSettings settings;
@@ -28,12 +31,23 @@ class SettingsScreen extends StatelessWidget {
   final ArmoryController armory;
   final VoidCallback onOpenArmory;
   final VoidCallback? onOpenPlans;
+  final AdminController? admin;
+
+  void _openAdmin(BuildContext context) {
+    final controller = admin;
+    if (controller == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AdminCodeScreen(controller: controller),
+      ),
+    );
+  }
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = KarmiColors.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([settings, armory]),
+      listenable: Listenable.merge([settings, armory, if (admin != null) admin!]),
       builder: (context, _) => ListView(
         padding: karmiPageInsets(context),
         children: [
@@ -96,6 +110,19 @@ class SettingsScreen extends StatelessWidget {
                       subtitle: const Text('Unlock a beta tier with a code'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: onOpenPlans,
+                    ),
+                  ),
+                ],
+                if (admin?.canEnter ?? false) ...[
+                  const Divider(height: 1),
+                  KarmiFocusRing(
+                    child: ListTile(
+                      key: const ValueKey('admin_console_tile'),
+                      leading: const Icon(Icons.admin_panel_settings_outlined),
+                      title: const Text('Admin console'),
+                      subtitle: const Text('Users, monitor and audit'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _openAdmin(context),
                     ),
                   ),
                 ],

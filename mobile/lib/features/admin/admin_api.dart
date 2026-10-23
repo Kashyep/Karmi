@@ -244,8 +244,9 @@ abstract class AdminApi {
     required String reason,
   });
 
-  /// `GET /users/{id}/export`; returns the pretty-printed JSON text.
-  Future<String> exportUser(String token, String id);
+  /// `GET /users/{id}/export?reason=...`; returns the pretty-printed JSON text.
+  /// [reason] is mandatory (private-data access is audited).
+  Future<String> exportUser(String token, String id, {required String reason});
 
   /// `DELETE /users/{id}` with `{reason, confirm: "DELETE"}`.
   Future<void> deleteUser(String token, String id, {required String reason});
