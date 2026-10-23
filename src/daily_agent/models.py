@@ -85,6 +85,9 @@ class User(Base):
     active_theme: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     tester: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    tester_label: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Billing/admin temporary entitlement override and the plan to restore on expiry.
     # Admin suspension: a disabled user's tokens are rejected on every request.
     disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(
@@ -109,6 +112,8 @@ class Subscription(Base):
     policy_version: Mapped[str] = mapped_column(String(40), default="synthetic-dev-v1")
     status: Mapped[str] = mapped_column(String(20), default="active")
     event_version: Mapped[int] = mapped_column(BigInteger, default=0)
+    tier_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revert_plan_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Billing periods are monthly anniversaries of this anchor date.
     period_anchor: Mapped[date] = mapped_column(
         Date,
