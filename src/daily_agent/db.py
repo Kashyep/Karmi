@@ -1,11 +1,12 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 
+import anyio
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from daily_agent.config import Settings, get_settings
 from daily_agent.db_admission import (
-    acquire_session_lease,
+    acquire_session_lease_async,
     attach_lease,
     install_admission,
     release_session,
@@ -70,19 +71,20 @@ def get_engine() -> Engine:
 SessionLocal = sessionmaker(autoflush=False, expire_on_commit=False)
 
 
-def get_session() -> Generator[Session, None, None]:
+async def get_session() -> AsyncGenerator[Session, None]:
     if SessionLocal.kw.get("bind") is None:
         SessionLocal.configure(bind=get_engine())
     engine = SessionLocal.kw["bind"]
     # The slot is held until the handler calls ``release_session`` or the request ends. Streaming
     # handlers release before returning, so no slot or connection is held while SSE streams.
-    lease = acquire_session_lease(engine)
+    # The wait is async: a waiting request holds no worker thread (see ``db_admission``).
+    lease = await acquire_session_lease_async(engine)
     session = SessionLocal()
     attach_lease(session, lease)
     try:
         yield session
     finally:
-        release_session(session)
+        await anyio.to_thread.run_sync(release_session, session)
 
 
 def create_schema(target_engine: Engine | None = None) -> None:

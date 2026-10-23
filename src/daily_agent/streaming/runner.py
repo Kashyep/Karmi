@@ -16,7 +16,12 @@ from sqlalchemy.pool import SingletonThreadPool
 
 from daily_agent.config import Settings
 from daily_agent.conversations.service import touch_conversation
-from daily_agent.db_admission import leased_session
+from daily_agent.db_admission import (
+    RUNNER_WAIT_SECONDS,
+    acquire_for_factory_async,
+    leased_session,
+    run_with_lease,
+)
 from daily_agent.gateway.service import Gateway, build_system_prompt
 from daily_agent.gateway.types import (
     CapacityFullError,
@@ -167,7 +172,10 @@ class StreamRunner:
     async def _run_in_thread(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         if self._is_sqlite_singleton_memory():
             return fn(*args, **kwargs)
-        return await asyncio.to_thread(fn, *args, **kwargs)
+        # Take the DB slot on the loop, then run the section in a thread holding it. Waiting for
+        # the slot inside the thread would pin one of AnyIO's worker threads per waiting stream.
+        lease = await acquire_for_factory_async(self.session_factory, RUNNER_WAIT_SECONDS)
+        return await asyncio.to_thread(run_with_lease, lease, fn, *args, **kwargs)
 
     def _flush_db(
         self,

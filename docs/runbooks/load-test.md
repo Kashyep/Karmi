@@ -148,6 +148,14 @@ disabled (their defaults). Development auth is only honoured when `DAILY_AGENT_E
 
 Readiness check before loading: `curl -fsS http://127.0.0.1:8765/ready`.
 
+Platform budget row: the first request of each UTC day creates `platform_budgets` with the
+`DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO` in effect then; later changes do not update it. A row created
+with the 100000 micro default admits only 100 concurrent reservations (1000 micro each) and denies the
+rest with HTTP 429 `ALLOWANCE_EXHAUSTED`. Before a load run, check it:
+`SELECT * FROM platform_budgets ORDER BY window_key DESC LIMIT 1;` and raise `spend_limit_micro` to
+the harness value (`UPDATE platform_budgets SET spend_limit_micro = 100000000 WHERE window_key = '<today UTC>';`)
+if it is lower.
+
 Pool sizing: each worker opens at most `DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW` connections
 (here 40), so 2 workers use at most 80 of the 300 Postgres connections. Pool waits longer than
 `DATABASE_POOL_TIMEOUT` (default 15 s) surface as failed requests in the report.
@@ -219,3 +227,23 @@ server on the same host. Client: `scripts/load_test_sse.py`, one message per use
 Caveats: local, shared machine, development auth, fake OpenRouter (not a real provider), one message
 per user. Not a capacity or production claim. A ramp of 10 s held 500 concurrent users with no
 errors; an instantaneous 500-user burst with the current 80-connection pool does not.
+
+### Burst after admission fix (r1/burstpool, local)
+
+Same setup as above, scratch Postgres 55433 (database `m3`), 2 workers, pool 20+20, fake provider.
+Before the fix, the 500-user ramp-0 burst returned 360 to 400 HTTP 503 after about 51 s and passed
+with 140 to 100 successes. Measured root cause: `DatabaseAdmission.acquire` blocked a worker thread
+per waiting request. With AnyIO's default 40-thread limit, the waiters held every thread, so the
+admitted requests could not run their handlers and release their slots. Raising the thread limit to
+1000 alone gave 500/500 OK with first delta p50 5.0 s (wait stayed threaded). Fix: waiting is
+`async` on the loop (`DatabaseAdmission.acquire_async`, used by `get_session`), and stream-runner
+sections take their slot on the loop before entering a thread.
+
+| Run | Users | Ramp | Finished | Errors | first delta p50 / p95 (s) | total p50 / p95 (s) |
+|---|---|---|---|---|---|---|
+| Smoke | 1 | 0 | 1 | 0 | ttfb p50 0.115 | n/a |
+| Burst | 500 | 0 | 500 | 0 (0.0000) | 3.312 / 6.385 | 7.424 / 8.272 |
+| Load | 500 | 10 s | 500 | 0 (0.0000) | 0.022 / 0.031 | 0.154 / 0.164 |
+
+Before the fix, the same 500-user burst gave 360 to 400 HTTP 503 (error rate 0.72 to 0.80).
+
