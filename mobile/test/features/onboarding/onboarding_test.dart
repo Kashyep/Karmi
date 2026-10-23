@@ -56,7 +56,9 @@ void main() {
       );
 
       expect(find.byType(TextField), findsNWidgets(6));
-      await tester.enterText(find.byType(TextField).first, '123456');
+      for (int i = 0; i < 6; i++) {
+        await tester.enterText(find.byKey(ValueKey('otp_box_$i')), '${i + 1}');
+      }
       await settle(tester);
       expect(completedCode, '123456');
     });
@@ -125,11 +127,16 @@ void main() {
 
       // Step 0: Welcome
       expect(find.text('Meet Karmi'), findsOneWidget);
+      await tester.tap(find.text('Get Started'));
+      await settle(tester);
+
+      // Step 1: Auth (Dev sign-in)
+      expect(find.text("What's your email?"), findsOneWidget);
       await tester.tap(find.text('Continue (development sign-in)'));
       await settle(tester);
 
       // Profile step
-      expect(find.text('Tell us about yourself'), findsOneWidget);
+      expect(find.text('What should we call you?'), findsOneWidget);
 
       // Profile validation: empty first name
       await tester.tap(find.text('Continue'));
@@ -142,25 +149,24 @@ void main() {
       await settle(tester);
 
       // Preferences step
-      expect(find.text('Choose your style'), findsOneWidget);
+      expect(find.text('Set your preferences'), findsOneWidget);
       await tester.tap(find.text('Continue'));
       await settle(tester);
 
       // Plan intro step
-      expect(find.text('Choose your starting tier'), findsOneWidget);
-      await tester.tap(find.text('Continue'));
+      expect(find.text("You're starting on Ananta Free"), findsOneWidget);
+      await tester.tap(find.text('Continue with Ananta Free'));
       await settle(tester);
 
       // Permissions step
-      expect(find.text('Stay in sync'), findsOneWidget);
-      await tester.tap(find.text('Continue'));
+      expect(find.text('Stay updated on background tasks'), findsOneWidget);
+      await tester.tap(find.text('Allow Notifications'));
       await settle(tester);
 
       // Complete step
       expect(find.text("You're all set!"), findsOneWidget);
-      await tester.tap(find.text('Start chatting'));
+      await tester.tap(find.text('Enter Karmi'));
       await settle(tester);
-
       expect(settings.hasCompletedOnboarding, isTrue);
     });
 
@@ -185,7 +191,7 @@ void main() {
       );
 
       // Should resume at step 2 (Profile step)
-      expect(find.text('Tell us about yourself'), findsOneWidget);
+      expect(find.text('What should we call you?'), findsOneWidget);
     });
   });
 }
