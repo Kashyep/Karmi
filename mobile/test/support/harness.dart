@@ -211,7 +211,7 @@ Future<AppHandle> pumpApp(
       armory: armory,
       adaptiveGlassQuality: false,
       // Fixed clock keeps the time-of-day greeting identical across runs.
-      clock: () => DateTime(2026, 10, 22, 10),
+      clock: () => FakeBackend.pinnedNow,
     ),
   );
   await settle(tester);
