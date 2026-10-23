@@ -26,13 +26,12 @@ capacity claim.
 - No server-side metrics: database pool wait, query latency, per-worker CPU or memory, Redis
   latency. The script does not scrape `/metrics` or query Postgres. A pool-exhaustion failure appears
   only as an error outcome or status; the client cannot tell its cause.
-- No provider behaviour. Live models stay disabled, so replies come from the local deterministic
-  route (`LOCAL_FAKE_COST_MICRO` in `src/daily_agent/services.py`). Its latency and output are not
-  representative of a real provider.
-- `scripts/dev_fake_provider.py` is NOT in this path. The app has no provider base-URL override:
-  `src/daily_agent/gateway/adapters.py` hard-codes `OPENROUTER_CHAT_URL`. The fake provider's
-  `serve-backend` mode patches those constants and starts its own app on a fresh SQLite database,
-  which is not this Postgres stack, so it is not used here.
+- No real provider behaviour. Live models are ON, but OpenRouter is the fake OpenAI-compatible
+  server from `scripts/dev_fake_provider.py fake` (port `FAKE_PROVIDER_PORT`, default 8900). The
+  app's OpenRouter URLs are patched in `scripts/load_app.py` (`wire_fake_provider`); an httpx guard
+  blocks any request to `openrouter.ai` or `typesafe.ai`. Fake latency and output are not
+  representative of a real provider. The TypeSafe intent classifier is unconfigured (no
+  `TYPESAFE_API_KEY`), so it is skipped, not faked.
 - No reply-quality, correctness, resume, stop, continue or regenerate checks. The script sends only
   new messages.
 - Clerk authentication is not exercised. Users authenticate with development tokens, so the Clerk
@@ -117,26 +116,37 @@ PY
 
 `/tmp/m3-tokens.txt` contains bearer secrets. Delete it after the run.
 
-## 5. API server (WEB_CONCURRENCY workers)
+## 5. API server (fake provider, 2 workers)
 
 ```bash
-export WEB_CONCURRENCY=2
+export DAILY_AGENT_ENVIRONMENT=development
+export DAILY_AGENT_DATABASE_URL='postgresql+psycopg://karmi@127.0.0.1:55433/m3load'
+export DAILY_AGENT_REDIS_URL=redis://127.0.0.1:56380/0
 export DAILY_AGENT_DATABASE_POOL_SIZE=20
 export DAILY_AGENT_DATABASE_MAX_OVERFLOW=20
-export DAILY_AGENT_REDIS_URL=redis://127.0.0.1:56380/0
-# Keep the shared provider-request cap out of the way so the run measures the stream path.
-# With live models off the cap is normally not consulted; these values guard against it being.
+export DAILY_AGENT_RATE_LIMIT_PER_MINUTE=10000
+export DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO=100000000
 export DAILY_AGENT_GATEWAY_DAILY_REQUEST_LIMIT=1000000
 export DAILY_AGENT_GATEWAY_PAID_RESERVED_REQUESTS=0
-PYTHONPATH=src /tmp/wt2-int/.venv/bin/uvicorn daily_agent.api:app \
-  --host 127.0.0.1 --port 8000 --workers "$WEB_CONCURRENCY" &
+export FAKE_PROVIDER_PORT=8901
+unset TYPESAFE_API_KEY
+FAKE_PROVIDER_PORT=8901 /tmp/wt2-int/.venv/bin/python scripts/dev_fake_provider.py fake --port 8901 &
+echo $! > /tmp/m3-fake.pid
+cd /tmp/wt-m3 && PYTHONPATH=src /tmp/wt2-int/.venv/bin/uvicorn load_app:app --app-dir scripts \
+  --host 127.0.0.1 --port 8765 --workers 2 --no-access-log &
 echo $! > /tmp/m3-uvicorn.pid
 ```
 
-Live models, OpenRouter, OpenCode and paid checkout stay disabled (their defaults). Development
-auth is on by default and is only honoured when `DAILY_AGENT_ENVIRONMENT=development`.
+`scripts/load_app.py` applies the fake-provider wiring and env defaults (unset variables only)
+before importing `daily_agent.api`, so every worker gets it. Port 8765 is used because port 8000 is
+taken on the test machine. `--no-access-log` is required: `install_log_redaction`
+(`src/daily_agent/ratelimit.py`) drops `record.args`, which breaks access-log formatting.
 
-Readiness check before loading: `curl -fsS http://127.0.0.1:8000/ready`.
+Live models are on and OpenRouter is routed to the fake provider. OpenCode and paid checkout stay
+disabled (their defaults). Development auth is only honoured when `DAILY_AGENT_ENVIRONMENT=development`.
+
+
+Readiness check before loading: `curl -fsS http://127.0.0.1:8765/ready`.
 
 Pool sizing: each worker opens at most `DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW` connections
 (here 40), so 2 workers use at most 80 of the 300 Postgres connections. Pool waits longer than
@@ -146,7 +156,7 @@ Pool sizing: each worker opens at most `DATABASE_POOL_SIZE + DATABASE_MAX_OVERFL
 
 ```bash
 /tmp/wt2-int/.venv/bin/python scripts/load_test_sse.py \
-  --base-url http://127.0.0.1:8000 --tokens-file /tmp/m3-tokens.txt \
+  --base-url http://127.0.0.1:8765 --tokens-file /tmp/m3-tokens.txt \
   --users 1 --ramp-seconds 0 --timeout 30
 ```
 
@@ -156,7 +166,7 @@ Expect `outcomes: {'finished': 1}`. Stop here if it fails.
 
 ```bash
 /tmp/wt2-int/.venv/bin/python scripts/load_test_sse.py \
-  --base-url http://127.0.0.1:8000 --tokens-file /tmp/m3-tokens.txt \
+  --base-url http://127.0.0.1:8765 --tokens-file /tmp/m3-tokens.txt \
   --users 500 --messages-per-user 1 --ramp-seconds 10 --timeout 120 \
   --max-error-rate 0.01 --json-out /tmp/m3-load-500.json
 echo "exit=$?"
@@ -168,9 +178,8 @@ user at once; expect a higher peak of concurrent streams and more pool contentio
 ## 8. Teardown
 
 ```bash
-kill "$(cat /tmp/m3-uvicorn.pid)"
-redis-cli -p 56380 shutdown nosave
-/usr/bin/pg_ctl -D /tmp/m3-pg -m fast stop
+kill "$(cat /tmp/m3-uvicorn.pid)" "$(cat /tmp/m3-fake.pid)"
+# Stop Redis/Postgres only if this run started them (they were shared scratch services here).
 rm -f /tmp/m3-tokens.txt
 ```
 
@@ -181,3 +190,32 @@ samples (user index, outcome, status, timings, error category) and no tokens.
 
 Record the command lines, git commit, the summary block printed by the script, and the exit code.
 State the limits above with the result. Do not describe a run as a capacity or production result.
+
+## Measured results (2026-10-24, local)
+
+Setup: scratch Postgres on 127.0.0.1:55433 (database `m3load`, migrated to
+head); Redis on 56380; fake OpenRouter on 8901; `uvicorn load_app:app --workers 2 --no-access-log`
+on 8765; pool 20+20 per worker; `DAILY_AGENT_ENVIRONMENT=development`. Shared machine, client and
+server on the same host. Client: `scripts/load_test_sse.py`, one message per user.
+
+| Run | Users | Ramp | Finished | Errors | first delta p50 / p95 / p99 (s) | total p50 / p95 / p99 (s) | Wall (s) | req/s |
+|---|---|---|---|---|---|---|---|---|
+| Smoke | 3 | 0 | 3 | 0 | 0.139 / 0.186 / 0.186 | 0.279 / 0.325 / 0.325 | 0.33 | 9.13 |
+| Load | 500 | 10 s | 500 | 0 (0.0000) | 0.024 / 0.047 / 0.082 | 0.155 / 0.186 / 0.223 | 10.14 | 49.32 |
+| Burst | 500 | 0 | 140 | 360 `http_error` (HTTP 500), rate 0.72 | 75.74 / 76.98 / 77.21 (n=140) | 60.31 / 77.13 / 77.22 | 77.43 | 6.46 |
+
+- Load run: time to first byte p50 0.017 s, p95 0.037 s, p99 0.058 s; peak concurrent streams 13
+  (client-side). Exit 0.
+- Burst run: exit 1 (above `--max-error-rate` 0.01). Server log: 362 tracebacks, each
+  `sqlalchemy.exc.TimeoutError: QueuePool limit of size 20 overflow 20 reached, connection timed out,
+  timeout 15.00`. Cause: 500 simultaneous requests exceed the 80 pooled connections (2 workers ×
+  40) and the 15 s pool wait. The 500 responses are pool-exhaustion failures, not provider failures.
+  Peak concurrent streams 500 (client-side).
+- Zero HTTP 429 and zero HTTP 402 in either run. Zero `Traceback` in the load run.
+- Postgres connections for `m3load` sampled after the burst: 41 (a post-run sample, not the peak;
+  peak was not sampled).
+- Not measured: server CPU/memory, Redis latency, and peak Postgres connections during the burst.
+
+Caveats: local, shared machine, development auth, fake OpenRouter (not a real provider), one message
+per user. Not a capacity or production claim. A ramp of 10 s held 500 concurrent users with no
+errors; an instantaneous 500-user burst with the current 80-connection pool does not.
