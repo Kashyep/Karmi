@@ -59,9 +59,3 @@ flutter:
     - family: Noto Sans Math
       fonts:
         - asset: assets/google_fonts/NotoSansMath-Regular.ttf
-    - family: Noto Sans Symbols 2
-      fonts:
-        - asset: assets/google_fonts/NotoSansSymbols2-Regular.ttf
-    - family: Noto Sans
-      fonts:
-        - asset: assets/google_fonts/NotoSans-Regular.ttf
