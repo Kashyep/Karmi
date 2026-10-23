@@ -98,6 +98,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool? _composerBusy;
   DraftStore? _composerDraftStore;
   final Map<String, _BubbleMemo> _bubbleMemos = {};
+  final _composerFill = ComposerFill();
   @override
   void initState() {
     super.initState();
@@ -203,6 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _conversationListController.dispose();
     }
     _scrollController.dispose();
+    _composerFill.dispose();
     if (widget.conversationsApi == null) {
       _conversationsApi.close();
     }
@@ -455,6 +457,7 @@ class _ChatScreenState extends State<ChatScreen> {
         draftKey: draftKey,
         draftStore: draftStore,
         busy: busy,
+        fill: _composerFill,
         onSubmit: _composerSubmit,
         onStop: _composerStop,
       );
@@ -573,8 +576,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ChatEmptyState(
                                   key: const ValueKey('new-chat-empty-state'),
                                   clock: widget.clock,
-                                  onStarterPicked: (prompt) =>
-                                      _chatController.send(prompt),
+                                  composerFill: _composerFill,
                                 ),
                               ],
                             ),

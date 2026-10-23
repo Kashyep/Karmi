@@ -99,13 +99,16 @@ class _ComposerState extends State<Composer> {
   }
 
   void _onFillChanged() {
-    final text = widget.fill?.text;
+    final fill = widget.fill;
+    final text = fill?.text;
     if (text != null && text.isNotEmpty) {
       setState(() {
         _controller.text = text;
         _previousText = text;
-        _controller.selection = TextSelection.collapsed(offset: text.length);
+        _controller.selection =
+            fill?.selection ?? TextSelection.collapsed(offset: text.length);
       });
+      _focusNode.requestFocus();
       _scheduleDraftSave();
     }
   }

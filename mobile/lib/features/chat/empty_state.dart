@@ -2,26 +2,41 @@ import 'package:flutter/material.dart';
 
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_theme.dart';
+import 'composer/composer_fill.dart';
+
+/// Starter prompt fill text and cursor offset.
+class StarterChipFill {
+  const StarterChipFill({required this.text, required this.cursorOffset});
+
+  final String text;
+  final int cursorOffset;
+
+  TextSelection get selection => TextSelection.collapsed(offset: cursorOffset);
+}
 
 /// Empty New Chat state showing a time-of-day greeting, model/capability pill,
 /// capability caption, and 4 starter prompt chips (§3.1, §5.3, §5.6).
 class ChatEmptyState extends StatelessWidget {
   const ChatEmptyState({
     super.key = const ValueKey('new-chat-empty-state'),
-    required this.onStarterPicked,
+    this.onStarterPicked,
     this.clock = _defaultClock,
     this.onPromptTap,
     this.name,
     this.prompts = starterPrompts,
+    this.composerFill,
   });
 
   static DateTime _defaultClock() => DateTime.now();
 
   /// Callback when a starter prompt chip is tapped.
-  final ValueChanged<String> onStarterPicked;
+  final ValueChanged<String>? onStarterPicked;
 
   /// Optional alias for [onStarterPicked].
   final ValueChanged<String>? onPromptTap;
+
+  /// Optional composer fill handle to populate the composer without sending.
+  final ComposerFill? composerFill;
 
   /// Injectable clock for deterministic tests.
   final DateTime Function()? clock;
@@ -39,6 +54,28 @@ class ChatEmptyState extends StatelessWidget {
     'Review my code for bugs',
     'Summarise my notes into key points',
   ];
+
+  /// Mapping from starter prompt label to starter template text and cursor offset.
+  static StarterChipFill starterFillFor(String prompt) {
+    switch (prompt) {
+      case 'Explain a concept step by step':
+        return const StarterChipFill(
+          text: 'Explain  step by step',
+          cursorOffset: 8,
+        );
+      case 'Help me solve a maths problem':
+        return const StarterChipFill(text: 'Help me solve ', cursorOffset: 14);
+      case 'Review my code for bugs':
+        return const StarterChipFill(text: 'Review  for bugs', cursorOffset: 7);
+      case 'Summarise my notes into key points':
+        return const StarterChipFill(
+          text: 'Summarise  into key points',
+          cursorOffset: 10,
+        );
+      default:
+        return StarterChipFill(text: prompt, cursorOffset: prompt.length);
+    }
+  }
 
   static const List<String> defaultStarterPrompts = starterPrompts;
 
@@ -119,7 +156,12 @@ class ChatEmptyState extends StatelessWidget {
                       clipBehavior: Clip.antiAlias,
                       child: InkWell(
                         onTap: () {
-                          onStarterPicked(prompt);
+                          final fill = starterFillFor(prompt);
+                          composerFill?.fill(
+                            fill.text,
+                            selection: fill.selection,
+                          );
+                          onStarterPicked?.call(prompt);
                           onPromptTap?.call(prompt);
                         },
                         child: ConstrainedBox(
