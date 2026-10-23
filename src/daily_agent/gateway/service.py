@@ -10,9 +10,12 @@ Policy (all bounded, nothing hidden):
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import logging
 import re
-from collections.abc import Callable, Mapping, Sequence
+import threading
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -21,7 +24,17 @@ from daily_agent.gateway.adapters import ChatProvider
 from daily_agent.gateway.health import HealthTracker
 from daily_agent.gateway.registry import ModelRegistry, RegistryModel
 from daily_agent.gateway.router import RouteRequest, eligible_models
-from daily_agent.gateway.types import ChatRequest, ModelClass, ProviderError, TaskType
+from daily_agent.gateway.types import (
+    CapacityFullError,
+    ChatRequest,
+    ModelClass,
+    ProviderError,
+    ProviderUnavailableError,
+    StreamChunk,
+    TaskType,
+    UnauthorizedError,
+    ValidationFailedError,
+)
 from daily_agent.plans import PlanPolicy
 from daily_agent.providers import ProviderCall
 
@@ -226,3 +239,161 @@ class Gateway:
             return None, rejection
         calls.append(result.call)
         return result.text, None
+
+    async def stream(
+        self,
+        *,
+        plan: PlanPolicy,
+        text: str,
+        task_type: TaskType,
+        max_output_tokens: int,
+        messages: tuple[dict[str, str], ...] | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        if not self.live:
+            raise ProviderUnavailableError("gateway is disabled or no configured models")
+        system_prompt = build_system_prompt(self._clock())
+        request = RouteRequest(
+            plan=plan,
+            task_type=task_type,
+            prompt_tokens=max(1, (len(text.encode("utf-8")) + len(system_prompt)) // 4),
+            max_output_tokens=max_output_tokens,
+        )
+        pool = eligible_models(self.registry, request, is_available=self._available)
+        if not pool:
+            raise ProviderUnavailableError("no eligible model available")
+        model = pool[0]
+        provider = self._providers[model.provider]
+        self.health.begin_call(model.provider)
+        if messages is None:
+            chat_messages: tuple[dict[str, str], ...] = (
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text},
+            )
+        else:
+            chat_messages = messages
+        chat_req = ChatRequest(
+            model_id=model.model_id,
+            messages=chat_messages,
+            max_output_tokens=max_output_tokens,
+        )
+        try:
+            stream_gen = provider.stream(chat_req, model)
+        except ProviderError as exc:
+            self.health.record_failure(model.provider, model.model_id, exc)
+            if exc.kind in (ProviderError.TIMEOUT, ProviderError.SERVER):
+                raise ProviderUnavailableError(str(exc)) from exc
+            if exc.kind == ProviderError.AUTH:
+                raise UnauthorizedError(str(exc)) from exc
+            if exc.kind == ProviderError.RATE_LIMITED:
+                retry_s = int(exc.retry_after_seconds) if exc.retry_after_seconds else None
+                raise CapacityFullError(str(exc), retry_after_s=retry_s) from exc
+            raise ProviderUnavailableError(str(exc)) from exc
+        except Exception as exc:
+            self.health.record_failure(model.provider, model.model_id, ProviderError(ProviderError.SERVER, str(exc)))
+            raise ProviderUnavailableError(str(exc)) from exc
+
+        full_text = ""
+        final_finish_reason: str | None = None
+        final_call: ProviderCall | None = None
+
+        try:
+            async for chunk in _stream_with_timeouts(stream_gen, first_timeout=20.0, gap_timeout=30.0):
+                if chunk.text:
+                    full_text += chunk.text
+                    yield chunk
+                if chunk.finish_reason is not None:
+                    final_finish_reason = chunk.finish_reason
+                if chunk.call is not None:
+                    final_call = chunk.call
+        except TimeoutError as exc:
+            self.health.record_failure(
+                model.provider, model.model_id, ProviderError(ProviderError.TIMEOUT, "timeout")
+            )
+            raise ProviderUnavailableError("provider timed out during streaming") from exc
+        except ProviderError as exc:
+            self.health.record_failure(model.provider, model.model_id, exc)
+            if exc.kind in (ProviderError.TIMEOUT, ProviderError.SERVER):
+                raise ProviderUnavailableError(str(exc)) from exc
+            if exc.kind == ProviderError.AUTH:
+                raise UnauthorizedError(str(exc)) from exc
+            if exc.kind == ProviderError.RATE_LIMITED:
+                retry_s = int(exc.retry_after_seconds) if exc.retry_after_seconds else None
+                raise CapacityFullError(str(exc), retry_after_s=retry_s) from exc
+            raise ProviderUnavailableError(str(exc)) from exc
+        except Exception as exc:
+            self.health.record_failure(
+                model.provider, model.model_id, ProviderError(ProviderError.SERVER, str(exc))
+            )
+            raise ProviderUnavailableError(str(exc)) from exc
+
+        self.health.record_success(model.provider)
+        rejection = validate_output(full_text, final_finish_reason, task_type)
+        if rejection is not None:
+            logger.warning("stream output rejected model=%s reason=%s", model.action, rejection)
+            raise ValidationFailedError(f"validation failed: {rejection}")
+
+        # Map finish reason
+        if final_finish_reason == "length":
+            mapped_reason = "length"
+        elif final_finish_reason == "content_filter":
+            mapped_reason = "content_filter"
+        elif final_finish_reason == "error":
+            mapped_reason = "error"
+        else:
+            mapped_reason = "stop"
+
+        if final_call is None:
+            final_call = ProviderCall(
+                provider=model.provider,
+                model_id=model.model_id,
+                operation="generate",
+                input_tokens=None,
+                output_tokens=None,
+                cost_micro=0,
+                measurement=FREE_MEASUREMENT,
+                rate_version=f"registry-{model.snapshot_date}",
+            )
+        yield StreamChunk(text="", finish_reason=mapped_reason, call=final_call)
+
+
+async def _stream_with_timeouts(
+    stream_obj: Iterator[StreamChunk] | AsyncIterator[StreamChunk],
+    first_timeout: float = 20.0,
+    gap_timeout: float = 30.0,
+) -> AsyncIterator[StreamChunk]:
+    if inspect.isasyncgen(stream_obj) or hasattr(stream_obj, "__anext__"):
+        first = True
+        anext_fn = stream_obj.__anext__
+        while True:
+            timeout = first_timeout if first else gap_timeout
+            try:
+                chunk = await asyncio.wait_for(anext_fn(), timeout=timeout)
+            except StopAsyncIteration:
+                break
+            first = False
+            yield chunk
+    else:
+        queue: asyncio.Queue[tuple[StreamChunk | None, Exception | None]] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def _worker() -> None:
+            try:
+                for item in stream_obj:
+                    loop.call_soon_threadsafe(queue.put_nowait, (item, None))
+                loop.call_soon_threadsafe(queue.put_nowait, (None, None))
+            except Exception as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, (None, exc))
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+
+        first = True
+        while True:
+            timeout = first_timeout if first else gap_timeout
+            item, exc = await asyncio.wait_for(queue.get(), timeout=timeout)
+            first = False
+            if exc is not None:
+                raise exc
+            if item is None:
+                break
+            yield item

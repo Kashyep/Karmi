@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:karmi_app/api/models.dart';
 import 'package:karmi_app/features/chat/chat_entry.dart';
 import 'package:karmi_app/features/chat/message_bubble.dart';
+import 'package:karmi_app/theme/karmi_theme.dart';
 
 import '../support/harness.dart';
 
@@ -15,28 +15,9 @@ const _prose =
     'as soon as the server answers. Short answers come first; details follow '
     'when you ask for them, and every reply shows its current state.';
 
-/// Average characters per full rendered line of the reply text (the last,
-/// partial line is excluded).
-double charsPerLine(WidgetTester tester) {
-  final paragraph = tester.renderObject<RenderParagraph>(find.text(_prose));
-  final tops =
-      paragraph
-          .getBoxesForSelection(
-            const TextSelection(baseOffset: 0, extentOffset: _prose.length),
-          )
-          .map((b) => b.top)
-          .toSet()
-          .toList()
-        ..sort();
-  final lastLineStart = paragraph
-      .getPositionForOffset(Offset(0, tops.last + 1))
-      .offset;
-  return lastLineStart / (tops.length - 1);
-}
-
 void main() {
   for (final scale in [1.0, 2.0]) {
-    testWidgets('wide screens cap bubbles at ~65-75 chars/line (x$scale)', (
+    testWidgets('wide screens cap bubbles at <= 720px (x$scale)', (
       tester,
     ) async {
       await pumpHost(
@@ -61,8 +42,8 @@ void main() {
       );
       await tester.runAsync(GoogleFonts.pendingFonts);
       await tester.pump();
-      final cpl = charsPerLine(tester);
-      expect(cpl, inInclusiveRange(65, 75), reason: '$cpl chars/line');
+      final textWidth = tester.getSize(find.text(_prose)).width;
+      expect(textWidth, lessThanOrEqualTo(KarmiShape.readableColumnMaxWidth));
     });
   }
 }

@@ -1,7 +1,7 @@
 name: karmi_app
 description: "Karmi mobile client (Android and iOS)."
 publish_to: 'none'
-version: 0.1.0-beta.2+2
+version: 0.1.0-beta.3+3
 
 environment:
   sdk: '>=3.10.0 <4.0.0'
@@ -18,7 +18,8 @@ dependencies:
   http: 1.6.0
   clerk_flutter: 0.0.18-beta
   clerk_auth: 0.0.18-beta
-  flutter_markdown_plus: 1.0.12
+  markdown: ^7.3.1
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
@@ -49,3 +50,9 @@ flutter:
     - family: Noto Serif Devanagari
       fonts:
         - asset: assets/google_fonts/NotoSerifDevanagari-Regular.ttf
+    # Monospace for code blocks and inline code (resolved by name; `monospace` is the fallback).
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/google_fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/google_fonts/JetBrainsMono-Bold.ttf
+          weight: 700

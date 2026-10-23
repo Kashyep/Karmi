@@ -1,538 +1,761 @@
 import 'package:flutter/material.dart';
 
+import '../../api/conversations/conversations_api.dart';
 import '../../api/karmi_api.dart';
+import '../../api/stream/run_stream_client.dart';
+import '../../shell/breakpoints.dart';
 import '../../theme/karmi_motion.dart';
-import '../../widgets/feedback.dart';
+import '../../shell/chat_header.dart';
+import '../../shell/chat_history_commands.dart';
+import '../../shell/history_panel.dart';
+import '../../theme/karmi_theme.dart';
+import 'empty_state.dart';
 import '../../widgets/karmi_card.dart';
+import '../history/conversation_list.dart';
+import '../history/conversation_list_controller.dart';
 import '../tasks/task_confirmation_sheet.dart';
-import 'chat_controller.dart';
-import 'chat_entry.dart';
-
-export 'chat_controller.dart';
 import 'composer.dart';
+import 'composer/draft_store.dart';
+import 'error_card.dart';
 import 'message_bubble.dart';
-import 'status_chip.dart';
+import 'processing_panel.dart';
+import 'scroll/end_anchored_scroll.dart';
+import 'scroll/jump_to_latest_button.dart';
+import 'state/chat_controller.dart';
 
-/// Chat tab: empty, pending, per-outcome replies, and failed / offline /
-/// in-flight (409) / limit-reached (429) states. No streaming or history exists
-/// server-side, so the transcript is in memory only.
+/// Chat tab: streaming messages, error recovery, history navigation, and rich rendering.
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
     required this.api,
-    this.controller,
     this.onOpenPlans,
+    this.conversationId,
+    this.chatController,
+    this.conversationListController,
+    this.onConversationChanged,
+    this.runStreamClient,
+    this.conversationsApi,
+    this.draftStore,
+    this.clock,
+    this.historyCommands,
+    this.trailing,
   });
-
   final KarmiApi api;
-  final ChatController? controller;
   final VoidCallback? onOpenPlans;
+  final String? conversationId;
+  final ChatController? chatController;
+  final ConversationListController? conversationListController;
+  final ValueChanged<String?>? onConversationChanged;
+  final RunStreamClient? runStreamClient;
+  final ConversationsApi? conversationsApi;
+  final DraftStore? draftStore;
+  final DateTime Function()? clock;
+  final ChatHistoryCommands? historyCommands;
+  final Widget? trailing;
+
+  /// Builds a history rail widget for wide layouts.
+  static Widget historyRailBuilder({
+    required BuildContext context,
+    required ConversationListController controller,
+    required ValueChanged<String> onOpen,
+    required VoidCallback onNewChat,
+  }) {
+    return ConversationList(
+      controller: controller,
+      onOpen: onOpen,
+      onNewChat: onNewChat,
+    );
+  }
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final List<ChatEntry> _entries = [];
-  final _scroll = ScrollController();
-  int _nextId = 0;
-  UserEntry? _pending;
-  _ActionError? _actionError;
+  late RunStreamClient _runStreamClient;
+  late ConversationsApi _conversationsApi;
+  late ChatController _chatController;
+  late ConversationListController _conversationListController;
+  late EndAnchoredScrollController _scrollController;
+  bool _ownsChatController = false;
+  bool _ownsConversationListController = false;
+  bool _isLoadingMessages = false;
+  String? _activeConversationId;
 
+  final Map<String, FeedbackRating> _feedbackRatings = {};
+  final Map<String, String> _feedbackReasons = {};
+  final Set<String> _feedbackInFlight = {};
+  ErrorCategory? _feedbackError;
+  VoidCallback? _feedbackRetry;
+
+  // Stable callbacks and memoized widget instances. A ChatScreen rebuild
+  // (setState on a controller notify) must not hand Composer or unchanged
+  // bubbles new instances; Flutter skips an element whose widget is identical.
+  late final ValueChanged<ComposerSubmit> _composerSubmit = _submitComposer;
+  late final VoidCallback _composerStop = _stopComposer;
+  Widget? _composerWidget;
+  String? _composerDraftKey;
+  bool? _composerBusy;
+  DraftStore? _composerDraftStore;
+  final Map<String, _BubbleMemo> _bubbleMemos = {};
   @override
   void initState() {
     super.initState();
-    widget.controller?.addListener(_newChat);
+    _activeConversationId = widget.conversationId;
+    final commands = widget.historyCommands;
+    if (commands != null) {
+      commands.openConversation = (id) => _loadConversationMessages(id);
+      commands.newChat = _startNewChat;
+      commands.activeId.value = _activeConversationId;
+    }
+    _runStreamClient =
+        widget.runStreamClient ?? RunStreamClient.fromApi(widget.api);
+    _conversationsApi =
+        widget.conversationsApi ??
+        ConversationsApi(
+          baseUrl: widget.api.baseUrl,
+          tokenProvider: widget.api.tokenProvider,
+          client: widget.api.client,
+        );
+
+    _scrollController = EndAnchoredScrollController();
+
+    if (widget.chatController != null) {
+      _chatController = widget.chatController!;
+      _ownsChatController = false;
+    } else {
+      _chatController = ChatController(
+        client: _runStreamClient,
+        conversationId: _activeConversationId,
+      );
+      _ownsChatController = true;
+    }
+    _chatController.addListener(_onChatControllerChanged);
+
+    if (widget.conversationListController != null) {
+      _conversationListController = widget.conversationListController!;
+      _ownsConversationListController = false;
+    } else {
+      _conversationListController = ConversationListController(
+        api: _conversationsApi,
+      );
+      _ownsConversationListController = true;
+      _conversationListController.refresh();
+    }
+    _conversationListController.addListener(_onConversationListChanged);
+
+    if (_activeConversationId != null && _chatController.messages.isEmpty) {
+      _loadConversationMessages(_activeConversationId!);
+    }
   }
 
   @override
-  void didUpdateWidget(covariant ChatScreen oldWidget) {
+  void didUpdateWidget(ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller?.removeListener(_newChat);
-      widget.controller?.addListener(_newChat);
+    if (widget.historyCommands != oldWidget.historyCommands) {
+      if (oldWidget.historyCommands != null) {
+        oldWidget.historyCommands!.openConversation = null;
+        oldWidget.historyCommands!.newChat = null;
+      }
+      if (widget.historyCommands != null) {
+        widget.historyCommands!.openConversation = (id) =>
+            _loadConversationMessages(id);
+        widget.historyCommands!.newChat = _startNewChat;
+        widget.historyCommands!.activeId.value = _activeConversationId;
+      }
+    }
+    if (widget.conversationListController !=
+        oldWidget.conversationListController) {
+      oldWidget.conversationListController?.removeListener(
+        _onConversationListChanged,
+      );
+      if (widget.conversationListController != null) {
+        _conversationListController = widget.conversationListController!;
+        _ownsConversationListController = false;
+        _conversationListController.addListener(_onConversationListChanged);
+      }
+    }
+    if (widget.conversationId != oldWidget.conversationId &&
+        widget.conversationId != _activeConversationId) {
+      _activeConversationId = widget.conversationId;
+      widget.historyCommands?.activeId.value = _activeConversationId;
+      if (_activeConversationId != null) {
+        _loadConversationMessages(_activeConversationId!);
+      } else {
+        _startNewChat();
+      }
     }
   }
 
   @override
   void dispose() {
-    widget.controller?.removeListener(_newChat);
-    _scroll.dispose();
+    final commands = widget.historyCommands;
+    if (commands != null) {
+      commands.openConversation = null;
+      commands.newChat = null;
+    }
+    _chatController.removeListener(_onChatControllerChanged);
+    _conversationListController.removeListener(_onConversationListChanged);
+    if (_ownsChatController) {
+      _chatController.dispose();
+    }
+    if (_ownsConversationListController) {
+      _conversationListController.dispose();
+    }
+    _scrollController.dispose();
+    if (widget.conversationsApi == null) {
+      _conversationsApi.close();
+    }
     super.dispose();
   }
 
-  void _newChat() {
-    setState(() {
-      _entries.clear();
-      _pending = null;
-      _actionError = null;
-    });
+  void _onConversationListChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
-  void _send(String text) {
-    _actionError = null;
-    final history = buildHistoryFromEntries(_entries);
-    final entry = UserEntry(
-      id: 'u${_nextId++}',
-      text: text,
-      idempotencyKey: KarmiApi.newIdempotencyKey(),
-      history: history,
-    );
-    setState(() => _entries.add(entry));
-    _deliver(entry);
+  void _onChatControllerChanged() {
+    if (!mounted) return;
+    if (_chatController.conversationId != null &&
+        _chatController.conversationId != _activeConversationId) {
+      _activeConversationId = _chatController.conversationId;
+      widget.historyCommands?.activeId.value = _activeConversationId;
+      widget.onConversationChanged?.call(_activeConversationId);
+      _conversationListController.refresh();
+    }
+    setState(() {});
   }
 
-  /// Retries reuse the entry's idempotency key.
-  void _retry(UserEntry entry) {
-    setState(() => entry.state = SendState.sending);
-    _deliver(entry);
-  }
-
-  Future<void> _deliver(UserEntry entry) async {
-    setState(() => _pending = entry);
-    _scrollToEnd();
-    try {
-      final reply = await widget.api.sendMessage(
-        entry.text,
-        idempotencyKey: entry.idempotencyKey,
-        history: entry.history,
+  void _startNewChat() {
+    if (_ownsChatController) {
+      _chatController.removeListener(_onChatControllerChanged);
+      _chatController.dispose();
+      _activeConversationId = null;
+      _chatController = ChatController(
+        client: _runStreamClient,
+        conversationId: null,
       );
+      _chatController.addListener(_onChatControllerChanged);
+    } else {
+      _activeConversationId = null;
+    }
+    widget.historyCommands?.activeId.value = null;
+    widget.onConversationChanged?.call(null);
+    _feedbackRatings.clear();
+    _feedbackReasons.clear();
+    _feedbackInFlight.clear();
+    _feedbackError = null;
+    _feedbackRetry = null;
+    setState(() {});
+  }
+
+  Future<void> _loadConversationMessages(String conversationId) async {
+    setState(() {
+      _isLoadingMessages = true;
+      _activeConversationId = conversationId;
+    });
+    widget.historyCommands?.activeId.value = conversationId;
+
+    if (_ownsChatController) {
+      _chatController.stop();
+    }
+
+    try {
+      final page = await _conversationsApi.messages(conversationId);
       if (!mounted) return;
-      if (!_entries.contains(entry)) return;
-      setState(() {
-        entry.state = SendState.sent;
-        _entries.add(ReplyEntry(id: 'r${_nextId++}', message: reply));
-      });
-    } on KarmiApiException catch (error) {
-      if (!mounted) return;
-      if (!_entries.contains(entry)) return;
-      setState(() {
-        entry.state = switch (error) {
-          NetworkException() => SendState.offline,
-          InFlightException() => SendState.inFlight,
-          LimitReachedException() => SendState.limitReached,
-          BetaCapacityFullException() => SendState.capacityFull,
-          _ => SendState.failed,
-        };
-        if (error is LimitReachedException) entry.resetAt = error.resetAt;
-        if (error is BetaCapacityFullException) entry.resetAt = error.resetAt;
-      });
+      if (_activeConversationId != conversationId) return;
+
+      if (_ownsChatController) {
+        _chatController.removeListener(_onChatControllerChanged);
+        _chatController.dispose();
+        _chatController = ChatController(
+          client: _runStreamClient,
+          conversationId: conversationId,
+          initialMessages: page.items,
+        );
+        _chatController.addListener(_onChatControllerChanged);
+      }
+      widget.onConversationChanged?.call(conversationId);
+    } catch (e) {
+      // In case of error loading messages, retain state
     } finally {
-      // A New chat may have started another send meanwhile; only clear our own.
-      if (mounted && identical(_pending, entry)) {
-        setState(() => _pending = null);
+      if (mounted && _activeConversationId == conversationId) {
+        setState(() => _isLoadingMessages = false);
       }
     }
-    _scrollToEnd();
   }
 
-  void _updateReply(ReplyEntry oldEntry, ReplyEntry newEntry) {
-    final index = _entries.indexOf(oldEntry);
-    if (index != -1) {
-      _entries[index] = newEntry;
-    }
-  }
+  Future<void> _onFeedback(
+    ChatMessageView message,
+    FeedbackRating rating,
+  ) async {
+    final runId = message.runId ?? _chatController.currentRunId;
+    if (runId == null) return;
 
-  Future<void> _onFeedback(ReplyEntry reply, FeedbackRating rating) async {
-    final updated = reply.copyWith(
-      feedbackRating: rating,
-      clearReason: rating == FeedbackRating.up,
-      isFeedbackInFlight: true,
-    );
     setState(() {
-      _updateReply(reply, updated);
-      _actionError = null;
+      _feedbackRatings[message.id] = rating;
+      if (rating == FeedbackRating.up) {
+        _feedbackReasons.remove(message.id);
+      }
+      _feedbackInFlight.add(message.id);
+      _feedbackError = null;
+      _feedbackRetry = null;
     });
+
     try {
       await widget.api.sendFeedback(
-        reply.message.runId,
+        runId,
         rating: rating,
-        reason: updated.feedbackReason,
+        reason: _feedbackReasons[message.id],
       );
-    } on KarmiApiException catch (error) {
-      // The reply is gone after New chat: no banner for a cleared transcript.
-      if (!mounted || !_entries.contains(updated)) return;
+    } catch (_) {
+      if (!mounted) return;
       setState(() {
-        _actionError = _ActionError(
-          title: "Couldn't send feedback",
-          message: error is NetworkException
-              ? "Karmi couldn't reach the server. Check your connection and retry."
-              : 'Something went wrong on the server while sending feedback.',
-          retry: () => _onFeedback(updated, rating),
-        );
+        _feedbackError = ErrorCategory.internal;
+        _feedbackRetry = () => _onFeedback(message, rating);
       });
     } finally {
       if (mounted) {
-        setState(
-          () => _updateReply(
-            updated,
-            updated.copyWith(isFeedbackInFlight: false),
-          ),
-        );
+        setState(() {
+          _feedbackInFlight.remove(message.id);
+        });
       }
     }
   }
 
-  Future<void> _onSelectReason(ReplyEntry reply, String reason) async {
-    final updated = reply.copyWith(
-      feedbackReason: reason,
-      isFeedbackInFlight: true,
-    );
+  Future<void> _onSelectReason(ChatMessageView message, String reason) async {
+    final runId = message.runId ?? _chatController.currentRunId;
+    if (runId == null) return;
+
     setState(() {
-      _updateReply(reply, updated);
-      _actionError = null;
+      _feedbackReasons[message.id] = reason;
+      _feedbackInFlight.add(message.id);
+      _feedbackError = null;
+      _feedbackRetry = null;
     });
+
     try {
       await widget.api.sendFeedback(
-        reply.message.runId,
-        rating: updated.feedbackRating ?? FeedbackRating.down,
+        runId,
+        rating: _feedbackRatings[message.id] ?? FeedbackRating.down,
         reason: reason,
       );
-    } on KarmiApiException catch (error) {
-      if (!mounted || !_entries.contains(updated)) return;
-      setState(() {
-        _actionError = _ActionError(
-          title: "Couldn't send feedback",
-          message: error is NetworkException
-              ? "Karmi couldn't reach the server. Check your connection and retry."
-              : 'Something went wrong on the server while sending feedback.',
-          retry: () => _onSelectReason(updated, reason),
-        );
-      });
-    } finally {
-      if (mounted) {
-        setState(
-          () => _updateReply(
-            updated,
-            updated.copyWith(isFeedbackInFlight: false),
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _onRegenerate(ReplyEntry reply) async {
-    final replyIndex = _entries.indexWhere((e) => e.id == reply.id);
-    final prompt = replyIndex <= 0
-        ? null
-        : _entries.take(replyIndex).whereType<UserEntry>().lastOrNull;
-    if (prompt == null) return;
-    final updated = reply.copyWith(isRegenerating: true);
-    setState(() {
-      _updateReply(reply, updated);
-      _actionError = null;
-    });
-    try {
-      final newReply = await widget.api.regenerateRun(
-        reply.message.runId,
-        text: prompt.text,
-        idempotencyKey: KarmiApi.newIdempotencyKey(),
-        reason: reply.feedbackReason,
-        history: prompt.history,
-      );
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        final replacement = ReplyEntry(id: 'r${_nextId++}', message: newReply);
-        _updateReply(updated, replacement);
-      });
-    } on KarmiApiException catch (error) {
-      if (!mounted || !_entries.contains(updated)) return;
-      setState(() {
-        _actionError = _ActionError(
-          title: "Couldn't regenerate reply",
-          message: error is NetworkException
-              ? "Karmi couldn't reach the server. Check your connection and retry."
-              : 'Something went wrong on the server while regenerating the reply.',
-          retry: () => _onRegenerate(updated),
-        );
+        _feedbackError = ErrorCategory.internal;
+        _feedbackRetry = () => _onSelectReason(message, reason);
       });
     } finally {
       if (mounted) {
-        setState(
-          () => _updateReply(updated, updated.copyWith(isRegenerating: false)),
-        );
+        setState(() {
+          _feedbackInFlight.remove(message.id);
+        });
       }
     }
   }
 
-  void _scrollToEnd() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scroll.hasClients) return;
-      final target = _scroll.position.maxScrollExtent;
-      final duration = KarmiMotion.duration(context);
-      if (duration == Duration.zero) {
-        _scroll.jumpTo(target);
-      } else {
-        _scroll.animateTo(target, duration: duration, curve: Curves.easeOut);
-      }
-    });
+  void _retryLast() {
+    if (_chatController.currentClientMessageId != null ||
+        _chatController.currentRunId != null) {
+      _chatController.resume();
+      return;
+    }
+    final lastUser = _chatController.messages
+        .where((m) => m.role == 'user')
+        .lastOrNull;
+    if (lastUser != null) {
+      _chatController.send(lastUser.content);
+    }
   }
 
-  UserEntry? get _failed {
-    for (final entry in _entries.reversed) {
-      if (entry is UserEntry) {
-        return entry.state == SendState.sent || entry.state == SendState.sending
-            ? null
-            : entry;
+  void _continueLast() {
+    final lastAssistant = _chatController.messages
+        .where((m) => m.role == 'assistant')
+        .lastOrNull;
+    if (lastAssistant != null) {
+      _chatController.continueMessage(lastAssistant.id);
+    }
+  }
+
+  bool get _isBusy =>
+      _chatController.phase == ChatRunPhase.sending ||
+      _chatController.phase == ChatRunPhase.streaming ||
+      _chatController.phase == ChatRunPhase.stalled;
+
+  void _openHistoryModal() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => SizedBox(
+        height: MediaQuery.sizeOf(sheetContext).height * 0.8,
+        child: ConversationList(
+          controller: _conversationListController,
+          clock: widget.clock,
+          onOpen: (id) {
+            Navigator.of(sheetContext).pop();
+            _loadConversationMessages(id);
+          },
+          onNewChat: () {
+            Navigator.of(sheetContext).pop();
+            _startNewChat();
+          },
+        ),
+      ),
+    );
+  }
+
+  String get _activeConversationTitle {
+    final id = _activeConversationId;
+    if (id == null) return 'New chat';
+    for (final conv in _conversationListController.conversations) {
+      if (conv.id == id) {
+        final title = conv.title?.trim();
+        if (title != null && title.isNotEmpty) return title;
+        break;
       }
     }
-    return null;
+    return 'New chat';
+  }
+
+  VoidCallback? _resolveOpenHistory(BuildContext context) {
+    final scope = HistoryPanelScope.maybeOf(context);
+    if (scope == null) {
+      return _openHistoryModal;
+    }
+    if (WorkspaceSize.of(context) == WorkspaceSize.expanded) {
+      return null;
+    }
+    return scope.openHistory;
+  }
+
+  void _submitComposer(ComposerSubmit submit) {
+    final attachments = submit.attachments
+        .map((a) => a.toFencedBlock())
+        .toList();
+    _chatController.send(submit.text, attachments);
+  }
+
+  void _stopComposer() => _chatController.stop();
+
+  /// Returns the same Composer instance while its inputs are unchanged.
+  Widget _buildComposer() {
+    final draftKey = _activeConversationId ?? 'new';
+    final busy = _isBusy;
+    final draftStore = widget.draftStore;
+    if (_composerWidget == null ||
+        draftKey != _composerDraftKey ||
+        busy != _composerBusy ||
+        !identical(draftStore, _composerDraftStore)) {
+      _composerDraftKey = draftKey;
+      _composerBusy = busy;
+      _composerDraftStore = draftStore;
+      _composerWidget = Composer(
+        draftKey: draftKey,
+        draftStore: draftStore,
+        busy: busy,
+        onSubmit: _composerSubmit,
+        onStop: _composerStop,
+      );
+    }
+    return _composerWidget!;
+  }
+
+  /// Returns the cached bubble widget when the message object and every input
+  /// the bubble reads are unchanged; otherwise builds and records a new one.
+  Widget _memoBubble(
+    ChatMessageView msg,
+    int index,
+    int count,
+    int lastAssistantIndex,
+  ) {
+    final memo = _BubbleMemo(
+      msg: msg,
+      announce: index == count - 1 && msg.role == 'assistant',
+      isLastAssistant: index == lastAssistantIndex,
+      busy: _isBusy,
+      feedbackRating: _feedbackRatings[msg.id],
+      feedbackReason: _feedbackReasons[msg.id],
+      isFeedbackInFlight: _feedbackInFlight.contains(msg.id),
+    );
+    final cached = _bubbleMemos[msg.id];
+    if (cached != null && cached.sameInputs(memo)) {
+      return cached.widget;
+    }
+    memo.widget = _buildChatBubble(msg, index, count, lastAssistantIndex);
+    _bubbleMemos[msg.id] = memo;
+    return memo.widget;
+  }
+
+  Widget _buildChatBubble(
+    ChatMessageView msg,
+    int index,
+    int count,
+    int lastAssistantIndex,
+  ) {
+    final isLastAssistant = index == lastAssistantIndex;
+    return MessageBubble.chatMessage(
+      key: ValueKey(msg.id),
+      chatMessage: msg,
+      announce: index == count - 1 && msg.role == 'assistant',
+      onContinue: msg.finishReason == FinishReason.length
+          ? () => _chatController.continueMessage(msg.id)
+          : null,
+      onResume:
+          (msg.finishReason == FinishReason.interrupted ||
+              msg.status == MessageStatus.interrupted)
+          ? _chatController.resume
+          : null,
+      onRegenerate: isLastAssistant && !_isBusy
+          ? () => _chatController.regenerate(msg.id)
+          : null,
+      onReviewDetails: msg.outcome == Outcome.askUser
+          ? () => showTaskConfirmationSheet(
+              context,
+              MessageView(
+                runId: msg.runId ?? msg.id,
+                status: msg.status.wireName,
+                outcome: Outcome.askUser,
+                response: msg.content,
+              ),
+            )
+          : null,
+      onFeedback: msg.role == 'assistant'
+          ? (rating) => _onFeedback(msg, rating)
+          : null,
+      onSelectReason: msg.role == 'assistant'
+          ? (reason) => _onSelectReason(msg, reason)
+          : null,
+      feedbackRating: _feedbackRatings[msg.id],
+      feedbackReason: _feedbackReasons[msg.id],
+      isFeedbackInFlight: _feedbackInFlight.contains(msg.id),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final insets = karmiPageInsets(context);
-    final lastReply = _entries.lastIndexWhere((e) => e is ReplyEntry);
-    final failed = _failed;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final paneWidth = constraints.maxWidth;
+        final insets = _readingInsets(
+          context,
+          karmiPageInsets(context),
+          paneWidth,
+        );
+        final messages = _chatController.messages;
+        final lastAssistantIndex = messages.lastIndexWhere(
+          (m) => m.role == 'assistant',
+        );
 
-    return Column(
-      children: [
-        Expanded(
-          child: _entries.isEmpty
-              ? ListView(
-                  padding: insets.copyWith(bottom: 16),
-                  children: const [
-                    EmptyState(
-                      quote:
-                          'Ask a study question, or get help with maths or code.',
-                      body:
-                          'Each reply shows its status, such as "Completed" or '
-                          '"Awaiting confirmation".',
+        return Column(
+          children: [
+            KarmiChatHeader(
+              title: _activeConversationTitle,
+              onOpenHistory: _resolveOpenHistory(context),
+              onNewChat: _startNewChat,
+              onOpenPlans: widget.onOpenPlans,
+              trailing: widget.trailing,
+            ),
+            if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: messages.isEmpty
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: constraints.maxHeight,
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                ChatEmptyState(
+                                  key: const ValueKey('new-chat-empty-state'),
+                                  clock: widget.clock,
+                                  onStarterPicked: (prompt) =>
+                                      _chatController.send(prompt),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : Stack(
+                      children: [
+                        EndAnchoredScroll(
+                          controller: _scrollController,
+                          builder: (context, scrollController, physics) {
+                            return ListView.builder(
+                              controller: scrollController,
+                              physics: physics,
+                              padding: insets.copyWith(bottom: 16),
+                              itemCount: messages.length,
+                              itemBuilder: (context, index) {
+                                final msg = messages[index];
+                                if (msg.status != MessageStatus.streaming) {
+                                  return _memoBubble(
+                                    msg,
+                                    index,
+                                    messages.length,
+                                    lastAssistantIndex,
+                                  );
+                                }
+                                // Only the streaming bubble rebuilds on each delta flush.
+                                return ValueListenableBuilder<int>(
+                                  valueListenable:
+                                      _chatController.streamRevision,
+                                  builder: (context, _, child) =>
+                                      _buildChatBubble(
+                                        _chatController.messageById(msg.id) ??
+                                            msg,
+                                        index,
+                                        messages.length,
+                                        lastAssistantIndex,
+                                      ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: KarmiShape.jumpPillGap,
+                            ),
+                            child: ValueListenableBuilder<bool>(
+                              valueListenable: _scrollController.isAtBottom,
+                              builder: (context, isAtBottom, _) {
+                                return ValueListenableBuilder<bool>(
+                                  valueListenable:
+                                      _scrollController.hasNewContent,
+                                  builder: (context, hasNewContent, _) {
+                                    return JumpToLatestButton(
+                                      visible: !isAtBottom,
+                                      hasNewContent: hasNewContent,
+                                      onTap: _scrollController.jumpToLatest,
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                )
-              : ListView.builder(
-                  controller: _scroll,
-                  padding: insets.copyWith(bottom: 16),
-                  itemCount: _entries.length,
-                  itemBuilder: (context, index) => switch (_entries[index]) {
-                    final UserEntry e => _UserRow(entry: e),
-                    final ReplyEntry r => MessageBubble.reply(
-                      key: ValueKey(r.id),
-                      reply: r,
-                      announce: index == lastReply,
-                      onReviewDetails: () =>
-                          showTaskConfirmationSheet(context, r.message),
-                      onFeedback: (rating) => _onFeedback(r, rating),
-                      onSelectReason: (reason) => _onSelectReason(r, reason),
-                      onRegenerate: () => _onRegenerate(r),
-                    ),
-                  },
+            ),
+            ProcessingPanel(phase: _chatController.phase),
+            if (_chatController.error != null || _feedbackError != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: ErrorCard(
+                  category: _chatController.error ?? _feedbackError!,
+                  onRetry: _chatController.error != null
+                      ? _retryLast
+                      : _feedbackRetry,
+                  onContinue: _continueLast,
+                  onUpgrade: widget.onOpenPlans,
                 ),
-        ),
-        AnimatedSwitcher(
-          duration: KarmiMotion.duration(context, KarmiMotion.fast),
-          child: _pending != null
-              ? const Padding(
-                  key: ValueKey('chat-pending'),
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 4),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: KarmiLoader(label: 'Working on your message'),
-                  ),
-                )
-              : failed != null
-              ? Padding(
-                  key: ValueKey('chat-banner-${failed.id}-${failed.state}'),
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                  child: _banner(failed),
-                )
-              : _actionError != null
-              ? Padding(
-                  key: const ValueKey('chat-action-error'),
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                  child: ErrorBanner(
-                    title: _actionError!.title,
-                    message: _actionError!.message,
-                    actionLabel: 'Retry',
-                    onAction: _actionError!.retry,
-                  ),
-                )
-              : const SizedBox.shrink(key: ValueKey('chat-idle')),
-        ),
-        Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.paddingOf(context).bottom,
-          ),
-          child: Composer(onSend: _send, isPending: _pending != null),
-        ),
-      ],
+              ),
+            AnimatedPadding(
+              key: const ValueKey('chat-composer-dock'),
+              duration: KarmiMotion.composerDurationOf(context),
+              curve: KarmiMotion.composerCurve,
+              padding: EdgeInsets.only(
+                bottom: _composerDockBottomPadding(
+                  context,
+                  messages.isNotEmpty || _isLoadingMessages,
+                ),
+              ),
+              child: _readingColumn(context, _buildComposer(), paneWidth),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _banner(UserEntry entry) {
-    void retry() => _retry(entry);
-    return switch (entry.state) {
-      SendState.offline => ErrorBanner(
-        icon: Icons.cloud_off,
-        tone: ErrorTone.warning,
-        title: "You're offline",
-        message:
-            "Karmi couldn't reach the server. Your message is kept here; "
-            'retry when you are connected.',
-        actionLabel: 'Retry',
-        onAction: retry,
-      ),
-      SendState.inFlight => ErrorBanner(
-        icon: Icons.hourglass_top,
-        tone: ErrorTone.info,
-        title: 'Still working on this message',
-        message:
-            'The server is still processing it. Retry to see the result; '
-            'you will not be charged twice.',
-        actionLabel: 'Check again',
-        onAction: retry,
-      ),
-      SendState.limitReached => ErrorBanner(
-        icon: Icons.data_usage,
-        tone: ErrorTone.warning,
-        title: 'Allowance reached',
-        message: entry.resetAt == null
-            ? 'Your everyday allowance is used up. You can continue after it '
-                  'resets, or view plans.'
-            : 'Your everyday allowance resets at '
-                  '${_formatReset(context, entry.resetAt!)}. You can continue '
-                  'then, or view plans.',
-        actionLabel: widget.onOpenPlans == null ? null : 'View plans',
-        onAction: widget.onOpenPlans,
-      ),
-      SendState.capacityFull => ErrorBanner(
-        icon: Icons.groups,
-        tone: ErrorTone.warning,
-        title: 'Karmi beta is full for today',
-        message: entry.resetAt == null
-            ? "The beta has used today's free AI replies. Your message is "
-                  'kept here; try again tomorrow.'
-            : "The beta has used today's free AI replies. Your message is "
-                  'kept here; try again after '
-                  '${_formatReset(context, entry.resetAt!)}.',
-        actionLabel: 'Retry',
-        onAction: retry,
-      ),
-      _ => ErrorBanner(
-        title: 'Could not complete',
-        message:
-            'Something went wrong on the server. Your message is kept here.',
-        actionLabel: 'Retry',
-        onAction: retry,
-      ),
-    };
-  }
-}
+  /// Tablet and wider: the reading column is capped at
+  /// [KarmiShape.readableColumnMaxWidth]. Narrower screens stay full width.
+  bool _isReadingColumnCapped(double paneWidth) =>
+      paneWidth >= KarmiShape.tabletBreakpoint;
 
-class _ActionError {
-  const _ActionError({required this.title, required this.message, this.retry});
-
-  final String title;
-  final String message;
-  final VoidCallback? retry;
-}
-
-String _formatReset(BuildContext context, DateTime resetAt) {
-  final local = resetAt.toLocal();
-  final time = TimeOfDay.fromDateTime(local).format(context);
-  final now = DateTime.now();
-  final sameDay =
-      local.year == now.year &&
-      local.month == now.month &&
-      local.day == now.day;
-  return sameDay
-      ? time
-      : '$time on ${MaterialLocalizations.of(context).formatMediumDate(local)}';
-}
-
-class _UserRow extends StatelessWidget {
-  const _UserRow({required this.entry});
-
-  final UserEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final chip = switch (entry.state) {
-      SendState.sending || SendState.sent => null,
-      SendState.inFlight => const StatusChip(
-        label: 'Still working',
-        icon: Icons.hourglass_top,
-        tone: StatusTone.info,
-      ),
-      SendState.limitReached => const StatusChip(
-        label: 'Allowance reached',
-        icon: Icons.data_usage,
-        tone: StatusTone.warning,
-      ),
-      SendState.capacityFull => const StatusChip(
-        label: 'Beta full today',
-        icon: Icons.groups,
-        tone: StatusTone.warning,
-      ),
-      SendState.offline => const StatusChip(
-        label: 'Not sent: offline',
-        icon: Icons.cloud_off,
-        tone: StatusTone.warning,
-      ),
-      SendState.failed => const StatusChip(
-        label: 'Could not complete',
-        icon: Icons.error_outline,
-        tone: StatusTone.danger,
-      ),
-    };
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        MessageBubble.user(key: ValueKey(entry.id), entry: entry),
-        if (chip != null)
-          Padding(padding: const EdgeInsets.only(bottom: 6), child: chip),
-      ],
+  /// Horizontal list padding that centres the message stream on the reading
+  /// column. Only padding changes, so the scrollbar stays at the viewport edge.
+  EdgeInsets _readingInsets(
+    BuildContext context,
+    EdgeInsets insets,
+    double paneWidth,
+  ) {
+    if (!_isReadingColumnCapped(paneWidth)) return insets;
+    final gutter = (paneWidth - KarmiShape.readableColumnMaxWidth) / 2;
+    return insets.copyWith(
+      left: gutter > insets.left ? gutter : insets.left,
+      right: gutter > insets.right ? gutter : insets.right,
     );
   }
-}
 
-/// Extracts recent turns from [entries] for context:
-/// - Completed UserEntry + ReplyEntry pairs BEFORE the message being sent.
-/// - Skips pairs whose user entry failed/offline/limit/capacity or reply outcome is DEFERRED.
-/// - Content truncated/skipped to fit 1..8000 chars (skip empty; truncate >8000 chars).
-/// - Newest 20 turns max (i.e. keep the last 20 turn objects, oldest first in the list).
-List<HistoryTurn> buildHistoryFromEntries(List<ChatEntry> entries) {
-  final turns = <HistoryTurn>[];
-  for (var i = 0; i < entries.length - 1; i++) {
-    final user = entries[i];
-    final reply = entries[i + 1];
-    if (user is UserEntry && reply is ReplyEntry) {
-      if (user.state != SendState.sent) continue;
-      if (reply.message.outcome == Outcome.deferred) continue;
+  Widget _readingColumn(BuildContext context, Widget child, double paneWidth) {
+    if (!_isReadingColumnCapped(paneWidth)) return child;
+    return Center(
+      child: ConstrainedBox(
+        key: const ValueKey('chat-reading-column'),
+        constraints: const BoxConstraints(
+          maxWidth: KarmiShape.readableColumnMaxWidth,
+        ),
+        child: child,
+      ),
+    );
+  }
 
-      final uText = user.text;
-      if (uText.isNotEmpty) {
-        turns.add(
-          HistoryTurn(role: 'user', content: truncateHistoryContent(uText)),
-        );
-      }
-
-      final rText = reply.message.response;
-      if (rText.isNotEmpty) {
-        turns.add(
-          HistoryTurn(
-            role: 'assistant',
-            content: truncateHistoryContent(rText),
-          ),
-        );
-      }
+  double _composerDockBottomPadding(BuildContext context, bool isDocked) {
+    final bottomInset =
+        MediaQuery.paddingOf(context).bottom +
+        MediaQuery.viewInsetsOf(context).bottom;
+    if (isDocked) {
+      return bottomInset;
     }
+    final height = MediaQuery.sizeOf(context).height;
+    final isDesktop = WorkspaceSize.of(context) == WorkspaceSize.expanded;
+    // On desktop, composer is centered slightly above midpoint (~42-45% from top).
+    // On mobile, centered vertically (~48-50%).
+    final factor = isDesktop ? 0.55 : 0.36;
+    final computed = (height * factor - 35).clamp(bottomInset, height * 0.55);
+    return computed;
   }
-  if (turns.length > 20) {
-    return turns.sublist(turns.length - 20);
-  }
-  return turns;
 }
 
-/// Truncates [text] to at most 8000 UTF-16 code units safely.
-/// If the code unit at index 7999 is a high surrogate (0xD800-0xDBFF),
-/// it cuts at 7999 instead to avoid splitting a surrogate pair.
-String truncateHistoryContent(String text) {
-  if (text.length <= 8000) return text;
-  final cu = text.codeUnitAt(7999);
-  if (cu >= 0xD800 && cu <= 0xDBFF) {
-    return text.substring(0, 7999);
-  }
-  return text.substring(0, 8000);
+/// Inputs a non-streaming bubble reads from ChatScreen state. Closures in the
+/// cached widget read controller/state at call time, so equal inputs mean an
+/// identical bubble.
+class _BubbleMemo {
+  _BubbleMemo({
+    required this.msg,
+    required this.announce,
+    required this.isLastAssistant,
+    required this.busy,
+    required this.feedbackRating,
+    required this.feedbackReason,
+    required this.isFeedbackInFlight,
+  });
+
+  final ChatMessageView msg;
+  final bool announce;
+  final bool isLastAssistant;
+  final bool busy;
+  final FeedbackRating? feedbackRating;
+  final String? feedbackReason;
+  final bool isFeedbackInFlight;
+  late Widget widget;
+
+  bool sameInputs(_BubbleMemo other) =>
+      identical(msg, other.msg) &&
+      announce == other.announce &&
+      isLastAssistant == other.isLastAssistant &&
+      busy == other.busy &&
+      feedbackRating == other.feedbackRating &&
+      feedbackReason == other.feedbackReason &&
+      isFeedbackInFlight == other.isFeedbackInFlight;
 }
