@@ -15,8 +15,10 @@ import inspect
 import logging
 import re
 import threading
-from collections.abc import AsyncIterator, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from daily_agent.gateway.adapters import ChatProvider
 from daily_agent.gateway.health import HealthTracker
@@ -42,13 +44,46 @@ MAX_ATTEMPTS = 2
 _DEVANAGARI = re.compile(r"[\u0900-\u097F]")
 FREE_MEASUREMENT = "registry-free-model"
 
-SYSTEM_PROMPT = (
+BASE_SYSTEM_PROMPT = (
     "You are Karmi, a patient study and productivity assistant for students in India. Give "
     "correct, concise answers. Reply in the language the user wrote in (Hindi, English, or a "
-    "Hindi-English mix). Show working for maths and keep code runnable. Never claim that a "
-    "task, reminder or message was saved, sent or changed; this chat route cannot perform "
-    "actions. If required facts are missing, ask one short clarifying question."
+    "Hindi-English mix). Show working for maths and keep code runnable. Use the earlier "
+    "conversation: a short reply such as a place name or \"yes\" usually answers your previous "
+    "question. The current date and time are given below; when the user names another place or "
+    "timezone, convert from IST. Use simple Markdown (bold, lists, code blocks) only when it "
+    "helps; no tables. Never claim that a task, reminder or message was saved, sent or changed; "
+    "this chat route cannot perform actions. If required facts are missing, ask one short "
+    "clarifying question."
 )
+
+
+def _home_zone() -> tzinfo:
+    # IST has no DST, so the fixed offset is exact when the tz database is missing.
+    try:
+        return ZoneInfo("Asia/Kolkata")
+    except ZoneInfoNotFoundError:  # pragma: no cover - depends on the host tz database
+        return timezone(timedelta(hours=5, minutes=30), "IST")
+
+
+HOME_ZONE = _home_zone()
+
+
+def build_system_prompt(now: datetime) -> str:
+    """Base prompt plus the current IST date/time (``now`` must be timezone-aware)."""
+    local = now.astimezone(HOME_ZONE)
+    stamp = f"{local:%A}, {local.day} {local:%B %Y, %H:%M}"
+    return (
+        f"{BASE_SYSTEM_PROMPT}\nCurrent date and time: {stamp} IST "
+        "(Asia/Kolkata, UTC+05:30)."
+    )
+
+
+# Upper bound for the built prompt: Wednesday + September are the longest names.
+SYSTEM_PROMPT_MAX_CHARS = len(build_system_prompt(datetime(2026, 9, 30, 6, 30, tzinfo=UTC)))
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 @dataclass(frozen=True)
@@ -93,12 +128,14 @@ class Gateway:
         providers: Mapping[str, ChatProvider],
         health: HealthTracker,
         kill_switch: bool = False,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         # Only models whose provider is actually configured are routable.
         self.registry = registry.for_providers(frozenset(providers))
         self._providers = providers
         self.health = health
         self.kill_switch = kill_switch
+        self._clock = clock or _utc_now
 
     @property
     def live(self) -> bool:
@@ -120,11 +157,18 @@ class Gateway:
         task_type: TaskType,
         max_output_tokens: int,
         escalate: bool = False,
+        history: Sequence[Mapping[str, str]] = (),
     ) -> GatewayResult:
+        """Generate a reply to ``text``; ``history`` holds earlier turns, oldest first, already
+        trimmed to the plan's input budget by the caller."""
+        system_prompt = build_system_prompt(self._clock())
+        history_bytes = sum(len(turn["content"].encode("utf-8")) for turn in history)
         request = RouteRequest(
             plan=plan,
             task_type=task_type,
-            prompt_tokens=max(1, (len(text.encode("utf-8")) + len(SYSTEM_PROMPT)) // 4),
+            prompt_tokens=max(
+                1, (len(text.encode("utf-8")) + len(system_prompt) + history_bytes) // 4
+            ),
             max_output_tokens=max_output_tokens,
             escalate=escalate,
         )
@@ -132,7 +176,8 @@ class Gateway:
         if not pool:
             return GatewayResult(None, (), None, True, "no_eligible_model")
         messages = (
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
+            *({"role": turn["role"], "content": turn["content"]} for turn in history),
             {"role": "user", "content": text},
         )
         calls: list[ProviderCall] = []
@@ -206,10 +251,11 @@ class Gateway:
     ) -> AsyncIterator[StreamChunk]:
         if not self.live:
             raise ProviderUnavailableError("gateway is disabled or no configured models")
+        system_prompt = build_system_prompt(self._clock())
         request = RouteRequest(
             plan=plan,
             task_type=task_type,
-            prompt_tokens=max(1, (len(text.encode("utf-8")) + len(SYSTEM_PROMPT)) // 4),
+            prompt_tokens=max(1, (len(text.encode("utf-8")) + len(system_prompt)) // 4),
             max_output_tokens=max_output_tokens,
         )
         pool = eligible_models(self.registry, request, is_available=self._available)
@@ -220,7 +266,7 @@ class Gateway:
         self.health.begin_call(model.provider)
         if messages is None:
             chat_messages: tuple[dict[str, str], ...] = (
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text},
             )
         else:

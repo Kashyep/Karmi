@@ -64,11 +64,17 @@ class KarmiApi {
   Future<MessageView> sendMessage(
     String text, {
     required String idempotencyKey,
+    List<HistoryTurn>? history,
   }) async {
     final body = await _send(
       'POST',
       '/v1/messages',
-      json: {'text': text, 'idempotency_key': idempotencyKey},
+      json: {
+        'text': text,
+        'idempotency_key': idempotencyKey,
+        if (history != null && history.isNotEmpty)
+          'history': history.map((t) => t.toJson()).toList(),
+      },
     );
     return MessageView.fromJson(body as Map<String, dynamic>);
   }
@@ -94,6 +100,7 @@ class KarmiApi {
     required String text,
     required String idempotencyKey,
     String? reason,
+    List<HistoryTurn>? history,
   }) async {
     final body = await _send(
       'POST',
@@ -102,6 +109,8 @@ class KarmiApi {
         'text': text,
         'idempotency_key': idempotencyKey,
         if (reason != null) 'reason': reason,
+        if (history != null && history.isNotEmpty)
+          'history': history.map((t) => t.toJson()).toList(),
       },
     );
     return MessageView.fromJson(body as Map<String, dynamic>);
@@ -113,11 +122,13 @@ class KarmiApi {
     required String text,
     required String idempotencyKey,
     String? reason,
+    List<HistoryTurn>? history,
   }) => regenerateRun(
     runId,
     text: text,
     idempotencyKey: idempotencyKey,
     reason: reason,
+    history: history,
   );
 
   /// `POST /v1/access-code`. Unlocks a higher beta tier; 404 means invalid code.
@@ -250,4 +261,33 @@ class KarmiApi {
       return null;
     }
   }
+}
+
+/// One earlier chat turn sent with a request for context.
+class HistoryTurn {
+  const HistoryTurn({required this.role, required this.content});
+
+  final String role;
+  final String content;
+
+  Map<String, dynamic> toJson() => {'role': role, 'content': content};
+
+  factory HistoryTurn.fromJson(Map<String, dynamic> json) => HistoryTurn(
+    role: json['role'] as String,
+    content: json['content'] as String,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HistoryTurn &&
+          runtimeType == other.runtimeType &&
+          role == other.role &&
+          content == other.content;
+
+  @override
+  int get hashCode => Object.hash(role, content);
+
+  @override
+  String toString() => 'HistoryTurn(role: $role, content: $content)';
 }

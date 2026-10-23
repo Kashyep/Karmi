@@ -16,7 +16,7 @@ from sqlalchemy.pool import SingletonThreadPool
 
 from daily_agent.config import Settings
 from daily_agent.conversations.service import touch_conversation
-from daily_agent.gateway.service import SYSTEM_PROMPT, Gateway
+from daily_agent.gateway.service import Gateway, build_system_prompt
 from daily_agent.gateway.types import (
     CapacityFullError,
     GatewayStreamError,
@@ -262,7 +262,7 @@ class StreamRunner:
         messages: tuple[dict[str, str], ...] | None = None
         if self.prior_content:
             messages = (
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": build_system_prompt(datetime.now(UTC))},
                 {"role": "user", "content": self.text},
                 {"role": "assistant", "content": self.prior_content},
             )
