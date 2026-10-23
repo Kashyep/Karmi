@@ -82,6 +82,7 @@ class User(Base):
     clerk_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     unlocked_tier: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     active_theme: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    tester: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     account: Mapped[Account] = relationship(back_populates="users")
 
 
@@ -255,6 +256,14 @@ class Run(Base):
     last_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     continuation_of_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    served_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    served_provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    attempt_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fallback_used: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    harness_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class MessageFeedback(Base):
