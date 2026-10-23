@@ -9,7 +9,7 @@
 (() => {
   'use strict';
 
-  const TIERS = ['ananta', 'yanta', 'trika', 'part'];
+  const TIERS = ['ananta', 'yanta', 'trika', 'parth'];
   const USER_STATUSES = ['active', 'suspended'];
   const API_BASE = '/v1/admin';
   const PAGE_SIZE = 25;
@@ -222,7 +222,7 @@
     activeTab: 'users',
     usersCursor: null,
     usersRequest: 0,
-    selectedUserId: null,
+    selectedUserIds: new Set(),
     detailUser: null,
     detailRequest: 0,
     auditCursor: null,
@@ -681,7 +681,7 @@
       if (reset) body.replaceChildren();
       body.querySelectorAll('.empty-row').forEach((node) => node.remove());
       if (items.length === 0 && body.children.length === 0) {
-        body.append(el('tr', { class: 'empty-row' }, el('td', { colspan: 6, text: 'No users match these filters.' })));
+        body.append(el('tr', { class: 'empty-row' }, el('td', { colspan: 7, text: 'No users match these filters.' })));
       }
       for (const user of items) body.append(userRow(user));
       state.usersCursor = (data && data.next_cursor) || null;
@@ -704,6 +704,9 @@
         if (!event.target.closest('button')) selectUser(user.id).catch(() => {});
       },
     },
+    el('td', { 'data-label': 'Select' },
+      el('input', { type: 'checkbox', 'aria-label': `Select ${userLabel(user)}`, checked: state.selectedUserIds.has(String(user.id)),
+        onclick: (event) => { event.stopPropagation(); const box = event.currentTarget; if (box.checked) state.selectedUserIds.add(String(user.id)); else state.selectedUserIds.delete(String(user.id)); } })),
     el('td', { 'data-label': 'Email' },
       el('button', { class: 'link-button', type: 'button', onclick: () => selectUser(user.id).catch(() => {}),
         text: displayValue(user.email) })),
@@ -783,6 +786,12 @@
       ['Credits remaining', formatUsd(usage.credits_remaining)],
       ['Active sessions', formatCount(usage.sessions)],
     ]));
+    $('edit-display-name').value = user.display_name || '';
+    $('edit-tester').checked = Boolean(user.tester);
+    $('edit-tester-label').value = user.tester_label || '';
+    $('edit-admin-notes').value = user.admin_notes || '';
+    $('detail-plan').textContent = `Effective plan: ${tierLabel(user.effective_plan || user.tier)}; expires: ${formatTimestamp(user.plan_expires_at)}; reverts to: ${tierLabel(user.revert_plan_id)}`;
+    $('detail-expiry').value = user.plan_expires_at ? String(user.plan_expires_at).slice(0, 10) : '';
     $('btn-status').textContent = suspended ? 'Unsuspend user' : 'Suspend user';
     $('detail-tier').value = TIERS.includes(user.tier) ? user.tier : TIERS[0];
     $('detail-empty').hidden = true;
@@ -928,6 +937,24 @@
   // Wiring
   // ---------------------------------------------------------------------------
 
+    $('btn-edit-user').addEventListener('click', () => {
+      const user = requireDetailUser(); if (!user) return;
+      openConfirm({ title: 'Save profile', summary: `Update profile for ${userLabel(user)}.`, run: async (reason) => {
+        await api('PATCH', `/users/${encodeId(user.id)}`, { body: {
+          display_name: $('edit-display-name').value.trim() || null, tester: $('edit-tester').checked,
+          tester_label: $('edit-tester-label').value.trim() || null, admin_notes: $('edit-admin-notes').value.trim() || null, reason,
+        }}); await refreshAfterChange(user.id); return 'Profile saved.';
+      }});
+    });
+    const tierMutation = (direction) => {
+      const user = requireDetailUser(); if (!user) return;
+      const index = TIERS.indexOf(user.tier) + direction;
+      if (index < 0 || index >= TIERS.length) { setMessage('detail-message', 'No further tier available.', 'error'); return; }
+      openConfirm({ title: 'Change tier', summary: `Change ${userLabel(user)} to ${tierLabel(TIERS[index])}`,
+        run: mutateUser(user.id, 'tier', { tier: TIERS[index], expires_at: $('detail-expiry').value || null }, 'Tier changed.') });
+    };
+    $('btn-promote').addEventListener('click', () => tierMutation(1));
+    $('btn-demote').addEventListener('click', () => tierMutation(-1));
   function wireDetailActions() {
     $('btn-status').addEventListener('click', () => {
       const user = requireDetailUser();
@@ -959,7 +986,7 @@
       openConfirm({
         title: 'Change tier',
         summary: `Change ${userLabel(user)} from ${tierLabel(user.tier)} to ${tierLabel(tier)}.`,
-        run: mutateUser(user.id, 'tier', { tier }, `Tier changed to ${tierLabel(tier)}.`),
+        run: mutateUser(user.id, 'tier', { tier, expires_at: $('detail-expiry').value || null }, `Tier changed to ${tierLabel(tier)}.`),
       });
     });
     $('btn-credits').addEventListener('click', () => {
@@ -973,7 +1000,6 @@
       setMessage('credits-error', '', '');
       openConfirm({
         title: 'Adjust credits',
-        summary: `${result.summary} for ${userLabel(user)}.`,
         run: mutateUser(user.id, 'credits', result.payload, 'Credits updated.'),
       });
     });
@@ -1044,6 +1070,21 @@
     });
     $('audit-more').addEventListener('click', () => {
       loadAudit(false).catch(() => {});
+    });
+    $('users-select-all').addEventListener('change', (event) => {
+      const checked = event.currentTarget.checked;
+      for (const row of $('users-body').querySelectorAll('tr[data-user-id]')) {
+        const id = String(row.dataset.userId); const box = row.querySelector('input[type="checkbox"]');
+        box.checked = checked; if (checked) state.selectedUserIds.add(id); else state.selectedUserIds.delete(id);
+      }
+    });
+    $('btn-bulk-tier').addEventListener('click', () => {
+      const ids = [...state.selectedUserIds]; const tier = $('bulk-tier').value;
+      if (!ids.length) { setMessage('users-message', 'Select at least one user.', 'error'); return; }
+      openConfirm({ title: 'Set plan', summary: `Set ${ids.length} selected users to ${tierLabel(tier)}.`, run: async (reason) => {
+        await api('POST', '/users/bulk-tier', { body: { user_ids: ids, tier, expires_at: $('bulk-expiry').value || null, reason }});
+        state.selectedUserIds.clear(); await loadUsers(true); return 'Plans updated.';
+      }});
     });
     wireTabs();
     wireDetailActions();

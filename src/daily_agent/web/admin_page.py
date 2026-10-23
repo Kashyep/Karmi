@@ -13,7 +13,7 @@ import re
 from html import escape
 from typing import Final
 
-_TIERS: Final[tuple[str, ...]] = ("ananta", "yanta", "trika", "part")
+_TIERS: Final[tuple[str, ...]] = ("ananta", "yanta", "trika", "parth")
 
 _CLERK_DOMAIN: Final = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+", re.IGNORECASE)
 
@@ -172,18 +172,23 @@ def render_admin_page(*, publishable_key: str | None) -> str:
                   <caption class="sr-only">Users matching the current filters</caption>
                   <thead>
                     <tr>
+                      <th scope="col"><label class="sr-only" for="users-select-all">Select all</label><input id="users-select-all" type="checkbox"></th>
                       <th scope="col">Email</th>
                       <th scope="col">Name</th>
                       <th scope="col">Tier</th>
                       <th scope="col">Status</th>
                       <th scope="col">Last active</th>
                       <th scope="col">Created</th>
-                    </tr>
                   </thead>
                   <tbody id="users-body"></tbody>
                 </table>
               </div>
-              <button id="users-more" class="button button-secondary" type="button" hidden>Load more</button>
+              <div class="bulk-actions">
+                <label for="bulk-tier">Set plan for selected</label>
+                <select id="bulk-tier" class="input">{_tier_options(include_blank=False)}</select>
+                <input id="bulk-expiry" class="input" type="date" aria-label="Optional bulk expiry date">
+                <button id="btn-bulk-tier" class="button button-secondary" type="button">Set plan</button>
+              </div>
             </div>
             <section id="user-detail" class="card detail" aria-labelledby="detail-heading">
               <h2 id="detail-heading">User details</h2>
