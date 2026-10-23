@@ -124,9 +124,12 @@ class FakeBackend {
     });
   }
 
+  /// Wall clock for golden and harness tests; relative dates derive from it.
+  static final DateTime pinnedNow = DateTime(2026, 10, 22, 10);
+
   /// Fixture conversations spanning Pinned, Today, Yesterday, Previous 7 days, and Older.
   static List<Map<String, dynamic>> defaultConversationsJson([DateTime? now]) {
-    final current = now ?? DateTime.now();
+    final current = now ?? pinnedNow;
     final today = DateTime(current.year, current.month, current.day, 12);
     final yesterday = DateTime(
       current.year,

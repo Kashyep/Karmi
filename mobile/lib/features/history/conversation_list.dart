@@ -56,12 +56,16 @@ class ConversationList extends StatefulWidget {
     required this.onNewChat,
     required this.controller,
     this.activeConversationId,
+    this.clock,
   });
 
   final ValueChanged<String> onOpen;
   final VoidCallback onNewChat;
   final ConversationListController controller;
   final String? activeConversationId;
+
+  /// Injectable clock for relative dates and date grouping; null uses the wall clock.
+  final DateTime Function()? clock;
 
   @override
   State<ConversationList> createState() => _ConversationListState();
@@ -476,7 +480,8 @@ class _ConversationListState extends State<ConversationList> {
       );
     }
 
-    final groups = groupConversationsByDate(controller.conversations);
+    final now = (widget.clock ?? DateTime.now)();
+    final groups = groupConversationsByDate(controller.conversations, now);
     final entries = <_HistoryEntry>[];
     for (var i = 0; i < groups.length; i++) {
       final group = groups[i];
@@ -537,7 +542,7 @@ class _ConversationListState extends State<ConversationList> {
               final title = conv.title?.trim().isNotEmpty == true
                   ? conv.title!
                   : 'Untitled chat';
-              final relativeDate = formatRelativeDate(conv.updatedAt);
+              final relativeDate = formatRelativeDate(conv.updatedAt, now);
 
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
