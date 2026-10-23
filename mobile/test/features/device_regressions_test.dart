@@ -172,8 +172,10 @@ void main() {
     await openTab(tester, 'Settings');
     await settle(tester);
     for (final label in ['Armory', 'Plans and access code', 'Licences']) {
+      // Tiles merge their section heading and subtitle into one multi-line
+      // semantics label, so match the requested tile anywhere in that label.
       final nodes = find.semantics
-          .byLabel(label)
+          .byLabel(RegExp(RegExp.escape(label)))
           .evaluate()
           .where((n) => n.getSemanticsData().hasAction(SemanticsAction.tap));
       expect(nodes, isNotEmpty, reason: '$label not in the semantics tree');
