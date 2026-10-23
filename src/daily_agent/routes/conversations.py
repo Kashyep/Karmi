@@ -18,6 +18,7 @@ from daily_agent.conversations.service import (
 )
 from daily_agent.db import get_session
 from daily_agent.deps import limited_principal
+from daily_agent.models import Run
 from daily_agent.schemas_chat import (
     ConversationPage,
     ConversationSearchResult,
@@ -26,7 +27,6 @@ from daily_agent.schemas_chat import (
     MessagePage,
 )
 from daily_agent.security import Principal
-from daily_agent.models import Run
 
 router = APIRouter(prefix="/v1/conversations", tags=["conversations"])
 

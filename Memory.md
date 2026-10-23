@@ -337,3 +337,4 @@
 - Not verified: device pass after the provider-identity change (Pixel 9a `5B271XEBF3XDF0` dropped off USB); local test auth (needs owner's test code in ignored `.env.testauth`).
 - Open owner decisions: P2 free-pool exclusions (reverted at `f5d2794`), composer attachment button (kept), iOS distribution, Android release keystore, public repo for Obtainium, golden review, analytics/admin scope.
 - Handover document: `release_completion.md` (repo root; copy also at `/home/rosso/Projects/Karmi/release_completion.md`).
+- Final gates at the tip of `release1/integration` (2026-10-23): `flutter analyze` clean, `flutter test` 767 passed; `.venv/bin/ruff` clean, `.venv/bin/mypy src` clean (49 files), unit 256 passed, e2e 85 passed. Backend tools live in `.venv/bin` — bare `ruff`/`pytest` are not on PATH.

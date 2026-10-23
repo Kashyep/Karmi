@@ -30,11 +30,11 @@ so commits survive a reboot; **uncommitted files do not**. Commit before you sto
 ### Commands
 
 ```bash
-# backend gates (from /tmp/wt2-int)
-ruff check src tests scripts
-mypy src
-pytest tests/unit tests/model_lab tests/web -q
-pytest -m "e2e or not integration" tests/e2e -q
+# backend gates (from /tmp/wt2-int; use the repo venv — bare tools are not on PATH)
+.venv/bin/ruff check src tests scripts
+.venv/bin/mypy src
+.venv/bin/pytest tests/unit tests/model_lab tests/web -q
+.venv/bin/pytest -m "e2e or not integration" tests/e2e -q
 
 # flutter gates (serialize heavy jobs — two checkouts share CPU/disk)
 cd /tmp/wt2-int/mobile
@@ -131,16 +131,17 @@ Last fully green gate run was at `eedb13b`:
 
 | Gate | Command | Result |
 | --- | --- | --- |
-| Backend lint | `ruff check src tests scripts` | clean |
-| Backend types | `mypy src` | clean, 49 files |
-| Backend unit | `pytest tests/unit tests/model_lab tests/web -q` | 256 passed |
-| Backend e2e | `pytest -m "e2e or not integration" tests/e2e -q` | 84 passed |
+| Backend lint | `.venv/bin/ruff check src tests scripts` | clean |
+| Backend types | `.venv/bin/mypy src` | clean, 49 files |
+| Backend unit | `.venv/bin/pytest tests/unit tests/model_lab tests/web -q` | 256 passed |
+| Backend e2e | `.venv/bin/pytest -m "e2e or not integration" tests/e2e -q` | 85 passed |
 | Flutter analyze | `flutter analyze` | no issues |
-| Flutter tests | `flutter test` | 766 passed |
+| Flutter tests | `flutter test` | 767 passed |
 
-Changes after `eedb13b` (provider identity, tasks page, test updates) were re-checked with
-`flutter analyze` (clean). The full suite and the goldens are being re-run as this document is
-written; treat §3.1 as the authoritative list of anything not green.
+**Final run for this change set** (tip of `release1/integration`, 2026-10-23): `flutter analyze`
+clean; `flutter test` 767 passed, exit 0, including regenerated chat and tasks goldens;
+`.venv/bin/ruff` clean; `.venv/bin/mypy src` clean (49 files); unit 256 passed; e2e 85 passed.
+Treat §3.1 as the authoritative list of anything intentionally not asserted.
 
 **Goldens are host-generated Linux goldens.** They prove layout did not drift, not that the
 design is right. Owner visual review is still required (R-9).
