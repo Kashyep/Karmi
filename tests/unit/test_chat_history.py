@@ -236,9 +236,63 @@ def test_trim_history_exact_budget_boundary() -> None:
     fits = HistoryTurn(role="user", content="f" * 100)
     over = HistoryTurn(role="user", content="o" * 101)
     assert trim_history([fits], text=text, plan=plan) == (fits,)
-    assert trim_history([over], text=text, plan=plan) == ()
+    # Single turn over budget is kept truncated (with […trimmed…]) instead of returning ()
+    over_trimmed = trim_history([over], text=text, plan=plan)
+    assert len(over_trimmed) == 1
+    assert "[…trimmed…]" in over_trimmed[0].content
+    assert len(over_trimmed[0].content.encode("utf-8")) <= 100
 
 
+def test_trim_history_truncation_cases() -> None:
+    plan = SYNTHETIC_POLICIES["ananta"]
+
+    # 1. Long Hindi newest turn alone exceeding remaining budget:
+    # Budget leaves 120 bytes
+    text = "q" * (plan.input_tokens * 4 - SYSTEM_PROMPT_MAX_CHARS - 120)
+    hindi_long = HistoryTurn(role="assistant", content="नमस्ते भारत! यह एक बहुत लंबा हिंदी उत्तर है। " * 20)
+    res_hi = trim_history([hindi_long], text=text, plan=plan)
+    assert len(res_hi) == 1
+    assert "[…trimmed…]" in res_hi[0].content
+    assert res_hi[0].role == "assistant"
+    hi_bytes = len(res_hi[0].content.encode("utf-8"))
+    assert hi_bytes <= 120
+    # Verify it doesn't crash on multi-byte boundaries and decodes cleanly
+    res_hi[0].content.encode("utf-8").decode("utf-8")
+
+    # 2. Long English newest turn alone exceeding remaining budget:
+    english_long = HistoryTurn(role="user", content="A" * 5000)
+    res_en = trim_history([english_long], text=text, plan=plan)
+    assert len(res_en) == 1
+    assert "[…trimmed…]" in res_en[0].content
+    assert res_en[0].role == "user"
+    assert len(res_en[0].content.encode("utf-8")) <= 120
+    assert res_en[0].content.startswith("A")
+    assert res_en[0].content.endswith("A")
+
+    # 3. Several short turns over budget:
+    # If turns are t1 (oldest), t2, t3, t4 (newest), and t4 fits, but t3+t4 exceeds budget:
+    # Only t4 is kept (since t4 was whole and fit); older turns are dropped.
+    # If even t4 alone exceeds budget, t4 is truncated.
+    # Let's test both aspects:
+    # 3a. Several short turns where newest fits but adding earlier ones exceeds budget:
+    short_t1 = HistoryTurn(role="user", content="msg 1" * 10)  # 50 bytes
+    short_t2 = HistoryTurn(role="assistant", content="msg 2" * 10)  # 50 bytes
+    short_t3 = HistoryTurn(role="user", content="msg 3" * 10)  # 50 bytes
+    # Budget leaves 60 bytes:
+    text_60 = "q" * (plan.input_tokens * 4 - SYSTEM_PROMPT_MAX_CHARS - 60)
+    res_multi = trim_history([short_t1, short_t2, short_t3], text=text_60, plan=plan)
+    assert res_multi == (short_t3,)
+
+    # 3b. Several short turns where newest alone exceeds budget:
+    text_30 = "q" * (plan.input_tokens * 4 - SYSTEM_PROMPT_MAX_CHARS - 30)
+    res_multi_trunc = trim_history([short_t1, short_t2, short_t3], text=text_30, plan=plan)
+    assert len(res_multi_trunc) == 1
+    assert "[…trimmed…]" in res_multi_trunc[0].content
+    assert len(res_multi_trunc[0].content.encode("utf-8")) <= 30
+
+    # 4. Empty history:
+    res_empty = trim_history([], text="hello", plan=plan)
+    assert res_empty == ()
 def test_message_request_hash() -> None:
     text = "Explain photosynthesis"
     expected_no_hist = hashlib.sha256(text.encode("utf-8")).hexdigest()

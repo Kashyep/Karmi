@@ -146,6 +146,27 @@ def reply(text: str, *, finish: str = "stop") -> httpx.Response:
     )
 
 
+def sse_reply(text: str, *, finish: str = "stop") -> httpx.Response:
+    frames = [
+        f"data: {json.dumps({'choices': [{'delta': {'content': text}, 'finish_reason': finish}], 'usage': {'prompt_tokens': 12, 'completion_tokens': 4}})}\n\n",
+        "data: [DONE]\n\n",
+    ]
+    return httpx.Response(
+        200,
+        text="".join(frames),
+        headers={"content-type": "text/event-stream"},
+    )
+
+
+def unified_handler(text: str, *, finish: str = "stop") -> Callable[[httpx.Request], httpx.Response]:
+    def handler(req: httpx.Request) -> httpx.Response:
+        body = json.loads(req.content)
+        if body.get("stream"):
+            return sse_reply(text, finish=finish)
+        return reply(text, finish=finish)
+
+    return handler
+
 def identity(harness: Harness, plan_id: str = "ananta") -> tuple[str, str]:
     with harness.factory() as session:
         account, _user, token = create_identity(session, harness.settings, name="A")
@@ -434,3 +455,109 @@ def test_token_hold_counts_kept_history(make_harness: Callable[..., Harness]) ->
         assert reservation is not None
         # 10-byte text // 4 + 800 history bytes // 4, plus the plan's output allowance.
         assert reservation.reserved_tokens == 2 + 200 + SYNTHETIC_POLICIES["ananta"].output_tokens
+
+def test_e2e_long_hindi_history_truncated_both_routes(
+    make_harness: Callable[..., Harness]
+) -> None:
+    harness = make_harness([ECO_A], unified_handler("हाँ, मैं समझ गया।"))
+    _account_id, token = identity(harness)
+
+    # Under 8000 chars (schema max) but > 4000 tokens / 16000 bytes so it exceeds the budget alone
+    long_hindi_turn = "नमस्ते भारत! यह बहुत लंबा हिंदी संदेश है जो सीमा से अधिक है। " * 110
+    assert len(long_hindi_turn) < 8000
+    assert len(long_hindi_turn.encode("utf-8")) > 16_000
+    prompt_text = "अगला सवाल"
+    # 1. /v1/messages route
+    res_messages = send(
+        harness,
+        token,
+        "e2e-hindi-trunc-messages",
+        prompt_text,
+        history=[{"role": "assistant", "content": long_hindi_turn}],
+    )
+    assert res_messages.status_code == 200
+    assert len(harness.seen) == 1
+    sent_body_msg = json.loads(harness.seen[0].content)
+    messages_1 = sent_body_msg["messages"]
+    assert messages_1[0]["role"] == "system"
+    assert messages_1[-1] == {"role": "user", "content": prompt_text}
+    assert len(messages_1) == 3
+    assert messages_1[1]["role"] == "assistant"
+    assert "[…trimmed…]" in messages_1[1]["content"]
+
+    # 2. /v1/chat/stream route
+    # Create conversation with short turn 1, then a long Hindi assistant reply
+    long_hindi_reply = "नमस्ते भारत! यह बहुत लंबा हिंदी संदेश है जो सीमा से अधिक है। " * 110
+    harness_stream = make_harness([ECO_A], unified_handler(long_hindi_reply))
+    _account_id2, token2 = identity(harness_stream)
+
+    resp_s1 = harness_stream.client.post(
+        "/v1/chat/stream",
+        headers={"Authorization": f"Bearer {token2}"},
+        json={"text": "पहला सवाल", "clientMessageId": "stream-hindi-01"},
+    )
+    assert resp_s1.status_code == 200
+    conv_id = None
+    for line in resp_s1.text.split("\n"):
+        if line.startswith("data: ") and "conversation_id" in line:
+            conv_id = json.loads(line[6:])["conversation_id"]
+            break
+    assert conv_id is not None
+
+    # Now stream a follow-up in the same conversation
+    resp_s2 = harness_stream.client.post(
+        "/v1/chat/stream",
+        headers={"Authorization": f"Bearer {token2}"},
+        json={
+            "text": prompt_text,
+            "conversationId": conv_id,
+            "clientMessageId": "stream-hindi-02",
+        },
+    )
+    assert resp_s2.status_code == 200
+    sent_body_stream = json.loads(harness_stream.seen[-1].content)
+    stream_msgs = sent_body_stream["messages"]
+    assert stream_msgs[0]["role"] == "system"
+    assert "Asia/Kolkata" in stream_msgs[0]["content"]
+    assert stream_msgs[-1] == {"role": "user", "content": prompt_text}
+    assert any("[…trimmed…]" in m["content"] for m in stream_msgs[1:-1])
+
+def test_e2e_stream_followup_includes_earlier_turn(
+    make_harness: Callable[..., Harness]
+) -> None:
+    harness = make_harness([ECO_A], unified_handler("Understood."))
+    _account_id, token = identity(harness)
+    first_q = "My name is Rosso"
+    resp_s1 = harness.client.post(
+        "/v1/chat/stream",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"text": first_q, "clientMessageId": "followup-01"},
+    )
+    assert resp_s1.status_code == 200
+    conv_id = None
+    for line in resp_s1.text.split("\n"):
+        if line.startswith("data: ") and "conversation_id" in line:
+            conv_id = json.loads(line[6:])["conversation_id"]
+            break
+    assert conv_id is not None
+
+    second_q = "What is my name?"
+    resp_s2 = harness.client.post(
+        "/v1/chat/stream",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "text": second_q,
+            "conversationId": conv_id,
+            "clientMessageId": "followup-02",
+        },
+    )
+    assert resp_s2.status_code == 200
+    assert len(harness.seen) == 2
+    sent_body = json.loads(harness.seen[-1].content)
+    stream_msgs = sent_body["messages"]
+    assert stream_msgs[0]["role"] == "system"
+    # earlier turns included: user msg, assistant reply
+    roles_and_contents = [(m["role"], m["content"]) for m in stream_msgs[1:]]
+    assert ("user", first_q) in roles_and_contents
+    assert ("assistant", "Understood.") in roles_and_contents
+    assert ("user", second_q) == roles_and_contents[-1]
