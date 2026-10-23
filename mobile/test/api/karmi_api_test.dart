@@ -419,34 +419,37 @@ void main() {
       expect(jsonDecode(req.body), {'rating': 'up'});
     });
 
-    test('regenerateRun sends idempotency_key and reason; parses MessageView with previous_run_id', () async {
-      backend.on(
-        'POST',
-        '/v1/runs/run-200/regenerate',
-        (_) => jsonResponse({
-          ...messageJson('ACCEPT', response: 'Better response'),
-          'run_id': 'run-201',
-          'previous_run_id': 'run-200',
-        }),
-      );
+    test(
+      'regenerateRun sends idempotency_key and reason; parses MessageView with previous_run_id',
+      () async {
+        backend.on(
+          'POST',
+          '/v1/runs/run-200/regenerate',
+          (_) => jsonResponse({
+            ...messageJson('ACCEPT', response: 'Better response'),
+            'run_id': 'run-201',
+            'previous_run_id': 'run-200',
+          }),
+        );
 
-      final view = await api.regenerateRun(
-        'run-200',
-        text: 'original prompt',
-        idempotencyKey: 'regen-key-1',
-        reason: 'wrong',
-      );
-      expect(view.runId, 'run-201');
-      expect(view.previousRunId, 'run-200');
-      expect(view.response, 'Better response');
+        final view = await api.regenerateRun(
+          'run-200',
+          text: 'original prompt',
+          idempotencyKey: 'regen-key-1',
+          reason: 'wrong',
+        );
+        expect(view.runId, 'run-201');
+        expect(view.previousRunId, 'run-200');
+        expect(view.response, 'Better response');
 
-      final req = backend.requests.single;
-      expect(jsonDecode(req.body), {
-        'text': 'original prompt',
-        'idempotency_key': 'regen-key-1',
-        'reason': 'wrong',
-      });
-    });
+        final req = backend.requests.single;
+        expect(jsonDecode(req.body), {
+          'text': 'original prompt',
+          'idempotency_key': 'regen-key-1',
+          'reason': 'wrong',
+        });
+      },
+    );
 
     test(
       'regenerateRun includes history when non-empty, omits when empty or null',
