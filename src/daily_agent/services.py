@@ -129,7 +129,10 @@ def plan_policy(subscription: Subscription | None) -> PlanPolicy:
     """Return the currently effective plan, lazily reverting expired overrides."""
     if subscription is None or subscription.status != "active":
         return SYNTHETIC_POLICIES["ananta"]
-    if subscription.tier_expires_at is not None and subscription.tier_expires_at <= datetime.now(UTC):
+    expires_at = subscription.tier_expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at is not None and expires_at <= datetime.now(UTC):
         plan_id = subscription.revert_plan_id or "ananta"
     else:
         plan_id = subscription.plan_id
