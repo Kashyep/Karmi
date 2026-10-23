@@ -18,7 +18,34 @@ Failure behavior: not allowlisted / not admin -> `403`; wrong code or no code en
 | Variable | Meaning |
 | --- | --- |
 | `ADMIN_CLERK_USER_IDS` | Allowlisted Clerk subjects. Server-side only; never in client bundles. |
+| `DAILY_AGENT_CLERK_SECRET_KEY` | Clerk Backend API secret (`sk_...`), server-side only, never logged or shipped to a client. Needed for admin "revoke sessions". Unset means revocation is refused (see below). |
 | `DAILY_AGENT_ADMIN_MICRO_PER_USD` | Budget-unit micros per displayed "USD" in the admin API (default `1000000`, i.e. the stored budget unit shown 1:1). |
+
+## Revoking sessions
+
+`POST /v1/admin/users/{id}/revoke-sessions {reason}` ends the user's active Clerk sessions through the
+Clerk Backend API, then bumps `token_version` locally so every Clerk token issued before now is rejected.
+The order matters: Clerk is called first, and local state changes only after Clerk succeeds.
+
+- **409 `CLERK_SECRET_NOT_CONFIGURED`**: the target has a Clerk subject but `DAILY_AGENT_CLERK_SECRET_KEY`
+  is unset. Nothing is revoked and nothing is audited. Suspend the user instead to cut access.
+- **502 `CLERK_REVOKE_FAILED`**: the Clerk API call failed (listing or revoking). Local state is untouched,
+  so the request is safe to retry once Clerk is reachable again.
+- A user without a Clerk subject (local development account) skips Clerk and is revoked locally only.
+
+## Peer-admin guard
+
+Suspend, tier change and erase refuse another admin. An admin cannot act on an allowlisted subject or any
+`role = 'admin'` user through those actions; the request gets `403 ADMIN_TARGET_PROTECTED`. The attempt is
+itself audited as `<action>.denied` with `refused: target_is_admin` before the refusal is returned. Self-targeting
+suspend is refused separately. Unsuspend, revoke-sessions, credits and export do not carry this guard.
+
+## Erased-subject tombstones
+
+Erasing a user (`DELETE /v1/admin/users/{id}` with `confirm: "DELETE"`) stores a tombstone in
+`erased_clerk_subjects`: the SHA-256 digest of the Clerk subject, never the raw id. When a later sign-in
+presents that subject and no user row exists, the request gets `403 ACCOUNT_ERASED` and no account is
+re-provisioned. The tombstone is keyed by digest, so it survives the user row being deleted.
 
 ## Enrolling or rotating a developer code
 
@@ -28,6 +55,10 @@ ADMIN_CLERK_USER_IDS=user_abc python scripts/admin_set_code.py --clerk-subject u
 
 The code (>= 12 letters/digits) is read from a hidden prompt, or generated and printed once. Only a
 salted scrypt hash is stored. Rotation clears any lockout and ends that developer's open sessions.
+
+The credential change and its `admin.code_set` audit row are staged in one transaction and committed
+together. If the audit insert fails, the transaction rolls back and the previous code, lockout state and
+open sessions stay as they were.
 
 ## Audit and erasure
 
@@ -42,7 +73,21 @@ Suspension sets `users.disabled` and revokes sessions: every later request from 
 `403 ACCOUNT_SUSPENDED`. "Revoke sessions" bumps `token_version` and stamps `sessions_revoked_at`;
 Clerk tokens issued at or before that instant are rejected.
 
+## Removed legacy routes
+
+The unversioned `GET /admin/overview` and `GET /admin/runs` routes are removed; there is no
+compatibility alias. Use the versioned endpoints instead: `GET /v1/admin/monitor` for health and
+`GET /v1/admin/runs` (cursor-paged) for run listings. Requests to the old unversioned paths are not routed.
+
 ## Monitor
 
 `GET /v1/admin/monitor` is safe to poll every 5 s: request metrics are in-process counters
 (per replica), the response is cached for 4 s, and the only database reads are two indexed lookups.
+
+## Dashboard page
+
+`GET /admin` serves the operator page with `Content-Security-Policy` limiting scripts to `'self'` and the
+Clerk frontend host encoded in the publishable key, `frame-ancestors 'none'`, `object-src 'none'`,
+`base-uri 'none'`, plus `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`. The Clerk browser bundle
+is pinned to an exact version (`CLERK_JS_VERSION` in `admin.js`, currently `5.125.11`); never use a floating
+major range such as `@5`.
