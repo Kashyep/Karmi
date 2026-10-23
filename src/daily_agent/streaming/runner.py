@@ -6,7 +6,7 @@ import asyncio
 import logging
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,6 +23,7 @@ from daily_agent.gateway.types import (
     ProviderError,
     ProviderUnavailableError,
     QuotaExhaustedError,
+    StreamChunk,
     TaskType,
     UnauthorizedError,
     ValidationFailedError,
@@ -40,9 +41,13 @@ from daily_agent.services import (
     served_debug,
     settle_budget,
 )
+from daily_agent.streaming import redis_state
 from daily_agent.streaming.registry import RunState
 
 logger = logging.getLogger(__name__)
+
+_DB_HEARTBEAT_INTERVAL_SECONDS = 30.0
+_OWNER_REFRESH_INTERVAL_SECONDS = 15.0
 
 
 def _error_category(exc: Exception) -> tuple[str, bool, int | None]:
@@ -67,6 +72,16 @@ def _error_category(exc: Exception) -> tuple[str, bool, int | None]:
         if exc.kind == ProviderError.AUTH:
             return ErrorCategory.UNAUTHORIZED.value, False, None
     return ErrorCategory.INTERNAL.value, True, None
+
+
+async def _aclose_stream(stream: object) -> None:
+    aclose = getattr(stream, "aclose", None)
+    if aclose is None:
+        return
+    try:
+        await aclose()
+    except Exception:
+        logger.debug("upstream stream close failed", exc_info=True)
 
 
 class StreamRunner:
@@ -114,6 +129,7 @@ class StreamRunner:
         self._flushed_terminal = False
         self.final_call: Any = None
         self._sqlite_singleton_memory: bool = self._detect_sqlite_singleton_memory()
+        self._redis_enabled = redis_state.redis_enabled(settings)
         if self.run_state.on_finalize is None:
             self.run_state.on_finalize = self.finalize
 
@@ -156,37 +172,46 @@ class StreamRunner:
         self,
         *,
         text: str,
+        interim: bool = False,
         run_status: str | None = None,
         run_finish_reason: str | None = None,
         message_status: str | None = None,
         message_finish_reason: str | None = None,
         outcome: str | None = None,
         served: ServedDebugView | None = None,
+        write_partial_text: bool = False,
     ) -> None:
+        """Persist the assistant message and run row.
+
+        Interim flushes write only the message content and ``last_seq``. Terminal flushes write the
+        single final copy: ``response_text`` when the run completes, ``partial_text`` when it is
+        cancelled or fails.
+        """
         with self._flush_lock, self.session_factory() as session:
             run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
             if run is not None:
-                run.partial_text = text
                 run.last_seq = self.seq
-                if served is not None:
-                    for name, value in served.model_dump().items():
-                        setattr(run, name, value)
-                if run_status is not None:
-                    run.status = run_status
-                if run_finish_reason is not None:
-                    run.finish_reason = run_finish_reason
-                if outcome is not None:
-                    run.outcome = outcome
-                if run_status == RunStatus.COMPLETED:
-                    run.response_text = text
+                if not interim:
+                    if write_partial_text:
+                        run.partial_text = text
+                    if served is not None:
+                        for name, value in served.model_dump().items():
+                            setattr(run, name, value)
+                    if run_status is not None:
+                        run.status = run_status
+                    if run_finish_reason is not None:
+                        run.finish_reason = run_finish_reason
+                    if outcome is not None:
+                        run.outcome = outcome
+                    if run_status == RunStatus.COMPLETED:
+                        run.response_text = text
 
             msg = session.scalar(
                 select(ChatMessage).where(ChatMessage.id == self.run_state.assistant_message_id)
             )
             if msg is not None:
                 # If continuing, full content includes prior text
-                full_content = (self.prior_content or "") + text
-                msg.content = full_content
+                msg.content = (self.prior_content or "") + text
                 if message_status is not None:
                     msg.status = message_status
                 if message_finish_reason is not None:
@@ -199,6 +224,13 @@ class StreamRunner:
             session.commit()
             self.last_flush_time = time.monotonic()
             self.last_flushed_len = len(text)
+
+    def _touch_heartbeat(self) -> None:
+        with self._flush_lock, self.session_factory() as session:
+            run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
+            if run is not None:
+                run.heartbeat_at = utcnow()
+                session.commit()
 
     def _settle_or_release_budget(self, *, release: bool = False) -> None:
         with self._budget_lock:
@@ -240,11 +272,15 @@ class StreamRunner:
                     message_status=MessageStatus.FAILED.value,
                     message_finish_reason=FinishReason.ERROR.value,
                     outcome="FAILED",
+                    write_partial_text=True,
                 )
             except Exception:
                 logger.exception("Failed to flush DB during runner finalization")
 
     async def _heartbeat_loop(self) -> None:
+        run_id = self.run_state.run_id
+        last_db_heartbeat = float("-inf")
+        last_owner_refresh = float("-inf")
         while not self.run_state.terminal:
             await asyncio.sleep(1.0)
             if self.run_state.terminal:
@@ -254,9 +290,26 @@ class StreamRunner:
                 self.last_event_time = now
                 heartbeat_at = datetime.now(UTC).isoformat()
                 await self.run_state.publish("heartbeat", {"at": heartbeat_at})
+            if now - last_db_heartbeat >= _DB_HEARTBEAT_INTERVAL_SECONDS:
+                last_db_heartbeat = now
+                try:
+                    await self._run_in_thread(self._touch_heartbeat)
+                except Exception:
+                    logger.exception("Failed to record heartbeat run_id=%s", run_id)
+            if not self._redis_enabled:
+                continue
+            if now - last_owner_refresh >= _OWNER_REFRESH_INTERVAL_SECONDS:
+                last_owner_refresh = now
+                await redis_state.mark_owner(run_id)
+            task = self.run_state.task
+            if task is not None and not task.done() and await redis_state.stop_requested(run_id):
+                logger.info("stream.stop_requested run_id=%s", run_id)
+                task.cancel()
 
     async def run(self) -> None:
         logger.info("stream.started run_id=%s", self.run_state.run_id)
+        if self._redis_enabled:
+            await redis_state.mark_owner(self.run_state.run_id)
         # Always emit run.started first (seq=0)
         await self.run_state.publish(
             "run.started",
@@ -283,6 +336,7 @@ class StreamRunner:
                 {"role": "assistant", "content": self.prior_content},
             )
         finish_reason: str = FinishReason.STOP.value
+        stream_gen: AsyncIterator[StreamChunk] | None = None
         try:
             self.provider_invoked = True
             stream_gen = self.gateway.stream(
@@ -314,14 +368,16 @@ class StreamRunner:
                         seq=self.seq,
                     )
 
-                    # Flush partial text at most once per 1.0 s or per 1 KB of new text
-                    if (now - self.last_flush_time >= 1.0) or (
-                        len(self.accumulated_text) - self.last_flushed_len >= 1024
+                    # Interim flush: assistant message content only, throttled by time or size.
+                    if (
+                        now - self.last_flush_time >= self.settings.stream_flush_interval_seconds
+                        or len(self.accumulated_text) - self.last_flushed_len
+                        >= self.settings.stream_flush_chars
                     ):
                         await self._run_in_thread(
                             self._flush_db,
                             text=self.accumulated_text,
-                            run_status="streaming",
+                            interim=True,
                             message_status=MessageStatus.STREAMING.value,
                         )
 
@@ -377,6 +433,7 @@ class StreamRunner:
                 message_status=MessageStatus.STOPPED.value,
                 message_finish_reason=FinishReason.CANCELLED.value,
                 outcome="STOPPED",
+                write_partial_text=True,
             )
             await self._run_in_thread(self._settle_or_release_budget, release=False)
             if not self.run_state.terminal:
@@ -402,6 +459,7 @@ class StreamRunner:
                 message_status=MessageStatus.FAILED.value,
                 message_finish_reason=FinishReason.ERROR.value,
                 outcome="FAILED",
+                write_partial_text=True,
             )
             await self._run_in_thread(
                 self._settle_or_release_budget, release=not bool(self.accumulated_text)
@@ -419,6 +477,9 @@ class StreamRunner:
 
         finally:
             heartbeat_task.cancel()
+            await _aclose_stream(stream_gen)
+            if self._redis_enabled:
+                await redis_state.clear_owner(self.run_state.run_id)
 
 
 def start_stream_run(

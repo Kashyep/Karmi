@@ -162,7 +162,10 @@ class GatewayRequestDay(Base):
 
 class BudgetReservation(Base):
     __tablename__ = "budget_reservations"
-    __table_args__ = (UniqueConstraint("account_id", "logical_request_id", "stage"),)
+    __table_args__ = (
+        UniqueConstraint("account_id", "logical_request_id", "stage"),
+        Index("ix_budget_reservations_status_created", "status", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     logical_request_id: Mapped[str] = mapped_column(String(160), index=True)
@@ -434,6 +437,10 @@ class ChatMessage(Base):
             "conversation_id", "client_message_id", name="uq_chat_messages_conversation_client_message_id"
         ),
         Index("ix_chat_messages_conversation_created", "conversation_id", "created_at"),
+        Index("ix_chat_messages_account_id", "account_id"),
+        Index("ix_chat_messages_run_id", "run_id"),
+        Index("ix_chat_messages_parent_message_id", "parent_message_id"),
+        Index("ix_chat_messages_client_message_id", "client_message_id"),
     )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=chat_message_id_str)

@@ -15,7 +15,7 @@ import inspect
 import logging
 import re
 import threading
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -300,10 +300,9 @@ class Gateway:
         final_finish_reason: str | None = None
         final_call: ProviderCall | None = None
 
+        chunks = _stream_with_timeouts(stream_gen, first_timeout=20.0, gap_timeout=30.0)
         try:
-            async for chunk in _stream_with_timeouts(
-                stream_gen, first_timeout=20.0, gap_timeout=30.0
-            ):
+            async for chunk in chunks:
                 if chunk.text:
                     full_text += chunk.text
                     yield chunk
@@ -331,6 +330,8 @@ class Gateway:
                 model.provider, model.model_id, ProviderError(ProviderError.SERVER, str(exc))
             )
             raise ProviderUnavailableError(str(exc)) from exc
+        finally:
+            await chunks.aclose()
 
         self.health.record_success(model.provider)
         rejection = validate_output(full_text, final_finish_reason, task_type)
@@ -362,44 +363,92 @@ class Gateway:
         yield StreamChunk(text="", finish_reason=mapped_reason, call=final_call)
 
 
+_SYNC_HANDOFF_SLOTS = 8
+
+
+async def _aclose_quietly(stream_obj: object) -> None:
+    aclose = getattr(stream_obj, "aclose", None)
+    if aclose is None:
+        return
+    try:
+        await aclose()
+    except Exception:
+        logger.debug("upstream async stream close failed", exc_info=True)
+
+
+def _close_quietly(stream_obj: object) -> None:
+    close = getattr(stream_obj, "close", None)
+    if close is None:
+        return
+    try:
+        close()
+    except Exception:
+        logger.debug("upstream stream close failed", exc_info=True)
+
+
 async def _stream_with_timeouts(
     stream_obj: Iterator[StreamChunk] | AsyncIterator[StreamChunk],
     first_timeout: float = 20.0,
     gap_timeout: float = 30.0,
-) -> AsyncIterator[StreamChunk]:
+) -> AsyncGenerator[StreamChunk, None]:
     if inspect.isasyncgen(stream_obj) or hasattr(stream_obj, "__anext__"):
         first = True
         anext_fn = stream_obj.__anext__
-        while True:
-            timeout = first_timeout if first else gap_timeout
+        try:
+            while True:
+                timeout = first_timeout if first else gap_timeout
+                try:
+                    chunk = await asyncio.wait_for(anext_fn(), timeout=timeout)
+                except StopAsyncIteration:
+                    break
+                first = False
+                yield chunk
+        finally:
+            await _aclose_quietly(stream_obj)
+        return
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[tuple[StreamChunk | None, Exception | None]] = asyncio.Queue()
+    # Bounds how far the worker thread may run ahead of the consumer.
+    slots = threading.BoundedSemaphore(_SYNC_HANDOFF_SLOTS)
+    stop = threading.Event()
+
+    def _deliver(payload: tuple[StreamChunk | None, Exception | None]) -> bool:
+        while not stop.is_set():
+            if not slots.acquire(timeout=0.5):
+                continue
             try:
-                chunk = await asyncio.wait_for(anext_fn(), timeout=timeout)
-            except StopAsyncIteration:
-                break
-            first = False
-            yield chunk
-    else:
-        queue: asyncio.Queue[tuple[StreamChunk | None, Exception | None]] = asyncio.Queue()
-        loop = asyncio.get_running_loop()
+                loop.call_soon_threadsafe(queue.put_nowait, payload)
+            except RuntimeError:  # event loop closed: nobody will consume
+                return False
+            return True
+        return False
 
-        def _worker() -> None:
-            try:
-                for item in stream_obj:
-                    loop.call_soon_threadsafe(queue.put_nowait, (item, None))
-                loop.call_soon_threadsafe(queue.put_nowait, (None, None))
-            except Exception as exc:
-                loop.call_soon_threadsafe(queue.put_nowait, (None, exc))
+    def _worker() -> None:
+        try:
+            for item in stream_obj:
+                if not _deliver((item, None)):
+                    return
+            _deliver((None, None))
+        except Exception as exc:
+            _deliver((None, exc))
+        finally:
+            # Closed on the thread that drives the iterator, never concurrently with next().
+            _close_quietly(stream_obj)
 
-        t = threading.Thread(target=_worker, daemon=True)
-        t.start()
-
-        first = True
+    threading.Thread(target=_worker, name="gateway-sync-stream", daemon=True).start()
+    first = True
+    try:
         while True:
             timeout = first_timeout if first else gap_timeout
             item, exc = await asyncio.wait_for(queue.get(), timeout=timeout)
+            slots.release()
             first = False
             if exc is not None:
                 raise exc
             if item is None:
                 break
             yield item
+    finally:
+        # Lets the worker stop at its next hand-off and close the upstream stream.
+        stop.set()

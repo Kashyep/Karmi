@@ -23,6 +23,10 @@ def build_engine(settings: Settings) -> Engine:
             pool_size=settings.database_pool_size,
             max_overflow=settings.database_max_overflow,
             pool_timeout=settings.database_pool_timeout,
+            pool_recycle=settings.database_pool_recycle_seconds,
+            # LIFO reuses the most recently returned connection, so idle connections age out
+            # and the pooler sees fewer live sessions under bursty load.
+            pool_use_lifo=True,
             hide_parameters=True,
         )
     engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
@@ -66,4 +70,3 @@ def create_schema(target_engine: Engine | None = None) -> None:
     if engine.dialect.name != "sqlite":
         raise ValueError("automatic schema creation is SQLite-only; review and apply Alembic migrations")
     Base.metadata.create_all(engine)
-

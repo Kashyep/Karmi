@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -19,6 +21,7 @@ from daily_agent.db import create_schema, get_engine, get_session
 from daily_agent.deps import gateway_dependency, limited_principal, own_run
 from daily_agent.gateway import Gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
+from daily_agent.gzip_middleware import SSEAwareGZip
 from daily_agent.models import (
     Account,
     BillingEvent,
@@ -35,7 +38,7 @@ from daily_agent.models import (
 )
 from daily_agent.parakh.routing import RunTiming, record_routing_evidence, route_for_action
 from daily_agent.plans import SYNTHETIC_POLICIES
-from daily_agent.ratelimit import SlidingWindowLimiter, install_log_redaction
+from daily_agent.ratelimit import RateLimiter, build_limiter, install_log_redaction
 from daily_agent.routes.conversations import router as conversations_router
 from daily_agent.routes.stream import router as stream_router
 from daily_agent.schemas import (
@@ -112,14 +115,29 @@ def create_app() -> FastAPI:
             create_schema()
         try:
             with Session(get_engine()) as session:
-                swept = sweep_interrupted_runs(session)
+                swept = sweep_interrupted_runs(
+                    session, older_than_seconds=settings.run_stale_seconds
+                )
             if swept:
                 logger.info("stream.swept_interrupted runs=%s", swept)
         except SQLAlchemyError:
             logger.warning("stream.sweep_failed (schema not migrated?)", exc_info=True)
-        yield
+        # Imported lazily: the maintenance loops are worker code, not request-path code.
+        from daily_agent.background import run_maintenance_loops
+
+        maintenance = asyncio.create_task(run_maintenance_loops(settings))
+        try:
+            yield
+        finally:
+            maintenance.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await maintenance
 
     app = FastAPI(title="Daily Agent", version="0.1.0", lifespan=lifespan)
+
+    app_settings = get_settings()
+    if app_settings.gzip_enabled:
+        app.add_middleware(SSEAwareGZip, minimum_size=app_settings.gzip_min_size)
 
     app.include_router(stream_router)
     app.include_router(conversations_router)
@@ -601,9 +619,9 @@ def create_app() -> FastAPI:
         settings: Settings = Depends(get_settings),
     ) -> AccessCodeView:
         """Unlock a higher beta tier with a secret code. Never downgrades; guesses are throttled."""
-        guesses: SlidingWindowLimiter | None = getattr(app.state, "code_limiter", None)
+        guesses: RateLimiter | None = getattr(app.state, "code_limiter", None)
         if guesses is None:
-            guesses = SlidingWindowLimiter(limit=5)
+            guesses = build_limiter(settings, name="code", limit=5)
             app.state.code_limiter = guesses
         retry_after = guesses.check(principal.user_id)
         if retry_after is not None:

@@ -11,7 +11,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from daily_agent.config import Settings, get_settings
@@ -33,6 +35,7 @@ from daily_agent.models import (
     utcnow,
     uuid_str,
 )
+from daily_agent.plans import PlanPolicy
 from daily_agent.schemas_chat import (
     ChatStreamRequest,
     ErrorCategory,
@@ -65,11 +68,66 @@ router = APIRouter()
 
 IST = timedelta(hours=5, minutes=30)
 
+# Rough chars-per-token used for the input size estimate and the token hold.
+_CHARS_PER_TOKEN = 4
+
 
 def _capacity_full_message(reset_at: datetime) -> str:
     ist = (reset_at.astimezone(UTC) + IST).strftime("%H:%M")
     utc = reset_at.astimezone(UTC).strftime("%H:%M")
     return f"Beta capacity full; resets at {ist} IST ({utc} UTC). Upgrade to Parth or try later."
+
+
+def _sse(events: AsyncIterator[str]) -> StreamingResponse:
+    return StreamingResponse(events, media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+def _in_flight_conflict() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"code": "STREAM_IN_FLIGHT", "message": "stream generation already in flight"},
+    )
+
+
+def _enforce_input_budget(text: str, policy: PlanPolicy) -> None:
+    """Reject a message that cannot fit the plan's input budget, before any reservation."""
+    estimated = len(text.encode("utf-8")) // _CHARS_PER_TOKEN
+    if estimated > policy.input_tokens:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "INPUT_TOO_LARGE",
+                "message": (
+                    f"message is too large for this plan ({estimated} estimated input tokens; "
+                    f"limit {policy.input_tokens})"
+                ),
+                "max_input_tokens": policy.input_tokens,
+            },
+        )
+
+
+def _continue_key(assistant_message_id: str, previous_run_id: str | None) -> str:
+    return f"stream:continue:{assistant_message_id}:{previous_run_id or 'none'}"
+
+
+def _regen_key(user_message_id: str, variant_index: int) -> str:
+    return f"stream:regen:{user_message_id}:{variant_index}"
+
+
+def _resume_frame(evt: StreamEvent, after_seq: int, catching_up: bool) -> str | None:
+    if evt.event == "run.started":
+        if after_seq < 0:
+            return encode_sse_event(evt.event, evt.data, event_id=evt.seq)
+        return None
+    if evt.event == "message.delta":
+        if evt.seq is not None and evt.seq > after_seq:
+            return encode_sse_event(evt.event, evt.data, event_id=evt.seq)
+        return None
+    if evt.event in ("run.finished", "run.error"):
+        return encode_sse_event(evt.event, evt.data, event_id=evt.seq)
+    if evt.event == "heartbeat" and not catching_up:
+        return encode_sse_event(evt.event, evt.data)
+    return None
 
 
 async def stream_run_events(run_state: RunState, after_seq: int = -1) -> AsyncIterator[str]:
@@ -86,16 +144,9 @@ async def stream_run_events(run_state: RunState, after_seq: int = -1) -> AsyncIt
                 is_terminal = run_state.terminal
 
             for evt in new_events:
-                if evt.event == "run.started":
-                    if after_seq < 0:
-                        yield encode_sse_event(evt.event, evt.data, event_id=evt.seq)
-                elif evt.event == "message.delta":
-                    if evt.seq is not None and evt.seq > after_seq:
-                        yield encode_sse_event(evt.event, evt.data, event_id=evt.seq)
-                elif evt.event in ("run.finished", "run.error"):
-                    yield encode_sse_event(evt.event, evt.data, event_id=evt.seq)
-                elif evt.event == "heartbeat" and not catching_up:
-                    yield encode_sse_event(evt.event, evt.data)
+                frame = _resume_frame(evt, after_seq, catching_up)
+                if frame is not None:
+                    yield frame
 
             if is_terminal and cursor >= len(run_state.events):
                 break
@@ -103,6 +154,28 @@ async def stream_run_events(run_state: RunState, after_seq: int = -1) -> AsyncIt
         # Client disconnected: generator cancels, but the background task in StreamRegistry
         # keeps running
         return
+
+
+async def _redis_resume_events(run_id: str, after_seq: int) -> AsyncIterator[str]:
+    """Stream a run owned by another worker by tailing its Redis event mirror."""
+    from daily_agent.streaming.redis_state import tail_events
+
+    catching_up = after_seq >= 0
+    try:
+        async for evt in tail_events(run_id, after_seq):
+            frame = _resume_frame(evt, after_seq, catching_up)
+            if evt.seq is not None and evt.seq > after_seq:
+                catching_up = False
+            if frame is not None:
+                yield frame
+    except asyncio.CancelledError:
+        return
+
+
+async def _redis_run_live(run_id: str) -> bool:
+    from daily_agent.streaming.redis_state import run_is_live
+
+    return await run_is_live(run_id)
 
 
 async def _replay_from_db(
@@ -158,6 +231,185 @@ async def _replay_from_db(
         yield encode_sse_event("run.finished", finished)
 
 
+async def _replay_response(
+    run_id: str,
+    user_msg: ChatMessage,
+    assistant_msg: ChatMessage | None,
+    run: Run | None,
+    *,
+    debug_enabled: bool,
+) -> StreamingResponse:
+    """Replay a run: local registry first, then Redis if another worker owns it live."""
+    run_state = get_stream_registry().get(run_id)
+    if run_state is not None:
+        return _sse(stream_run_events(run_state, after_seq=-1))
+    if await _redis_run_live(run_id):
+        return _sse(_redis_resume_events(run_id, -1))
+    return _sse(_replay_from_db(user_msg, assistant_msg, run, debug_enabled=debug_enabled))
+
+
+def _assistant_for_run(session: Session, principal: Principal, run_id: str) -> ChatMessage | None:
+    return session.scalar(
+        select(ChatMessage)
+        .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+        .where(
+            ChatMessage.run_id == run_id,
+            ChatMessage.role == "assistant",
+            ChatMessage.account_id == principal.account_id,
+            Conversation.user_id == principal.user_id,
+            Conversation.deleted_at.is_(None),
+        )
+        .order_by(ChatMessage.variant_index.desc())
+    )
+
+
+def _assistant_for_user_turn(
+    session: Session, principal: Principal, user_msg: ChatMessage
+) -> ChatMessage | None:
+    return session.scalars(
+        select(ChatMessage)
+        .join(Conversation, ChatMessage.conversation_id == Conversation.id)
+        .where(
+            ChatMessage.parent_message_id == user_msg.id,
+            ChatMessage.account_id == principal.account_id,
+            Conversation.user_id == principal.user_id,
+            Conversation.deleted_at.is_(None),
+        )
+        .order_by(ChatMessage.variant_index.desc())
+    ).first()
+
+
+def _find_run_by_key(session: Session, principal: Principal, logical_request_id: str) -> Run | None:
+    return session.scalar(
+        select(Run).where(
+            Run.account_id == principal.account_id,
+            Run.logical_request_id == logical_request_id,
+        )
+    )
+
+
+def _reserve_and_admit(
+    session: Session,
+    *,
+    principal: Principal,
+    settings: Settings,
+    gateway: Gateway,
+    policy: PlanPolicy,
+    logical_request_id: str,
+    history_tokens_used: int,
+    text: str,
+) -> tuple[str, GatewayAdmission | None]:
+    """Reserve budget and gateway admission; maps refusals to HTTP errors and rolls back."""
+    amount = estimate_request_cost_micro(policy, settings)
+    token_hold = (
+        max(1, len(text.encode("utf-8")) // _CHARS_PER_TOKEN + history_tokens_used)
+        + policy.output_tokens
+        if gateway.live
+        else 0
+    )
+    admission: GatewayAdmission | None = None
+    try:
+        reservation = reserve_budget(
+            session,
+            settings=settings,
+            account_id=principal.account_id,
+            logical_request_id=logical_request_id,
+            stage="execution",
+            amount_micro=amount,
+            tokens=token_hold,
+        )
+        if gateway.live:
+            admission = admit_gateway_requests(
+                session, settings, paid=policy.price_inr > 0, slots=2
+            )
+    except GatewayCapacityFull as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "code": "BETA_CAPACITY_FULL",
+                "message": _capacity_full_message(exc.reset_at),
+                "reset_at": exc.reset_at.isoformat(),
+            },
+        ) from exc
+    except BudgetDenied as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "code": "ALLOWANCE_EXHAUSTED",
+                "message": str(exc),
+                "reset_at": exc.reset_at.isoformat(),
+            },
+        ) from exc
+    except ReservationInFlight as exc:
+        session.rollback()
+        raise _in_flight_conflict() from exc
+    return reservation.id, admission
+
+
+def _history_for(
+    session: Session,
+    principal: Principal,
+    conversation_id: str,
+    *,
+    before: str | None,
+    text: str,
+    policy: PlanPolicy,
+) -> tuple[tuple[dict[str, str], ...], int]:
+    prior_msgs, _ = list_messages(session, principal, conversation_id, before=before, limit=50)
+    trimmed_turns = trim_history(history_from_messages(prior_msgs), text=text, plan=policy)
+    payload = tuple({"role": t.role, "content": t.content} for t in trimmed_turns)
+    return payload, history_tokens(trimmed_turns)
+
+
+def _commit_or_duplicate(session: Session) -> None:
+    """Commit a new run's rows. A lost unique-key race becomes a 409, not a 500."""
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise _in_flight_conflict() from exc
+
+
+def _launch_run(
+    session: Session,
+    *,
+    run_state: RunState,
+    policy: PlanPolicy,
+    text: str,
+    gateway: Gateway,
+    settings: Settings,
+    reservation_id: str,
+    admission: GatewayAdmission | None,
+    history: tuple[dict[str, str], ...],
+    debug_enabled: bool,
+    prior_content: str | None = None,
+) -> StreamingResponse:
+    get_stream_registry().register(run_state)
+    session_factory = sessionmaker(
+        bind=session.get_bind(), autoflush=False, expire_on_commit=False
+    )
+    start_kwargs: dict[str, Any] = {
+        "run_state": run_state,
+        "plan": policy,
+        "text": text,
+        "task_type": classify_task(text),
+        "max_output_tokens": policy.output_tokens,
+        "gateway": gateway,
+        "settings": settings,
+        "session_factory": session_factory,
+        "reservation_id": reservation_id,
+        "debug_enabled": debug_enabled,
+        "prior_content": prior_content,
+        "history": history,
+    }
+    if "admission" in inspect.signature(start_stream_run).parameters:
+        start_kwargs["admission"] = admission
+    start_stream_run(**start_kwargs)
+    return _sse(stream_run_events(run_state, after_seq=-1))
+
+
 @router.post("/v1/chat/stream")
 async def chat_stream(
     body: ChatStreamRequest,
@@ -208,27 +460,9 @@ async def chat_stream(
 
     if existing_user_msg is not None:
         # Replay the existing run
-        assistant_msg = session.scalars(
-            select(ChatMessage)
-            .join(Conversation, ChatMessage.conversation_id == Conversation.id)
-            .where(
-                ChatMessage.parent_message_id == existing_user_msg.id,
-                ChatMessage.account_id == principal.account_id,
-                Conversation.user_id == principal.user_id,
-                Conversation.deleted_at.is_(None),
-            )
-            .order_by(ChatMessage.variant_index.desc())
-        ).first()
+        assistant_msg = _assistant_for_user_turn(session, principal, existing_user_msg)
         run_id = existing_user_msg.run_id or (assistant_msg.run_id if assistant_msg else None)
         if run_id:
-            registry = get_stream_registry()
-            run_state = registry.get(run_id)
-            if run_state is not None:
-                return StreamingResponse(
-                    stream_run_events(run_state, after_seq=-1),
-                    media_type="text/event-stream",
-                    headers=SSE_HEADERS,
-                )
             run = session.scalar(
                 select(Run).where(
                     Run.id == run_id,
@@ -236,78 +470,42 @@ async def chat_stream(
                     Run.user_id == principal.user_id,
                 )
             )
-            return StreamingResponse(
-                _replay_from_db(
-                    existing_user_msg, assistant_msg, run, debug_enabled=principal.tester
-                ),
-                media_type="text/event-stream",
-                headers=SSE_HEADERS,
+            return await _replay_response(
+                run_id,
+                existing_user_msg,
+                assistant_msg,
+                run,
+                debug_enabled=principal.tester,
             )
 
-    # 2. Get or create conversation (first message creates it; no empty records)
+    # 2. The plan's input budget is checked before any row is created, so an oversize
+    #    message never leaves a conversation or reservation behind.
+    _subscription, policy = policy_for(session, principal.account_id)
+    _enforce_input_budget(body.text, policy)
+
+    # 3. Get or create conversation (first message creates it; no empty records)
     conv = ensure_conversation_for_message(
         session, principal, body.conversation_id, body.text, utcnow()
     )
 
-    # 3. Budget reservation & admission pre-stream
-    _subscription, policy = policy_for(session, principal.account_id)
-    # Load prior conversation messages and trim history
-    prior_msgs, _ = list_messages(session, principal, conv.id, limit=50)
-    raw_turns = history_from_messages(prior_msgs)
-    trimmed_turns = trim_history(raw_turns, text=body.text, plan=policy)
-    history_payload = tuple({"role": t.role, "content": t.content} for t in trimmed_turns)
-    amount = estimate_request_cost_micro(policy, settings)
-    token_hold = (
-        max(1, len(body.text.encode("utf-8")) // 4 + history_tokens(trimmed_turns))
-        + policy.output_tokens
-        if gateway.live
-        else 0
+    # 4. Budget reservation & admission pre-stream
+    history_payload, history_used = _history_for(
+        session, principal, conv.id, before=None, text=body.text, policy=policy
     )
     run_id = uuid_str()
     logical_request_id = f"stream:{conv.id}:{body.client_message_id}"
-    admission: GatewayAdmission | None = None
-    try:
-        reservation = reserve_budget(
-            session,
-            settings=settings,
-            account_id=principal.account_id,
-            logical_request_id=logical_request_id,
-            stage="execution",
-            amount_micro=amount,
-            tokens=token_hold,
-        )
-        if gateway.live:
-            admission = admit_gateway_requests(
-                session, settings, paid=policy.price_inr > 0, slots=2
-            )
-    except GatewayCapacityFull as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "code": "BETA_CAPACITY_FULL",
-                "message": _capacity_full_message(exc.reset_at),
-                "reset_at": exc.reset_at.isoformat(),
-            },
-        ) from exc
-    except BudgetDenied as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "code": "ALLOWANCE_EXHAUSTED",
-                "message": str(exc),
-                "reset_at": exc.reset_at.isoformat(),
-            },
-        ) from exc
-    except ReservationInFlight as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "STREAM_IN_FLIGHT", "message": "stream generation already in flight"},
-        ) from exc
+    reservation_id, admission = _reserve_and_admit(
+        session,
+        principal=principal,
+        settings=settings,
+        gateway=gateway,
+        policy=policy,
+        logical_request_id=logical_request_id,
+        history_tokens_used=history_used,
+        text=body.text,
+    )
 
-    # 4. Create user message, assistant message, and Run in one transaction
+    # 5. Create user message, assistant message, and Run in one transaction
     user_msg = ChatMessage(
         id=chat_message_id_str(),
         conversation_id=conv.id,
@@ -336,45 +534,30 @@ async def chat_stream(
         logical_request_id=logical_request_id,
         status="streaming",
         last_seq=0,
+        heartbeat_at=utcnow(),
     )
     conv.last_message_at = utcnow()
     session.add_all([user_msg, assistant_msg, run])
-    session.commit()
+    _commit_or_duplicate(session)
 
-    # 5. Initialize RunState & register in StreamRegistry
+    # 6. Initialize RunState and start the background runner
     run_state = RunState(
         run_id=run_id,
         conversation_id=conv.id,
         user_message_id=user_msg.id,
         assistant_message_id=assistant_msg.id,
     )
-    registry = get_stream_registry()
-    registry.register(run_state)
-
-    # 6. Start background runner
-    engine = session.get_bind()
-    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    start_kwargs: dict[str, Any] = {
-        "run_state": run_state,
-        "plan": policy,
-        "text": body.text,
-        "task_type": classify_task(body.text),
-        "max_output_tokens": policy.output_tokens,
-        "gateway": gateway,
-        "settings": settings,
-        "session_factory": session_factory,
-        "reservation_id": reservation.id,
-        "history": history_payload,
-        "debug_enabled": principal.tester,
-    }
-    if "admission" in inspect.signature(start_stream_run).parameters:
-        start_kwargs["admission"] = admission
-    start_stream_run(**start_kwargs)
-
-    return StreamingResponse(
-        stream_run_events(run_state, after_seq=-1),
-        media_type="text/event-stream",
-        headers=SSE_HEADERS,
+    return _launch_run(
+        session,
+        run_state=run_state,
+        policy=policy,
+        text=body.text,
+        gateway=gateway,
+        settings=settings,
+        reservation_id=reservation_id,
+        admission=admission,
+        history=history_payload,
+        debug_enabled=principal.tester,
     )
 
 
@@ -388,47 +571,30 @@ async def run_events(
     own_run(session, principal, run_id)
     logger.info("stream.resumed run_id=%s after_seq=%s", run_id, after_seq)
 
-    registry = get_stream_registry()
-    run_state = registry.get(run_id)
-    if run_state is None or after_seq > run_state.last_seq:
-        assistant_msg = session.scalar(
-            select(ChatMessage)
-            .join(Conversation, ChatMessage.conversation_id == Conversation.id)
-            .where(
-                ChatMessage.run_id == run_id,
-                ChatMessage.role == "assistant",
-                ChatMessage.account_id == principal.account_id,
-                Conversation.user_id == principal.user_id,
-                Conversation.deleted_at.is_(None),
-            )
-        )
-        assistant_id = (
-            assistant_msg.id
-            if assistant_msg
-            else (run_state.assistant_message_id if run_state else None)
-        )
+    run_state = get_stream_registry().get(run_id)
+    if run_state is not None and after_seq <= run_state.last_seq:
+        return _sse(stream_run_events(run_state, after_seq=after_seq))
+    if run_state is None and await _redis_run_live(run_id):
+        return _sse(_redis_resume_events(run_id, after_seq))
 
-        async def _resume_unavailable() -> AsyncIterator[str]:
-            yield encode_sse_event(
-                "run.error",
-                {
-                    "category": ErrorCategory.RESUME_UNAVAILABLE.value,
-                    "retryable": False,
-                    "assistant_message_id": assistant_id,
-                },
-            )
-
-        return StreamingResponse(
-            _resume_unavailable(),
-            media_type="text/event-stream",
-            headers=SSE_HEADERS,
-        )
-
-    return StreamingResponse(
-        stream_run_events(run_state, after_seq=after_seq),
-        media_type="text/event-stream",
-        headers=SSE_HEADERS,
+    assistant_msg = _assistant_for_run(session, principal, run_id)
+    assistant_id = (
+        assistant_msg.id
+        if assistant_msg
+        else (run_state.assistant_message_id if run_state else None)
     )
+
+    async def _resume_unavailable() -> AsyncIterator[str]:
+        yield encode_sse_event(
+            "run.error",
+            {
+                "category": ErrorCategory.RESUME_UNAVAILABLE.value,
+                "retryable": False,
+                "assistant_message_id": assistant_id,
+            },
+        )
+
+    return _sse(_resume_unavailable())
 
 
 @router.post("/v1/runs/{run_id}/stop", status_code=status.HTTP_202_ACCEPTED)
@@ -438,11 +604,16 @@ async def stop_run(
     session: Session = Depends(get_session),
 ) -> StopResponse:
     run = own_run(session, principal, run_id)
-    registry = get_stream_registry()
-    run_state = registry.get(run_id)
+    run_state = get_stream_registry().get(run_id)
     if run_state is not None:
         run_state.stop()
     else:
+        from daily_agent.streaming.redis_state import request_stop
+
+        if await request_stop(run_id):
+            # The owning worker observes the stop flag and finalizes the run itself.
+            logger.info("stream.stop_forwarded run_id=%s", run_id)
+            return StopResponse(status="cancelled")
         if run.status == "streaming":
             run.status = "completed"
             run.finish_reason = FinishReason.CANCELLED.value
@@ -494,21 +665,6 @@ async def continue_message(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="only assistant messages can be continued",
         )
-    if msg.status == MessageStatus.STREAMING.value:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="cannot continue streaming message"
-        )
-    if msg.finish_reason not in (
-        FinishReason.LENGTH.value,
-        FinishReason.CANCELLED.value,
-        FinishReason.INTERRUPTED.value,
-        FinishReason.ERROR.value,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"cannot continue message with finish_reason={msg.finish_reason}",
-        )
-
     user_msg = session.scalar(
         select(ChatMessage)
         .join(Conversation, ChatMessage.conversation_id == Conversation.id)
@@ -524,107 +680,119 @@ async def continue_message(
             status_code=status.HTTP_400_BAD_REQUEST, detail="parent user message not found"
         )
 
+    if msg.status == MessageStatus.STREAMING.value:
+        # A concurrent continue already claimed this message. Replay its run if it is the
+        # continuation this request would have created; otherwise the message is busy.
+        inflight = session.scalar(
+            select(Run).where(Run.id == msg.run_id, Run.account_id == principal.account_id)
+        )
+        if (
+            inflight is not None
+            and inflight.continuation_of_run_id is not None
+            and inflight.logical_request_id
+            == _continue_key(assistant_message_id, inflight.continuation_of_run_id)
+        ):
+            return await _replay_response(
+                inflight.id,
+                user_msg,
+                msg,
+                inflight,
+                debug_enabled=principal.tester,
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="cannot continue streaming message"
+        )
+    if msg.finish_reason not in (
+        FinishReason.LENGTH.value,
+        FinishReason.CANCELLED.value,
+        FinishReason.INTERRUPTED.value,
+        FinishReason.ERROR.value,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"cannot continue message with finish_reason={msg.finish_reason}",
+        )
+
     _subscription, policy = policy_for(session, principal.account_id)
-    # Load prior conversation messages strictly before the turn being continued (user_msg)
-    prior_msgs, _ = list_messages(
-        session, principal, msg.conversation_id, before=user_msg.id, limit=50
-    )
-    raw_turns = history_from_messages(prior_msgs)
-    trimmed_turns = trim_history(raw_turns, text=user_msg.content, plan=policy)
-    history_payload = tuple({"role": t.role, "content": t.content} for t in trimmed_turns)
-    amount = estimate_request_cost_micro(policy, settings)
-    token_hold = (
-        max(1, len(user_msg.content.encode("utf-8")) // 4 + history_tokens(trimmed_turns))
-        + policy.output_tokens
-        if gateway.live
-        else 0
+    _enforce_input_budget(user_msg.content, policy)
+
+    previous_run_id = msg.run_id
+    prior_content = msg.content
+    conversation_id = msg.conversation_id
+    user_text = user_msg.content
+    user_message_id = user_msg.id
+    history_payload, history_used = _history_for(
+        session, principal, conversation_id, before=user_message_id, text=user_text, policy=policy
     )
     new_run_id = uuid_str()
-    logical_request_id = f"stream:continue:{new_run_id}"
-    admission: GatewayAdmission | None = None
-    try:
-        reservation = reserve_budget(
-            session,
-            settings=settings,
-            account_id=principal.account_id,
-            logical_request_id=logical_request_id,
-            stage="execution",
-            amount_micro=amount,
-            tokens=token_hold,
-        )
-        if gateway.live:
-            admission = admit_gateway_requests(
-                session, settings, paid=policy.price_inr > 0, slots=2
-            )
-    except GatewayCapacityFull as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "code": "BETA_CAPACITY_FULL",
-                "message": _capacity_full_message(exc.reset_at),
-                "reset_at": exc.reset_at.isoformat(),
-            },
-        ) from exc
-    except BudgetDenied as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "code": "ALLOWANCE_EXHAUSTED",
-                "message": str(exc),
-                "reset_at": exc.reset_at.isoformat(),
-            },
-        ) from exc
-
-    msg.status = MessageStatus.STREAMING.value
-    msg.finish_reason = None
-    run = Run(
-        id=new_run_id,
-        account_id=principal.account_id,
-        user_id=principal.user_id,
+    logical_request_id = _continue_key(assistant_message_id, previous_run_id)
+    reservation_id, admission = _reserve_and_admit(
+        session,
+        principal=principal,
+        settings=settings,
+        gateway=gateway,
+        policy=policy,
         logical_request_id=logical_request_id,
-        status="streaming",
-        continuation_of_run_id=msg.run_id,
-        last_seq=0,
+        history_tokens_used=history_used,
+        text=user_text,
     )
-    msg.run_id = new_run_id
-    session.add(run)
-    session.commit()
+
+    # Atomic claim: only one request can move the message from its previous run to a new
+    # streaming run. A concurrent loser rolls back its reservation and gets a 409.
+    run_match = (
+        ChatMessage.run_id.is_(None)
+        if previous_run_id is None
+        else ChatMessage.run_id == previous_run_id
+    )
+    claim = session.execute(
+        update(ChatMessage)
+        .where(
+            ChatMessage.id == assistant_message_id,
+            run_match,
+            ChatMessage.status != MessageStatus.STREAMING.value,
+        )
+        .values(
+            status=MessageStatus.STREAMING.value,
+            run_id=new_run_id,
+            finish_reason=None,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if not (isinstance(claim, CursorResult) and claim.rowcount == 1):
+        session.rollback()
+        raise _in_flight_conflict()
+    session.add(
+        Run(
+            id=new_run_id,
+            account_id=principal.account_id,
+            user_id=principal.user_id,
+            logical_request_id=logical_request_id,
+            status="streaming",
+            continuation_of_run_id=previous_run_id,
+            last_seq=0,
+            heartbeat_at=utcnow(),
+        )
+    )
+    _commit_or_duplicate(session)
 
     run_state = RunState(
         run_id=new_run_id,
-        conversation_id=msg.conversation_id,
-        user_message_id=user_msg.id,
-        assistant_message_id=msg.id,
+        conversation_id=conversation_id,
+        user_message_id=user_message_id,
+        assistant_message_id=assistant_message_id,
     )
-    registry = get_stream_registry()
-    registry.register(run_state)
-
-    engine = session.get_bind()
-    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    start_kwargs: dict[str, Any] = {
-        "run_state": run_state,
-        "plan": policy,
-        "text": user_msg.content,
-        "task_type": classify_task(user_msg.content),
-        "max_output_tokens": policy.output_tokens,
-        "gateway": gateway,
-        "settings": settings,
-        "session_factory": session_factory,
-        "reservation_id": reservation.id,
-        "debug_enabled": principal.tester,
-        "prior_content": msg.content,
-        "history": history_payload,
-    }
-    if "admission" in inspect.signature(start_stream_run).parameters:
-        start_kwargs["admission"] = admission
-    start_stream_run(**start_kwargs)
-
-    return StreamingResponse(
-        stream_run_events(run_state, after_seq=-1),
-        media_type="text/event-stream",
-        headers=SSE_HEADERS,
+    return _launch_run(
+        session,
+        run_state=run_state,
+        policy=policy,
+        text=user_text,
+        gateway=gateway,
+        settings=settings,
+        reservation_id=reservation_id,
+        admission=admission,
+        history=history_payload,
+        debug_enabled=principal.tester,
+        prior_content=prior_content,
     )
 
 
@@ -679,115 +847,88 @@ async def regenerate_message(
         )
     )
     variant_index = (max_variant if max_variant is not None else msg.variant_index) + 1
+    logical_request_id = _regen_key(user_msg.id, variant_index)
+
+    # A regenerate for the same variant slot that already has a run (a concurrent or retried
+    # request) replays that run instead of reserving budget twice.
+    existing = _find_run_by_key(session, principal, logical_request_id)
+    if existing is not None:
+        sibling = _assistant_for_run(session, principal, existing.id)
+        return await _replay_response(
+            existing.id,
+            user_msg,
+            sibling,
+            existing,
+            debug_enabled=principal.tester,
+        )
 
     _subscription, policy = policy_for(session, principal.account_id)
-    # Load prior conversation messages strictly before the turn being regenerated (user_msg)
-    prior_msgs, _ = list_messages(
-        session, principal, msg.conversation_id, before=user_msg.id, limit=50
-    )
-    raw_turns = history_from_messages(prior_msgs)
-    trimmed_turns = trim_history(raw_turns, text=user_msg.content, plan=policy)
-    history_payload = tuple({"role": t.role, "content": t.content} for t in trimmed_turns)
-    amount = estimate_request_cost_micro(policy, settings)
-    token_hold = (
-        max(1, len(user_msg.content.encode("utf-8")) // 4 + history_tokens(trimmed_turns))
-        + policy.output_tokens
-        if gateway.live
-        else 0
+    _enforce_input_budget(user_msg.content, policy)
+
+    user_text = user_msg.content
+    user_message_id = user_msg.id
+    conversation_id = msg.conversation_id
+    previous_run_id = msg.run_id
+    history_payload, history_used = _history_for(
+        session, principal, conversation_id, before=user_message_id, text=user_text, policy=policy
     )
     new_run_id = uuid_str()
-    logical_request_id = f"stream:regen:{new_run_id}"
-    admission: GatewayAdmission | None = None
-    try:
-        reservation = reserve_budget(
-            session,
-            settings=settings,
-            account_id=principal.account_id,
-            logical_request_id=logical_request_id,
-            stage="execution",
-            amount_micro=amount,
-            tokens=token_hold,
-        )
-        if gateway.live:
-            admission = admit_gateway_requests(
-                session, settings, paid=policy.price_inr > 0, slots=2
-            )
-    except GatewayCapacityFull as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "code": "BETA_CAPACITY_FULL",
-                "message": _capacity_full_message(exc.reset_at),
-                "reset_at": exc.reset_at.isoformat(),
-            },
-        ) from exc
-    except BudgetDenied as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "code": "ALLOWANCE_EXHAUSTED",
-                "message": str(exc),
-                "reset_at": exc.reset_at.isoformat(),
-            },
-        ) from exc
-
-    sibling_msg = ChatMessage(
-        id=chat_message_id_str(),
-        conversation_id=msg.conversation_id,
-        account_id=principal.account_id,
-        role="assistant",
-        status=MessageStatus.STREAMING.value,
-        content="",
-        run_id=new_run_id,
-        parent_message_id=user_msg.id,
-        variant_index=variant_index,
-    )
-    run = Run(
-        id=new_run_id,
-        account_id=principal.account_id,
-        user_id=principal.user_id,
+    reservation_id, admission = _reserve_and_admit(
+        session,
+        principal=principal,
+        settings=settings,
+        gateway=gateway,
+        policy=policy,
         logical_request_id=logical_request_id,
-        status="streaming",
-        previous_run_id=msg.run_id,
-        regenerate_reason="user_request",
-        last_seq=0,
+        history_tokens_used=history_used,
+        text=user_text,
     )
-    session.add_all([sibling_msg, run])
-    session.commit()
+
+    sibling_id = chat_message_id_str()
+    session.add_all(
+        [
+            ChatMessage(
+                id=sibling_id,
+                conversation_id=conversation_id,
+                account_id=principal.account_id,
+                role="assistant",
+                status=MessageStatus.STREAMING.value,
+                content="",
+                run_id=new_run_id,
+                parent_message_id=user_message_id,
+                variant_index=variant_index,
+            ),
+            Run(
+                id=new_run_id,
+                account_id=principal.account_id,
+                user_id=principal.user_id,
+                logical_request_id=logical_request_id,
+                status="streaming",
+                previous_run_id=previous_run_id,
+                regenerate_reason="user_request",
+                last_seq=0,
+                heartbeat_at=utcnow(),
+            ),
+        ]
+    )
+    _commit_or_duplicate(session)
 
     run_state = RunState(
         run_id=new_run_id,
-        conversation_id=msg.conversation_id,
-        user_message_id=user_msg.id,
-        assistant_message_id=sibling_msg.id,
+        conversation_id=conversation_id,
+        user_message_id=user_message_id,
+        assistant_message_id=sibling_id,
     )
-    registry = get_stream_registry()
-    registry.register(run_state)
-
-    engine = session.get_bind()
-    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    start_kwargs: dict[str, Any] = {
-        "run_state": run_state,
-        "plan": policy,
-        "text": user_msg.content,
-        "task_type": classify_task(user_msg.content),
-        "max_output_tokens": policy.output_tokens,
-        "gateway": gateway,
-        "settings": settings,
-        "session_factory": session_factory,
-        "reservation_id": reservation.id,
-        "debug_enabled": principal.tester,
-        "prior_content": None,
-        "history": history_payload,
-    }
-    if "admission" in inspect.signature(start_stream_run).parameters:
-        start_kwargs["admission"] = admission
-    start_stream_run(**start_kwargs)
-
-    return StreamingResponse(
-        stream_run_events(run_state, after_seq=-1),
-        media_type="text/event-stream",
-        headers=SSE_HEADERS,
+    return _launch_run(
+        session,
+        run_state=run_state,
+        policy=policy,
+        text=user_text,
+        gateway=gateway,
+        settings=settings,
+        reservation_id=reservation_id,
+        admission=admission,
+        history=history_payload,
+        debug_enabled=principal.tester,
+        prior_content=None,
     )

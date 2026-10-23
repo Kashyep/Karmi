@@ -53,11 +53,16 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "sqlite+pysqlite:///./data/development.db"
     migration_database_url: str | None = None
-    database_pool_size: int = Field(default=2, ge=1, le=20)
-    database_max_overflow: int = Field(default=0, ge=0, le=20)
+    # Per-process pool. Total DB connections = replicas * WEB_CONCURRENCY * (size + overflow);
+    # keep that under the Neon pooler client limit / compute max_connections (docs/runbooks/scale.md).
+    database_pool_size: int = Field(default=10, ge=1, le=100)
+    database_max_overflow: int = Field(default=10, ge=0, le=100)
     database_pool_timeout: int = Field(default=15, ge=1, le=120)
     database_connect_timeout: int = Field(default=15, ge=1, le=120)
+    database_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86_400)
     redis_url: str | None = None
+    # Redis calls fail open after this timeout; the in-process fallbacks take over.
+    redis_socket_timeout_seconds: float = Field(default=0.25, gt=0, le=10)
     auth_secret: str = "development-only-change-me"
     webhook_secret: str = "development-webhook-only"
     allow_development_auth: bool = True
@@ -85,12 +90,34 @@ class Settings(BaseSettings):
     gateway_breaker_open_seconds: float = Field(default=60.0, gt=0)
     gateway_model_cooldown_seconds: float = Field(default=60.0, gt=0)
     # Shared daily cap on live provider requests across every account, matching the provider
-    # key's own limit (an unfunded OpenRouter key allows 50 a day). The last
-    # ``gateway_paid_reserved_requests`` of them are kept for paid plans.
+    # key's own limit. The unfunded OpenRouter key allows 50 a day, so the default stays 50.
+    # Raise it to the provider's real limit once the key is funded. The last
+    # ``gateway_paid_reserved_requests`` of them are kept for paid plans, so the reserve must
+    # stay strictly smaller than this limit. See docs/runbooks/scale.md.
     gateway_daily_request_limit: int = Field(default=50, ge=1)
     gateway_paid_reserved_requests: int = Field(default=10, ge=0)
-    # Per-user cap on message/feedback/regenerate calls (in-process; see daily_agent.ratelimit).
+    # Per-user cap on message/feedback/regenerate calls. Shared through Redis when redis_url is
+    # set; otherwise each process enforces its own window (see daily_agent.ratelimit).
     rate_limit_per_minute: int = Field(default=30, ge=1, le=10_000)
+    # Retention purge: deletes rows older than the per-table age below, in batches, on a timer.
+    retention_purge_enabled: bool = True
+    retention_purge_interval_seconds: int = Field(default=3600, ge=60, le=86_400)
+    retention_batch_size: int = Field(default=1000, ge=1, le=100_000)
+    retention_runs_days: int = Field(default=90, ge=1, le=3650)
+    retention_ledger_days: int = Field(default=400, ge=1, le=3650)
+    retention_routing_days: int = Field(default=90, ge=1, le=3650)
+    retention_outbox_days: int = Field(default=30, ge=1, le=3650)
+    retention_inbox_days: int = Field(default=30, ge=1, le=3650)
+    # How often the budget-reservation sweeper runs, and how stale a run heartbeat may be
+    # before the run is treated as interrupted.
+    reservation_sweep_interval_seconds: int = Field(default=30, ge=5, le=3600)
+    run_stale_seconds: int = Field(default=120, ge=10, le=3600)
+    # Response compression. Server-sent event streams are never compressed.
+    gzip_enabled: bool = True
+    gzip_min_size: int = Field(default=1024, ge=0, le=1_048_576)
+    # SSE output is flushed at most this often, or once this many characters are buffered.
+    stream_flush_interval_seconds: float = Field(default=2.0, gt=0, le=60)
+    stream_flush_chars: int = Field(default=4096, ge=1, le=1_000_000)
     paid_checkout_enabled: bool = False
     whatsapp_enabled: bool = False
     # Beta access-code hashes (sha256 -> plan id); ``None`` loads the packaged file.

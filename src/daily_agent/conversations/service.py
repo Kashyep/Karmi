@@ -368,6 +368,45 @@ def restore(session: Session, principal: Principal, id: str) -> Conversation:
     return conv
 
 
+def _first_matching_contents(
+    session: Session,
+    account_id: str,
+    conversation_ids: Sequence[str],
+    pattern: str,
+) -> dict[str, str]:
+    """Content of each conversation's earliest message matching ``pattern``.
+
+    One windowed query for every conversation (row_number per conversation),
+    so the cost does not grow with the number of search results.
+    """
+    ids = list(conversation_ids)
+    if not ids:
+        return {}
+    ranked = (
+        select(
+            ChatMessage.conversation_id.label("conversation_id"),
+            ChatMessage.content.label("content"),
+            func.row_number()
+            .over(
+                partition_by=ChatMessage.conversation_id,
+                order_by=(ChatMessage.created_at.asc(), ChatMessage.id.asc()),
+            )
+            .label("rn"),
+        )
+        .where(
+            ChatMessage.conversation_id.in_(ids),
+            ChatMessage.account_id == account_id,
+            ChatMessage.content.ilike(pattern, escape="\\"),
+        )
+        .subquery()
+    )
+    rows = session.execute(
+        select(ranked.c.conversation_id, ranked.c.content).where(ranked.c.rn == 1)
+    ).all()
+    return {cid: content for cid, content in rows}
+
+
+
 def search_conversations(
     session: Session,
     principal: Principal,
@@ -422,6 +461,8 @@ def search_conversations(
         return []
 
     counts = message_counts(session, [c.id for c in convs])
+    content_ids = [c.id for c in convs if not (c.title and term.lower() in c.title.lower())]
+    first_content = _first_matching_contents(session, principal.account_id, content_ids, pattern)
     results: list[ConversationSearchResult] = []
 
     for conv in convs:
@@ -430,18 +471,8 @@ def search_conversations(
             snippet = conv.title
         else:
             matched = "content"
-            first_msg_stmt = (
-                select(ChatMessage)
-                .where(
-                    ChatMessage.conversation_id == conv.id,
-                    ChatMessage.account_id == principal.account_id,
-                    ChatMessage.content.ilike(pattern, escape="\\"),
-                )
-                .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
-                .limit(1)
-            )
-            first_msg = session.scalar(first_msg_stmt)
-            snippet = make_snippet(first_msg.content, term) if first_msg else conv.title or ""
+            first_text = first_content.get(conv.id)
+            snippet = make_snippet(first_text, term) if first_text is not None else conv.title or ""
 
         conv_view = to_conversation_view(conv, message_count=counts.get(conv.id, 0))
         results.append(

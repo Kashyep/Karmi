@@ -7,14 +7,16 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from daily_agent.models import BudgetReservation, ChatMessage, ReservationStatus, Run
+from daily_agent.models import BudgetReservation, ChatMessage, ReservationStatus, Run, utcnow
 from daily_agent.schemas_chat import ErrorCategory, FinishReason, MessageStatus
 from daily_agent.services import release_budget
+from daily_agent.streaming import redis_state
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,8 @@ class RunState:
             if event == "message.delta" and "text" in data:
                 self.partial_text += data["text"]
             self.condition.notify_all()
+        # Cross-worker fan-out; a no-op without redis_url and never raises.
+        await redis_state.mirror_event(self.run_id, event, data, seq)
 
     def finalize(self) -> None:
         if self.terminal:
@@ -73,23 +77,29 @@ class RunState:
             if self.terminated_at is None:
                 self.terminated_at = time.time()
             self.finish_reason = FinishReason.ERROR.value
-            self.events.append(
-                StreamEvent(
-                    event="run.error",
-                    data={
-                        "category": ErrorCategory.INTERNAL.value,
-                        "retryable": False,
-                        "assistant_message_id": self.assistant_message_id,
-                    },
-                )
+            error_event = StreamEvent(
+                event="run.error",
+                data={
+                    "category": ErrorCategory.INTERNAL.value,
+                    "retryable": False,
+                    "assistant_message_id": self.assistant_message_id,
+                },
             )
+            self.events.append(error_event)
             try:
                 loop = asyncio.get_running_loop()
                 if loop.is_running():
+
                     async def _notify() -> None:
                         async with self.condition:
                             self.condition.notify_all()
+
                     loop.create_task(_notify())
+                    loop.create_task(
+                        redis_state.mirror_event(
+                            self.run_id, error_event.event, error_event.data, None
+                        )
+                    )
             except RuntimeError:
                 pass
 
@@ -114,6 +124,10 @@ class StreamRegistry:
     def has(self, run_id: str) -> bool:
         self.evict_expired()
         return run_id in self._runs
+
+    def active_count(self) -> int:
+        self.evict_expired()
+        return sum(1 for state in self._runs.values() if not state.terminal)
 
     def evict_expired(
         self,
@@ -153,9 +167,18 @@ def get_stream_registry() -> StreamRegistry:
     return _REGISTRY
 
 
-def sweep_interrupted_runs(session: Session) -> int:
-    """Sweep runs and messages left in 'streaming' state at process start."""
-    runs = session.scalars(select(Run).where(Run.status == "streaming")).all()
+def sweep_interrupted_runs(session: Session, older_than_seconds: int = 0) -> int:
+    """Sweep runs and messages left in 'streaming' state.
+
+    With ``older_than_seconds`` > 0 only runs whose heartbeat is missing or older than the cutoff
+    are swept, plus the messages tied to those runs, so runs live on another worker are untouched.
+    With 0 every streaming run is swept (process start, single worker).
+    """
+    run_query = select(Run).where(Run.status == "streaming")
+    if older_than_seconds > 0:
+        cutoff = utcnow() - timedelta(seconds=older_than_seconds)
+        run_query = run_query.where(or_(Run.heartbeat_at.is_(None), Run.heartbeat_at < cutoff))
+    runs = session.scalars(run_query).all()
     count = len(runs)
     for run in runs:
         run.status = "interrupted"
@@ -169,9 +192,10 @@ def sweep_interrupted_runs(session: Session) -> int:
         ).all()
         for reservation in reservations:
             release_budget(session, reservation)
-    messages = session.scalars(
-        select(ChatMessage).where(ChatMessage.status == MessageStatus.STREAMING.value)
-    ).all()
+    message_query = select(ChatMessage).where(ChatMessage.status == MessageStatus.STREAMING.value)
+    if older_than_seconds > 0:
+        message_query = message_query.where(ChatMessage.run_id.in_([run.id for run in runs]))
+    messages = session.scalars(message_query).all()
     for msg in messages:
         msg.status = MessageStatus.INTERRUPTED.value
         msg.finish_reason = FinishReason.INTERRUPTED.value
