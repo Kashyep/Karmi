@@ -4,6 +4,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import '../api/karmi_api.dart';
 import '../auth/session.dart';
 import '../armory/armory_controller.dart';
+import '../armory/preview_banner.dart';
 import '../features/armory/armory_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/plans/plan_selection_screen.dart';
@@ -66,6 +67,11 @@ class _KarmiShellState extends State<KarmiShell> {
   int _index = 0;
   final _bodyKey = GlobalKey();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  /// Height of the chat header row (KarmiChatHeader); the preview banner is
+  /// placed below it on the chat tab, which has no app bar.
+  static const double _chatHeaderExtent = 56;
+
   final Set<int> _visited = {0};
   final List<Widget?> _pages = [null, null, null, null];
   @override
@@ -132,7 +138,6 @@ class _KarmiShellState extends State<KarmiShell> {
       (_) => ArmoryScreen(armory: widget.armory),
     ),
   );
-
 
   Widget _buildPage(int index) {
     switch (index) {
@@ -287,13 +292,16 @@ class _KarmiShellState extends State<KarmiShell> {
           appBar: isChat
               ? null
               : AppBar(
+                  // Same toolbar height and centring as GlassAppBar so the
+                  // title sits in the same place in both modes.
+                  toolbarHeight: 44,
                   automaticallyImplyLeading: false,
                   centerTitle: true,
                   title: Semantics(header: true, child: title),
                 ),
           body: _withPreviewBanner(
             content,
-            top: (isChat ? mq.padding.top + 56 : 0) + 8,
+            top: (isChat ? mq.padding.top + _chatHeaderExtent : 0) + 8,
           ),
           bottomNavigationBar: isCompactNav
               ? NavigationBar(
@@ -370,7 +378,11 @@ class _KarmiShellState extends State<KarmiShell> {
               data: Theme.of(context).iconTheme,
               child: _withPreviewBanner(
                 content,
-                top: (isChat ? mq.padding.top + 56 : bodyPadding.top) + 8,
+                top:
+                    (isChat
+                        ? mq.padding.top + _chatHeaderExtent
+                        : bodyPadding.top) +
+                    8,
               ),
             ),
           ),
@@ -399,4 +411,3 @@ class _KarmiShellState extends State<KarmiShell> {
         child: body,
       );
 }
-

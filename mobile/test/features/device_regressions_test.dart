@@ -166,9 +166,7 @@ void main() {
   // Device (TalkBack / uiautomator): with the glass overflow menu open, its
   // items were missing from the accessibility tree, so screen-reader users
   // could not reach Plans or Licences.
-  testWidgets('Settings reaches Armory, Plans, Licences', (
-    tester,
-  ) async {
+  testWidgets('Settings reaches Armory, Plans, Licences', (tester) async {
     final handle = tester.ensureSemantics();
     await pumpApp(tester);
     await openTab(tester, 'Settings');

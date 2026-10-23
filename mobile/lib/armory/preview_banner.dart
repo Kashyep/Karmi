@@ -62,6 +62,7 @@ class _ArmoryPreviewBannerState extends State<ArmoryPreviewBanner> {
     _secondsRemaining.dispose();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     final tier = widget.armory.previewTier;
@@ -84,9 +85,7 @@ class _ArmoryPreviewBannerState extends State<ArmoryPreviewBanner> {
                 liveRegion: true,
                 child: Text(
                   'Previewing ${tier.label} · ${seconds}s left',
-                  style: text.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
             ),
