@@ -204,23 +204,63 @@ class _UsersScreenState extends State<UsersScreen> {
           },
         ),
         const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          initialValue: _status,
-          decoration: const InputDecoration(
-            labelText: 'Status',
-            prefixIcon: Icon(Icons.filter_alt_outlined),
-          ),
-          items: const [
-            DropdownMenuItem(value: 'all', child: Text('All statuses')),
-            DropdownMenuItem(value: 'active', child: Text('Active')),
-            DropdownMenuItem(value: 'suspended', child: Text('Suspended')),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilterChip(
+              label: const Text('Suspended'),
+              selected: _status == 'suspended',
+              onSelected: (value) {
+                setState(() => _status = value ? 'suspended' : 'all');
+                _list.reload();
+              },
+            ),
+            FilterChip(
+              label: const Text('Expiring soon'),
+              selected: _expiringSoon,
+              onSelected: (value) {
+                setState(() => _expiringSoon = value);
+                _list.reload();
+              },
+            ),
+            ActionChip(
+              label: Text(
+                _testerLabel.isEmpty ? 'Tester label' : 'Tester: $_testerLabel',
+              ),
+              onPressed: () async {
+                final value = await showDialog<String>(
+                  context: context,
+                  builder: (dialogContext) {
+                    final controller = TextEditingController(text: _testerLabel);
+                    return AlertDialog(
+                      title: const Text('Tester label'),
+                      content: TextField(
+                        controller: controller,
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                          hintText: 'Leave empty to clear',
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(dialogContext, controller.text),
+                          child: const Text('Apply'),
+                        ),
+                      ],
+                    );
+                  },
+                );
+                if (value == null || !mounted) return;
+                setState(() => _testerLabel = value.trim());
+                _list.reload();
+              },
+            ),
           ],
-          onChanged: (value) {
-            if (value == null || value == _status) return;
-            setState(() => _status = value);
-            _debounce?.cancel();
-            _list.reload();
-          },
         ),
         const SizedBox(height: 16),
       ],
