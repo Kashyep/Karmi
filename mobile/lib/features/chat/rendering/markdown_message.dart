@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import '../../../fonts.dart';
 import '../../../theme/karmi_colors.dart';
 import 'citation_chip.dart';
 import 'code_block.dart';
@@ -12,7 +13,7 @@ import 'long_output_fold.dart';
 import 'safe_link.dart';
 import 'table_view.dart';
 
-/// Inline syntax that renders a single newline as a line break.
+/// Renders a single newline inside a paragraph as a line break (owner default, see PR).
 class SoftLineBreakSyntax extends md.InlineSyntax {
   SoftLineBreakSyntax() : super(r'\n');
 
@@ -23,13 +24,14 @@ class SoftLineBreakSyntax extends md.InlineSyntax {
   }
 }
 
-/// Default fallback fonts for markdown text, covering Devanagari, math/arrows, and symbols.
-const List<String> kMarkdownFontFamilyFallback = [
-  'Noto Sans Devanagari',
-  'Noto Sans Math',
-  'Noto Sans Symbols 2',
-  'Noto Sans',
-];
+/// Appends [kGlyphFallbackFamilies] to [style]'s own fallbacks, without duplicates.
+TextStyle withGlyphFallback(TextStyle style) {
+  final fallback = [...?style.fontFamilyFallback];
+  for (final family in kGlyphFallbackFamilies) {
+    if (!fallback.contains(family)) fallback.add(family);
+  }
+  return style.copyWith(fontFamilyFallback: fallback);
+}
 
 /// Inline syntax that detects citation patterns like `[^1]`, `[1]`, or `[citation:1]`.
 class CitationSyntax extends md.InlineSyntax {
@@ -167,12 +169,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
           final codeBg = colors?.muted ?? colorScheme.surfaceContainerHighest;
           final monoStyle = baseStyle.copyWith(
             fontFamily: 'JetBrains Mono',
-            fontFamilyFallback: const [
-              'Noto Sans Math',
-              'Noto Sans Symbols 2',
-              'Noto Sans',
-              'monospace',
-            ],
+            fontFamilyFallback: [...kGlyphFallbackFamilies, 'monospace'],
             backgroundColor: codeBg,
           );
           return TextSpan(
@@ -245,22 +242,12 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     final textTheme = Theme.of(context).textTheme;
     final colors = Theme.of(context).extension<KarmiColors>();
     final colorScheme = Theme.of(context).colorScheme;
-    final bodyStyle = (textTheme.bodyMedium ?? const TextStyle()).copyWith(
-      fontFamilyFallback: [
-        ...?textTheme.bodyMedium?.fontFamilyFallback,
-        ...kMarkdownFontFamilyFallback,
-      ],
+    final bodyStyle = withGlyphFallback(
+      textTheme.bodyMedium ?? const TextStyle(),
     );
 
-    TextStyle withFallback(TextStyle? style) {
-      final s = style ?? const TextStyle();
-      return s.copyWith(
-        fontFamilyFallback: [
-          ...?s.fontFamilyFallback,
-          ...kMarkdownFontFamilyFallback,
-        ],
-      );
-    }
+    TextStyle withFallback(TextStyle? style) =>
+        withGlyphFallback(style ?? const TextStyle());
 
     if (node is md.Text) {
       return Padding(
@@ -514,7 +501,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     var codeText = codeElement != null
         ? codeElement.textContent
         : preElement.textContent;
-    codeText = unescapeHtmlEntities(codeText);
+    codeText = decodeCodeText(codeText);
     if (codeText.endsWith('\n')) {
       codeText = codeText.substring(0, codeText.length - 1);
     }

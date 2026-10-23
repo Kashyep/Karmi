@@ -11,6 +11,20 @@ Widget _host(Widget child) => MaterialApp(
   home: Scaffold(body: SingleChildScrollView(child: child)),
 );
 
+RichText richTextContaining(WidgetTester tester, String needle) => tester
+    .widgetList<RichText>(find.byType(RichText))
+    .firstWhere((w) => w.text.toPlainText().contains(needle));
+
+bool spansUseFallback(InlineSpan span, String family) {
+  if (span.style?.fontFamilyFallback?.contains(family) ?? false) return true;
+  var found = false;
+  span.visitChildren((child) {
+    found = spansUseFallback(child, family) || found;
+    return !found;
+  });
+  return found;
+}
+
 void main() {
   group('isSafeLinkUri', () {
     test('accepts http, https and mailto', () {
@@ -95,6 +109,50 @@ void main() {
     expect(clipboardText, code);
     final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
     expect(clipboardData?.text, code);
+  });
+
+  testWidgets('fenced code decodes model-escaped entities for display and copy', (tester) async {
+    const source = '&quot; &lt; &amp; &#39; &#x27; 2&#179; &#8594; x';
+    const shown = '" < & \' \' 2³ → x';
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          clipboardText = (methodCall.arguments as Map<dynamic, dynamic>)['text'] as String?;
+        }
+        return null;
+      },
+    );
+
+    await tester.pumpWidget(
+      _host(const MarkdownMessage(text: '```\n$source\n```', streaming: false)),
+    );
+
+    expect(find.text(shown), findsOneWidget);
+    expect(find.textContaining('&quot;'), findsNothing);
+
+    await tester.tap(find.byTooltip('Copy code'));
+    await tester.pump(const Duration(seconds: 3));
+    expect(clipboardText, shown);
+  });
+
+  testWidgets('superscripts and arrows in prose and inline code use the glyph fallback', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        const MarkdownMessage(
+          text: '2³² → x in prose and `2³² → x` in code',
+          streaming: false,
+        ),
+      ),
+    );
+
+    final prose = richTextContaining(tester, '2³² → x in prose');
+    expect(prose.text.toPlainText(), contains('2³² → x in prose'));
+    expect(spansUseFallback(prose.text, 'Noto Sans Math'), isTrue);
+
+    final code = richTextContaining(tester, '2³² → x');
+    expect(spansUseFallback(code.text, 'Noto Sans Math'), isTrue);
   });
 
   testWidgets('raw HTML is shown as literal text', (tester) async {

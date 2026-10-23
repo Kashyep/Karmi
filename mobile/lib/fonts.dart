@@ -11,9 +11,11 @@ const Map<String, String> kBundledFontLicences = {
   'Noto Serif Devanagari': 'assets/google_fonts/NotoSerifDevanagari-OFL.txt',
   'JetBrains Mono': 'assets/google_fonts/JetBrainsMono-OFL.txt',
   'Noto Sans Math': 'assets/google_fonts/NotoSansMath-OFL.txt',
-  'Noto Sans Symbols 2': 'assets/google_fonts/NotoSansSymbols2-OFL.txt',
-  'Noto Sans': 'assets/google_fonts/NotoSans-OFL.txt',
 };
+
+/// Glyph fallback appended to chat text styles after their own families, so
+/// arrows (→) and math symbols resolve when the UI face lacks them.
+const List<String> kGlyphFallbackFamilies = ['Noto Sans Math'];
 
 bool _registered = false;
 
