@@ -156,8 +156,7 @@ def list_users(
             or_(func.lower(User.email).like(needle, escape="\\"), func.lower(User.display_name).like(needle, escape="\\"), User.id == q.strip())
         )
     if tier:
-        plan = parse_tier(tier)
-        stmt = stmt.where(or_(Subscription.plan_id.is_(None), Subscription.plan_id == plan) if plan == "ananta" else Subscription.plan_id == plan)
+        parse_tier(tier)
     if state:
         if state not in {"active", "suspended"}:
             raise _bad("status must be active or suspended")
@@ -171,6 +170,9 @@ def list_users(
     if cursor:
         stmt = stmt.where(User.id > cursor)
     rows = session.execute(stmt.order_by(User.id).limit(limit + 1)).all()
+    if tier:
+        plan = parse_tier(tier)
+        rows = [(user, sub) for user, sub in rows if user_item(user, sub)["effective_plan"] == plan]  # type: ignore[misc]
     page = rows[:limit]
     return {"items": [user_item(user, sub) for user, sub in page], "next_cursor": page[-1][0].id if len(rows) > limit and page else None}
 

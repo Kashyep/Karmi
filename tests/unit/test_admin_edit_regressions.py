@@ -50,3 +50,32 @@ def test_stacked_grant_preserves_base_revert(env: Env) -> None:
         assert user is not None
         sub = session.scalar(select(Subscription).where(Subscription.account_id == user.account_id))
         assert sub is not None and sub.revert_plan_id == "ananta"
+def test_list_tier_filter_uses_effective_plan(env: Env) -> None:
+    uid = customer(env, "effective-filter")
+    headers = env.headers()
+    future = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    env.client.post(f"/v1/admin/users/{uid}/tier", headers=headers, json={"tier": "trika", "expires_at": future, "reason": "temporary"})
+    with env.factory() as session:
+        user = session.get(User, uid)
+        assert user is not None
+        sub = session.scalar(select(Subscription).where(Subscription.account_id == user.account_id))
+        assert sub is not None
+        sub.tier_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.commit()
+    items = env.client.get("/v1/admin/users?tier=ananta", headers=headers).json()["items"]
+    assert any(item["id"] == uid for item in items)
+def test_expired_grant_rebases_usage_limits(env: Env) -> None:
+    uid = customer(env, "reserve-expiry")
+    headers = env.headers()
+    future = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    env.client.post(f"/v1/admin/users/{uid}/tier", headers=headers, json={"tier": "trika", "expires_at": future, "reason": "temporary"})
+    with env.factory() as session:
+        user = session.get(User, uid)
+        assert user is not None
+        sub = session.scalar(select(Subscription).where(Subscription.account_id == user.account_id))
+        assert sub is not None
+        sub.tier_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.commit()
+        from daily_agent.services import ensure_usage_window
+        window = ensure_usage_window(session, user.account_id, env.settings)
+        assert window.everyday_limit == 20
