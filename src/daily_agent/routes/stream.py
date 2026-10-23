@@ -1,4 +1,9 @@
-"""Streaming chat endpoints: SSE streaming, resume, stop, continue and regenerate."""
+"""Streaming chat endpoints: SSE streaming, resume, stop, continue and regenerate.
+
+Handlers that touch the synchronous SQLAlchemy session are plain ``def`` so FastAPI runs them
+in the threadpool and they never block the event loop. Work that must run on the loop (task
+creation, Redis awaits) is bridged back with ``anyio.from_thread``.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +14,8 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import anyio
+import anyio.from_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select, update
@@ -231,7 +238,7 @@ async def _replay_from_db(
         yield encode_sse_event("run.finished", finished)
 
 
-async def _replay_response(
+def _replay_response(
     run_id: str,
     user_msg: ChatMessage,
     assistant_msg: ChatMessage | None,
@@ -243,7 +250,7 @@ async def _replay_response(
     run_state = get_stream_registry().get(run_id)
     if run_state is not None:
         return _sse(stream_run_events(run_state, after_seq=-1))
-    if await _redis_run_live(run_id):
+    if anyio.from_thread.run(_redis_run_live, run_id):
         return _sse(_redis_resume_events(run_id, -1))
     return _sse(_replay_from_db(user_msg, assistant_msg, run, debug_enabled=debug_enabled))
 
@@ -386,7 +393,6 @@ def _launch_run(
     debug_enabled: bool,
     prior_content: str | None = None,
 ) -> StreamingResponse:
-    get_stream_registry().register(run_state)
     session_factory = sessionmaker(
         bind=session.get_bind(), autoflush=False, expire_on_commit=False
     )
@@ -406,12 +412,18 @@ def _launch_run(
     }
     if "admission" in inspect.signature(start_stream_run).parameters:
         start_kwargs["admission"] = admission
-    start_stream_run(**start_kwargs)
+
+    def _register_and_start() -> None:
+        # Task creation needs the event loop, so this runs on the loop thread.
+        get_stream_registry().register(run_state)
+        start_stream_run(**start_kwargs)
+
+    anyio.from_thread.run_sync(_register_and_start)
     return _sse(stream_run_events(run_state, after_seq=-1))
 
 
 @router.post("/v1/chat/stream")
-async def chat_stream(
+def chat_stream(
     body: ChatStreamRequest,
     principal: Principal = Depends(limited_principal),
     session: Session = Depends(get_session),
@@ -470,7 +482,7 @@ async def chat_stream(
                     Run.user_id == principal.user_id,
                 )
             )
-            return await _replay_response(
+            return _replay_response(
                 run_id,
                 existing_user_msg,
                 assistant_msg,
@@ -562,7 +574,7 @@ async def chat_stream(
 
 
 @router.get("/v1/runs/{run_id}/events")
-async def run_events(
+def run_events(
     run_id: str,
     after_seq: int = Query(-1, alias="after_seq"),
     principal: Principal = Depends(limited_principal),
@@ -574,7 +586,7 @@ async def run_events(
     run_state = get_stream_registry().get(run_id)
     if run_state is not None and after_seq <= run_state.last_seq:
         return _sse(stream_run_events(run_state, after_seq=after_seq))
-    if run_state is None and await _redis_run_live(run_id):
+    if run_state is None and anyio.from_thread.run(_redis_run_live, run_id):
         return _sse(_redis_resume_events(run_id, after_seq))
 
     assistant_msg = _assistant_for_run(session, principal, run_id)
@@ -598,19 +610,19 @@ async def run_events(
 
 
 @router.post("/v1/runs/{run_id}/stop", status_code=status.HTTP_202_ACCEPTED)
-async def stop_run(
+def stop_run(
     run_id: str,
     principal: Principal = Depends(limited_principal),
     session: Session = Depends(get_session),
 ) -> StopResponse:
+    from daily_agent.streaming.redis_state import request_stop
+
     run = own_run(session, principal, run_id)
     run_state = get_stream_registry().get(run_id)
     if run_state is not None:
         run_state.stop()
     else:
-        from daily_agent.streaming.redis_state import request_stop
-
-        if await request_stop(run_id):
+        if anyio.from_thread.run(request_stop, run_id):
             # The owning worker observes the stop flag and finalizes the run itself.
             logger.info("stream.stop_forwarded run_id=%s", run_id)
             return StopResponse(status="cancelled")
@@ -641,7 +653,7 @@ async def stop_run(
 
 
 @router.post("/v1/messages/{assistant_message_id}/continue")
-async def continue_message(
+def continue_message(
     assistant_message_id: str,
     principal: Principal = Depends(limited_principal),
     session: Session = Depends(get_session),
@@ -692,7 +704,7 @@ async def continue_message(
             and inflight.logical_request_id
             == _continue_key(assistant_message_id, inflight.continuation_of_run_id)
         ):
-            return await _replay_response(
+            return _replay_response(
                 inflight.id,
                 user_msg,
                 msg,
@@ -797,7 +809,7 @@ async def continue_message(
 
 
 @router.post("/v1/messages/{assistant_message_id}/regenerate")
-async def regenerate_message(
+def regenerate_message(
     assistant_message_id: str,
     principal: Principal = Depends(limited_principal),
     session: Session = Depends(get_session),
@@ -854,7 +866,7 @@ async def regenerate_message(
     existing = _find_run_by_key(session, principal, logical_request_id)
     if existing is not None:
         sibling = _assistant_for_run(session, principal, existing.id)
-        return await _replay_response(
+        return _replay_response(
             existing.id,
             user_msg,
             sibling,

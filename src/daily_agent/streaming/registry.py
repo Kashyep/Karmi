@@ -125,10 +125,6 @@ class StreamRegistry:
         self.evict_expired()
         return run_id in self._runs
 
-    def active_count(self) -> int:
-        self.evict_expired()
-        return sum(1 for state in self._runs.values() if not state.terminal)
-
     def evict_expired(
         self,
         ttl_seconds: float | None = None,
