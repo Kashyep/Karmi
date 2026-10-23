@@ -36,12 +36,14 @@ class FakeRunStreamClient extends RunStreamClient {
   }
 
   void emitStarted() {
-    activeRunController?.add(const RunStartedEvent(
-      runId: 'run-1',
-      conversationId: 'conv-1',
-      userMessageId: 'user-1',
-      assistantMessageId: 'asst-1',
-    ));
+    activeRunController?.add(
+      const RunStartedEvent(
+        runId: 'run-1',
+        conversationId: 'conv-1',
+        userMessageId: 'user-1',
+        assistantMessageId: 'asst-1',
+      ),
+    );
   }
 
   void emitDelta(String text) {
@@ -55,7 +57,10 @@ class FakeRunStreamClient extends RunStreamClient {
 }
 
 class FakeConversationsApi implements ConversationsApi {
-  FakeConversationsApi({this.conversations = const [], this.messageItems = const []});
+  FakeConversationsApi({
+    this.conversations = const [],
+    this.messageItems = const [],
+  });
 
   final List<ConversationView> conversations;
   final List<ChatMessageView> messageItems;
@@ -74,13 +79,21 @@ class FakeConversationsApi implements ConversationsApi {
   void close() {}
 
   @override
-  Future<ConversationPage> list({bool archived = false, String? cursor, int limit = 20}) async {
+  Future<ConversationPage> list({
+    bool archived = false,
+    String? cursor,
+    int limit = 20,
+  }) async {
     callLog.add('list');
     return ConversationPage(items: conversations, nextCursor: null);
   }
 
   @override
-  Future<MessagePage> messages(String id, {String? before, int limit = 50}) async {
+  Future<MessagePage> messages(
+    String id, {
+    String? before,
+    int limit = 50,
+  }) async {
     callLog.add('messages:$id');
     return MessagePage(items: messageItems, hasMoreBefore: false);
   }
@@ -89,17 +102,25 @@ class FakeConversationsApi implements ConversationsApi {
   Future<ConversationView> get(String id) async => throw UnimplementedError();
 
   @override
-  Future<ConversationView> update(String id, {String? title, bool? pinned, bool? archived}) async =>
-      throw UnimplementedError();
+  Future<ConversationView> update(
+    String id, {
+    String? title,
+    bool? pinned,
+    bool? archived,
+  }) async => throw UnimplementedError();
 
   @override
   Future<void> delete(String id) async => throw UnimplementedError();
 
   @override
-  Future<ConversationView> restore(String id) async => throw UnimplementedError();
+  Future<ConversationView> restore(String id) async =>
+      throw UnimplementedError();
 
   @override
-  Future<List<ConversationSearchResult>> search(String q, {int limit = 20}) async => [];
+  Future<List<ConversationSearchResult>> search(
+    String q, {
+    int limit = 20,
+  }) async => [];
 }
 
 class _FakeHttpHeaders implements HttpHeaders {
@@ -128,7 +149,8 @@ class _FakeHttpHeaders implements HttpHeaders {
   void removeAll(String name) {}
 
   @override
-  void forEach(void Function(String name, List<String> values) action) => _headers.forEach(action);
+  void forEach(void Function(String name, List<String> values) action) =>
+      _headers.forEach(action);
 
   @override
   void noFolding(String name) {}
@@ -164,7 +186,8 @@ class _FakeHttpHeaders implements HttpHeaders {
   void clear() => _headers.clear();
 }
 
-class _FakeHttpClientResponse extends Stream<List<int>> implements HttpClientResponse {
+class _FakeHttpClientResponse extends Stream<List<int>>
+    implements HttpClientResponse {
   final List<int> body;
   @override
   final int statusCode = 200;
@@ -172,8 +195,11 @@ class _FakeHttpClientResponse extends Stream<List<int>> implements HttpClientRes
   _FakeHttpClientResponse(this.body);
 
   @override
-  Future<HttpClientResponse> redirect([String? method, Uri? url, bool? followLoops]) =>
-      throw UnimplementedError();
+  Future<HttpClientResponse> redirect([
+    String? method,
+    Uri? url,
+    bool? followLoops,
+  ]) => throw UnimplementedError();
 
   @override
   StreamSubscription<List<int>> listen(
@@ -301,7 +327,12 @@ class _FakeHttpClient implements HttpClient {
   _FakeHttpClient(this.responseJson);
 
   @override
-  void addProxyCredentials(String host, int port, String realm, HttpClientCredentials credentials) {}
+  void addProxyCredentials(
+    String host,
+    int port,
+    String realm,
+    HttpClientCredentials credentials,
+  ) {}
 
   @override
   Future<HttpClientRequest> openUrl(String method, Uri url) async {
@@ -322,20 +353,30 @@ class _FakeHttpClient implements HttpClient {
   @override
   Future<HttpClientRequest> headUrl(Uri url) => openUrl('HEAD', url);
   @override
-  Future<HttpClientRequest> open(String method, String host, int port, String path) =>
-      openUrl(method, Uri.parse('http://$host:$port$path'));
+  Future<HttpClientRequest> open(
+    String method,
+    String host,
+    int port,
+    String path,
+  ) => openUrl(method, Uri.parse('http://$host:$port$path'));
   @override
-  Future<HttpClientRequest> get(String host, int port, String path) => open('GET', host, port, path);
+  Future<HttpClientRequest> get(String host, int port, String path) =>
+      open('GET', host, port, path);
   @override
-  Future<HttpClientRequest> post(String host, int port, String path) => open('POST', host, port, path);
+  Future<HttpClientRequest> post(String host, int port, String path) =>
+      open('POST', host, port, path);
   @override
-  Future<HttpClientRequest> put(String host, int port, String path) => open('PUT', host, port, path);
+  Future<HttpClientRequest> put(String host, int port, String path) =>
+      open('PUT', host, port, path);
   @override
-  Future<HttpClientRequest> delete(String host, int port, String path) => open('DELETE', host, port, path);
+  Future<HttpClientRequest> delete(String host, int port, String path) =>
+      open('DELETE', host, port, path);
   @override
-  Future<HttpClientRequest> patch(String host, int port, String path) => open('PATCH', host, port, path);
+  Future<HttpClientRequest> patch(String host, int port, String path) =>
+      open('PATCH', host, port, path);
   @override
-  Future<HttpClientRequest> head(String host, int port, String path) => open('HEAD', host, port, path);
+  Future<HttpClientRequest> head(String host, int port, String path) =>
+      open('HEAD', host, port, path);
 
   @override
   bool autoUncompress = true;
@@ -348,19 +389,37 @@ class _FakeHttpClient implements HttpClient {
   @override
   String? userAgent;
   @override
-  void addCredentials(Uri url, String realm, HttpClientCredentials credentials) {}
+  void addCredentials(
+    Uri url,
+    String realm,
+    HttpClientCredentials credentials,
+  ) {}
   @override
   void close({bool force = false}) {}
   @override
-  set authenticate(Future<bool> Function(Uri url, String scheme, String? realm)? f) {}
+  set authenticate(
+    Future<bool> Function(Uri url, String scheme, String? realm)? f,
+  ) {}
   @override
-  set authenticateProxy(Future<bool> Function(String host, int port, String scheme, String? realm)? f) {}
+  set authenticateProxy(
+    Future<bool> Function(String host, int port, String scheme, String? realm)?
+    f,
+  ) {}
   @override
-  set badCertificateCallback(bool Function(X509Certificate cert, String host, int port)? callback) {}
+  set badCertificateCallback(
+    bool Function(X509Certificate cert, String host, int port)? callback,
+  ) {}
   @override
   set findProxy(String Function(Uri url)? f) {}
   @override
-  set connectionFactory(Future<ConnectionTask<Socket>> Function(Uri url, String? proxyHost, int? proxyPort)? f) {}
+  set connectionFactory(
+    Future<ConnectionTask<Socket>> Function(
+      Uri url,
+      String? proxyHost,
+      int? proxyPort,
+    )?
+    f,
+  ) {}
   @override
   set keyLog(Function(String line)? callback) {}
 }
@@ -370,7 +429,8 @@ class _GlobalHttpOverrides extends HttpOverrides {
   _GlobalHttpOverrides(this.responseJson);
 
   @override
-  HttpClient createHttpClient(SecurityContext? context) => _FakeHttpClient(responseJson);
+  HttpClient createHttpClient(SecurityContext? context) =>
+      _FakeHttpClient(responseJson);
 }
 
 Widget wrapChatScreen(Widget child) {
@@ -405,7 +465,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('(a) send -> stream -> finish renders the assistant text', () {
-    testWidgets('streaming completion displays assistant message', (tester) async {
+    testWidgets('streaming completion displays assistant message', (
+      tester,
+    ) async {
       final fakeStream = FakeRunStreamClient();
       final controller = ChatController(
         client: fakeStream,
@@ -423,12 +485,17 @@ void main() {
       fakeStream.emitFinished();
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Gravity is a force of attraction.'), findsOneWidget);
+      expect(
+        find.textContaining('Gravity is a force of attraction.'),
+        findsOneWidget,
+      );
     });
   });
 
   group('(b) a run that finishes with interrupted shows a Resume action', () {
-    testWidgets('interrupted run displays Resume action button', (tester) async {
+    testWidgets('interrupted run displays Resume action button', (
+      tester,
+    ) async {
       final fakeStream = FakeRunStreamClient();
       final controller = ChatController(
         client: fakeStream,
@@ -451,7 +518,9 @@ void main() {
   });
 
   group('(c) finishReason length shows a Continue action', () {
-    testWidgets('length finish reason displays Continue action button', (tester) async {
+    testWidgets('length finish reason displays Continue action button', (
+      tester,
+    ) async {
       final fakeStream = FakeRunStreamClient();
       final controller = ChatController(
         client: fakeStream,
@@ -474,7 +543,9 @@ void main() {
   });
 
   group('(d) New Chat creates no record before first message', () {
-    testWidgets('tapping new chat does not make create API calls', (tester) async {
+    testWidgets('tapping new chat does not make create API calls', (
+      tester,
+    ) async {
       final fakeApi = FakeConversationsApi();
       final convController = ConversationListController(api: fakeApi);
       final fakeStream = FakeRunStreamClient();
@@ -494,40 +565,54 @@ void main() {
     });
   });
 
-  group('(e) opening a history item loads its messages into the transcript', () {
-    testWidgets('history modal item selection loads transcript messages', (tester) async {
-      final fakeApi = FakeConversationsApi(conversations: [
-        ConversationView(id: 'conv-42', title: 'Plan vacation', updatedAt: DateTime.utc(2026, 10, 20)),
-      ]);
-      final convController = ConversationListController(api: fakeApi);
-      await convController.refresh();
+  group(
+    '(e) opening a history item loads its messages into the transcript',
+    () {
+      testWidgets('history modal item selection loads transcript messages', (
+        tester,
+      ) async {
+        final fakeApi = FakeConversationsApi(
+          conversations: [
+            ConversationView(
+              id: 'conv-42',
+              title: 'Plan vacation',
+              updatedAt: DateTime.utc(2026, 10, 20),
+            ),
+          ],
+        );
+        final convController = ConversationListController(api: fakeApi);
+        await convController.refresh();
 
-      HttpOverrides.global = _GlobalHttpOverrides({
-        'items': [
-          {
-            'id': 'msg-1',
-            'conversation_id': 'conv-42',
-            'role': 'assistant',
-            'status': 'complete',
-            'content': 'Here is your vacation itinerary',
-            'created_at': '2026-10-20T12:00:00Z',
-            'updated_at': '2026-10-20T12:00:00Z',
-          }
-        ],
-        'has_more_before': false,
+        HttpOverrides.global = _GlobalHttpOverrides({
+          'items': [
+            {
+              'id': 'msg-1',
+              'conversation_id': 'conv-42',
+              'role': 'assistant',
+              'status': 'complete',
+              'content': 'Here is your vacation itinerary',
+              'created_at': '2026-10-20T12:00:00Z',
+              'updated_at': '2026-10-20T12:00:00Z',
+            },
+          ],
+          'has_more_before': false,
+        });
+        addTearDown(() => HttpOverrides.global = null);
+
+        await pumpChat(tester, convController: convController);
+
+        await tester.tap(find.byTooltip('Conversation history'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Plan vacation'), findsOneWidget);
+        await tester.tap(find.text('Plan vacation'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('Here is your vacation itinerary'),
+          findsOneWidget,
+        );
       });
-      addTearDown(() => HttpOverrides.global = null);
-
-      await pumpChat(tester, convController: convController);
-
-      await tester.tap(find.byTooltip('Conversation history'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Plan vacation'), findsOneWidget);
-      await tester.tap(find.text('Plan vacation'));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Here is your vacation itinerary'), findsOneWidget);
-    });
-  });
+    },
+  );
 }

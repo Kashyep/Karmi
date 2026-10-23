@@ -98,9 +98,7 @@ class MessageBubble extends StatelessWidget {
             ),
             child: SelectableText(
               entry != null ? entry!.text : (chatMessage?.content ?? ''),
-              style: text.bodyLarge?.copyWith(
-                color: colors.foreground,
-              ),
+              style: text.bodyLarge?.copyWith(color: colors.foreground),
             ),
           );
 
@@ -200,7 +198,8 @@ class MessageBubble extends StatelessWidget {
         );
 
         final isFinished =
-            chatMessage == null || chatMessage!.status != MessageStatus.streaming;
+            chatMessage == null ||
+            chatMessage!.status != MessageStatus.streaming;
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
@@ -501,7 +500,9 @@ class _ActionToolbarState extends State<_ActionToolbar> {
                 iconSize: 20,
                 tooltip: 'Thumbs down',
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                icon: Icon(isDown ? Icons.thumb_down : Icons.thumb_down_outlined),
+                icon: Icon(
+                  isDown ? Icons.thumb_down : Icons.thumb_down_outlined,
+                ),
                 color: isDown ? colors.primaryText : colors.actionIcon,
                 isSelected: isDown,
                 onPressed: isBusy || widget.onFeedback == null

@@ -27,13 +27,12 @@ void main() {
                         return ListView(
                           controller: scrollController,
                           physics: physics,
-                          scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
+                          scrollCacheExtent: const ScrollCacheExtent.pixels(
+                            5000,
+                          ),
                           children: [
                             for (final i in list)
-                              SizedBox(
-                                height: 100,
-                                child: Text('Item $i'),
-                              ),
+                              SizedBox(height: 100, child: Text('Item $i')),
                           ],
                         );
                       },
@@ -80,63 +79,59 @@ void main() {
       },
     );
 
-    testWidgets(
-      'not pinned: user scrolls to top (jumpTo(0)), content grows; '
-      'pixels stays 0 and hasNewContent true and isAtBottom false',
-      (tester) async {
-        final controller = EndAnchoredScrollController();
-        final items = ValueNotifier<List<int>>([0, 1, 2, 3, 4, 5, 6, 7]);
+    testWidgets('not pinned: user scrolls to top (jumpTo(0)), content grows; '
+        'pixels stays 0 and hasNewContent true and isAtBottom false', (
+      tester,
+    ) async {
+      final controller = EndAnchoredScrollController();
+      final items = ValueNotifier<List<int>>([0, 1, 2, 3, 4, 5, 6, 7]);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: SizedBox(
-                height: 300,
-                child: EndAnchoredScroll(
-                  controller: controller,
-                  builder: (context, scrollController, physics) {
-                    return ValueListenableBuilder<List<int>>(
-                      valueListenable: items,
-                      builder: (context, list, _) {
-                        return ListView(
-                          controller: scrollController,
-                          physics: physics,
-                          scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
-                          children: [
-                            for (final i in list)
-                              SizedBox(
-                                height: 100,
-                                child: Text('Item $i'),
-                              ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 300,
+              child: EndAnchoredScroll(
+                controller: controller,
+                builder: (context, scrollController, physics) {
+                  return ValueListenableBuilder<List<int>>(
+                    valueListenable: items,
+                    builder: (context, list, _) {
+                      return ListView(
+                        controller: scrollController,
+                        physics: physics,
+                        scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
+                        children: [
+                          for (final i in list)
+                            SizedBox(height: 100, child: Text('Item $i')),
+                        ],
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        // User scrolls to top
-        controller.scrollController.jumpTo(0);
-        await tester.pump();
+      // User scrolls to top
+      controller.scrollController.jumpTo(0);
+      await tester.pump();
 
-        expect(controller.scrollController.position.pixels, 0.0);
-        expect(controller.isAtBottom.value, isFalse);
-        expect(controller.hasNewContent.value, isFalse);
+      expect(controller.scrollController.position.pixels, 0.0);
+      expect(controller.isAtBottom.value, isFalse);
+      expect(controller.hasNewContent.value, isFalse);
 
-        // Content grows while scrolled up
-        items.value = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-        await tester.pump();
+      // Content grows while scrolled up
+      items.value = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+      await tester.pump();
 
-        expect(controller.scrollController.position.pixels, 0.0);
-        expect(controller.hasNewContent.value, isTrue);
-        expect(controller.isAtBottom.value, isFalse);
-      },
-    );
+      expect(controller.scrollController.position.pixels, 0.0);
+      expect(controller.hasNewContent.value, isTrue);
+      expect(controller.isAtBottom.value, isFalse);
+    });
 
     testWidgets(
       'jumpToLatest() from top lands at bottom and clears hasNewContent after pumpAndSettle',
@@ -158,13 +153,12 @@ void main() {
                         return ListView(
                           controller: scrollController,
                           physics: physics,
-                          scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
+                          scrollCacheExtent: const ScrollCacheExtent.pixels(
+                            5000,
+                          ),
                           children: [
                             for (final i in list)
-                              SizedBox(
-                                height: 100,
-                                child: Text('Item $i'),
-                              ),
+                              SizedBox(height: 100, child: Text('Item $i')),
                           ],
                         );
                       },
@@ -223,13 +217,12 @@ void main() {
                         return ListView(
                           controller: scrollController,
                           physics: physics,
-                          scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
+                          scrollCacheExtent: const ScrollCacheExtent.pixels(
+                            5000,
+                          ),
                           children: [
                             for (final i in list)
-                              SizedBox(
-                                height: 100,
-                                child: Text('Item $i'),
-                              ),
+                              SizedBox(height: 100, child: Text('Item $i')),
                           ],
                         );
                       },
@@ -260,54 +253,50 @@ void main() {
       },
     );
 
-    testWidgets(
-      'jumpToLatest under reduced motion jumps immediately',
-      (tester) async {
-        final controller = EndAnchoredScrollController();
+    testWidgets('jumpToLatest under reduced motion jumps immediately', (
+      tester,
+    ) async {
+      final controller = EndAnchoredScrollController();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(disableAnimations: true),
-              child: Scaffold(
-                body: SizedBox(
-                  height: 300,
-                  child: EndAnchoredScroll(
-                    controller: controller,
-                    builder: (context, scrollController, physics) {
-                      return ListView(
-                        controller: scrollController,
-                        physics: physics,
-                        scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
-                        children: [
-                          for (int i = 0; i < 20; i++)
-                            SizedBox(
-                              height: 100,
-                              child: Text('Item $i'),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: Scaffold(
+              body: SizedBox(
+                height: 300,
+                child: EndAnchoredScroll(
+                  controller: controller,
+                  builder: (context, scrollController, physics) {
+                    return ListView(
+                      controller: scrollController,
+                      physics: physics,
+                      scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
+                      children: [
+                        for (int i = 0; i < 20; i++)
+                          SizedBox(height: 100, child: Text('Item $i')),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        controller.scrollController.jumpTo(0);
-        await tester.pump();
-        expect(controller.scrollController.position.pixels, 0.0);
+      controller.scrollController.jumpTo(0);
+      await tester.pump();
+      expect(controller.scrollController.position.pixels, 0.0);
 
-        controller.jumpToLatest();
-        await tester.pump();
-        expect(
-          controller.scrollController.position.pixels,
-          controller.scrollController.position.maxScrollExtent,
-        );
-        expect(controller.isAtBottom.value, isTrue);
-      },
-    );
+      controller.jumpToLatest();
+      await tester.pump();
+      expect(
+        controller.scrollController.position.pixels,
+        controller.scrollController.position.maxScrollExtent,
+      );
+      expect(controller.isAtBottom.value, isTrue);
+    });
   });
 }

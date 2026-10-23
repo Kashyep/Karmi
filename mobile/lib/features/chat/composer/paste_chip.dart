@@ -33,11 +33,7 @@ class PasteChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.content_paste,
-              size: 14,
-              color: colors.mutedForeground,
-            ),
+            Icon(Icons.content_paste, size: 14, color: colors.mutedForeground),
             const SizedBox(width: 4),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 200),

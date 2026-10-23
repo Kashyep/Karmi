@@ -215,7 +215,10 @@ void main() {
       // Check openConversation loaded messages and updated commands & UI
       expect(fakeApi.callLog.contains('messages:conv-42'), isTrue);
       expect(commands.activeId.value, 'conv-42');
-      expect(find.textContaining('Roadmap loaded successfully'), findsOneWidget);
+      expect(
+        find.textContaining('Roadmap loaded successfully'),
+        findsOneWidget,
+      );
       expect(find.text('Project Roadmap'), findsOneWidget);
     },
   );
@@ -287,9 +290,7 @@ void main() {
           child: MaterialApp(
             theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
             home: Scaffold(
-              body: ChatScreen(
-                api: KarmiApi(baseUrl: 'http://fake.test'),
-              ),
+              body: ChatScreen(api: KarmiApi(baseUrl: 'http://fake.test')),
             ),
           ),
         ),

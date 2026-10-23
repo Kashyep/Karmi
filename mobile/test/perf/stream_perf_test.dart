@@ -36,9 +36,7 @@ double _p95(List<double> xs) {
 // ignore: avoid_print
 void _perf(String line) => print('PERF $line');
 
-List<String> get _tokens => [
-  for (var i = 1; i <= _deltaCount; i++) 'tok$i ',
-];
+List<String> get _tokens => [for (var i = 1; i <= _deltaCount; i++) 'tok$i '];
 
 FakeBackend _streamingBackend() {
   final tokens = _tokens;

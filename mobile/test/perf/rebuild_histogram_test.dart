@@ -29,22 +29,22 @@ bool _inChatScreen(Element element) {
 
 FakeBackend _numberedReplies() {
   var n = 0;
-  return FakeBackend.healthy()
-    ..on('POST', '/v1/chat/stream', (_) {
-      n += 1;
-      final sse = 'event: run.started\n'
-          'data: {"run_id":"run-$n","conversation_id":"conv-1","user_message_id":"msg-u-$n","assistant_message_id":"msg-a-$n","seq":0}\n\n'
-          'id: 1\n'
-          'event: message.delta\n'
-          'data: {"text":"Reply $n: a short streamed-style answer about the plan."}\n\n'
-          'event: run.finished\n'
-          'data: {"finish_reason":"stop","outcome":"success"}\n\n';
-      return http.Response(
-        sse,
-        200,
-        headers: {'content-type': 'text/event-stream'},
-      );
-    });
+  return FakeBackend.healthy()..on('POST', '/v1/chat/stream', (_) {
+    n += 1;
+    final sse =
+        'event: run.started\n'
+        'data: {"run_id":"run-$n","conversation_id":"conv-1","user_message_id":"msg-u-$n","assistant_message_id":"msg-a-$n","seq":0}\n\n'
+        'id: 1\n'
+        'event: message.delta\n'
+        'data: {"text":"Reply $n: a short streamed-style answer about the plan."}\n\n'
+        'event: run.finished\n'
+        'data: {"finish_reason":"stop","outcome":"success"}\n\n';
+    return http.Response(
+      sse,
+      200,
+      headers: {'content-type': 'text/event-stream'},
+    );
+  });
 }
 
 FakeBackend _streamingBackend() {
@@ -65,16 +65,15 @@ FakeBackend _streamingBackend() {
     ..write('event: run.finished\n')
     ..write('data: {"finish_reason":"stop","outcome":"success"}\n\n');
   final body = sse.toString();
-  return FakeBackend.healthy()
-    ..on(
-      'POST',
-      '/v1/chat/stream',
-      (_) => http.Response(
-        body,
-        200,
-        headers: {'content-type': 'text/event-stream'},
-      ),
-    );
+  return FakeBackend.healthy()..on(
+    'POST',
+    '/v1/chat/stream',
+    (_) => http.Response(
+      body,
+      200,
+      headers: {'content-type': 'text/event-stream'},
+    ),
+  );
 }
 
 const _gateNames = ['ChatScreen', 'MessageBubble', '_UserRow', 'Composer'];
@@ -122,7 +121,8 @@ void main() {
       if (!_seen.add(element)) {
         if (_gateNames.any(element.toString().contains)) {
           _gateCount += 1;
-          final key = '${element.widget.runtimeType} inChat=${_inChatScreen(element)} desc=${element.toString()}';
+          final key =
+              '${element.widget.runtimeType} inChat=${_inChatScreen(element)} desc=${element.toString()}';
           _gateDesc[key] = (_gateDesc[key] ?? 0) + 1;
         }
       } else {
@@ -158,7 +158,8 @@ void main() {
       if (!_seen.add(element)) {
         if (_gateNames.any(element.toString().contains)) {
           _gateCount += 1;
-          final key = '${element.widget.runtimeType} inChat=${_inChatScreen(element)} desc=${element.toString()}';
+          final key =
+              '${element.widget.runtimeType} inChat=${_inChatScreen(element)} desc=${element.toString()}';
           _gateDesc[key] = (_gateDesc[key] ?? 0) + 1;
         }
       } else {

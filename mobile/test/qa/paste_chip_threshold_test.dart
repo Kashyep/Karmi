@@ -65,7 +65,9 @@ void main() {
       'pasting 2501 chars IS chipped into a PasteChip and cleared from input field',
       (tester) async {
         ComposerSubmit? submitted;
-        await tester.pumpWidget(_buildComposerHost(onSubmit: (s) => submitted = s));
+        await tester.pumpWidget(
+          _buildComposerHost(onSubmit: (s) => submitted = s),
+        );
         await tester.pumpAndSettle();
 
         final text2501 = 'B' * 2501;

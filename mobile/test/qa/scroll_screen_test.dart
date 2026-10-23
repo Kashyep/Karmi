@@ -41,12 +41,14 @@ class FakeRunStreamClient extends RunStreamClient {
     String userMessageId = 'user-1',
     String assistantMessageId = 'asst-1',
   }) {
-    activeRunController?.add(RunStartedEvent(
-      runId: runId,
-      conversationId: conversationId,
-      userMessageId: userMessageId,
-      assistantMessageId: assistantMessageId,
-    ));
+    activeRunController?.add(
+      RunStartedEvent(
+        runId: runId,
+        conversationId: conversationId,
+        userMessageId: userMessageId,
+        assistantMessageId: assistantMessageId,
+      ),
+    );
   }
 
   void emitDelta(String text) {
@@ -58,8 +60,12 @@ class FakeRunStreamClient extends RunStreamClient {
     activeRunController?.close();
   }
 }
+
 class FakeConversationsApi implements ConversationsApi {
-  FakeConversationsApi({this.conversations = const [], this.messageItems = const []});
+  FakeConversationsApi({
+    this.conversations = const [],
+    this.messageItems = const [],
+  });
 
   final List<ConversationView> conversations;
   final List<ChatMessageView> messageItems;
@@ -77,12 +83,20 @@ class FakeConversationsApi implements ConversationsApi {
   void close() {}
 
   @override
-  Future<ConversationPage> list({bool archived = false, String? cursor, int limit = 20}) async {
+  Future<ConversationPage> list({
+    bool archived = false,
+    String? cursor,
+    int limit = 20,
+  }) async {
     return ConversationPage(items: conversations, nextCursor: null);
   }
 
   @override
-  Future<MessagePage> messages(String id, {String? before, int limit = 50}) async {
+  Future<MessagePage> messages(
+    String id, {
+    String? before,
+    int limit = 50,
+  }) async {
     return MessagePage(items: messageItems, hasMoreBefore: false);
   }
 
@@ -90,17 +104,25 @@ class FakeConversationsApi implements ConversationsApi {
   Future<ConversationView> get(String id) async => throw UnimplementedError();
 
   @override
-  Future<ConversationView> update(String id, {String? title, bool? pinned, bool? archived}) async =>
-      throw UnimplementedError();
+  Future<ConversationView> update(
+    String id, {
+    String? title,
+    bool? pinned,
+    bool? archived,
+  }) async => throw UnimplementedError();
 
   @override
   Future<void> delete(String id) async => throw UnimplementedError();
 
   @override
-  Future<ConversationView> restore(String id) async => throw UnimplementedError();
+  Future<ConversationView> restore(String id) async =>
+      throw UnimplementedError();
 
   @override
-  Future<List<ConversationSearchResult>> search(String q, {int limit = 20}) async => [];
+  Future<List<ConversationSearchResult>> search(
+    String q, {
+    int limit = 20,
+  }) async => [];
 }
 
 Widget wrapChatScreen(Widget child) {
@@ -133,7 +155,9 @@ void main() {
           client: fakeStream,
           deltaFlushInterval: const Duration(milliseconds: 10),
         );
-        final convController = ConversationListController(api: FakeConversationsApi());
+        final convController = ConversationListController(
+          api: FakeConversationsApi(),
+        );
 
         await tester.pumpWidget(
           wrapChatScreen(
@@ -147,7 +171,10 @@ void main() {
         await tester.pump();
 
         // 1. Submit a user message to start streaming.
-        await tester.enterText(find.byType(TextField), 'Generate a detailed analysis');
+        await tester.enterText(
+          find.byType(TextField),
+          'Generate a detailed analysis',
+        );
         await tester.pump();
         await tester.tap(find.byTooltip('Send message'));
         await tester.pump();
@@ -165,12 +192,18 @@ void main() {
         // Verify content exceeds viewport and list is pinned at bottom.
         final position = getChatScrollPosition(tester);
         expect(position.maxScrollExtent, greaterThan(150.0));
-        expect((position.pixels - position.maxScrollExtent).abs(), lessThanOrEqualTo(1.0));
+        expect(
+          (position.pixels - position.maxScrollExtent).abs(),
+          lessThanOrEqualTo(1.0),
+        );
 
         // Jump to Latest button should NOT be visible while pinned at the end.
         final jumpBtnFinder = find.byType(JumpToLatestButton);
         expect(jumpBtnFinder, findsOneWidget);
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isFalse);
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isFalse,
+        );
 
         // Stream additional tokens while pinned: list stays pinned to bottom.
         final previousMax = position.maxScrollExtent;
@@ -178,8 +211,14 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
 
         expect(position.maxScrollExtent, greaterThan(previousMax));
-        expect((position.pixels - position.maxScrollExtent).abs(), lessThanOrEqualTo(1.0));
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isFalse);
+        expect(
+          (position.pixels - position.maxScrollExtent).abs(),
+          lessThanOrEqualTo(1.0),
+        );
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isFalse,
+        );
 
         // 3. User drags up (scrolls content down towards history).
         final listFinder = find.descendant(
@@ -192,17 +231,28 @@ void main() {
         // Confirm user is now unpinned and scrolled away from bottom.
         final unpinnedPixels = position.pixels;
         expect(unpinnedPixels, lessThan(position.maxScrollExtent - 48.0));
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isTrue);
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isTrue,
+        );
 
         // 4. Stream new tokens while user is scrolled up.
         // New tokens must NOT yank the scroll position.
         final extentBeforeToken = position.maxScrollExtent;
-        fakeStream.emitDelta('New tokens arrived while user dragged up:\n$chunk\n');
+        fakeStream.emitDelta(
+          'New tokens arrived while user dragged up:\n$chunk\n',
+        );
         await tester.pump(const Duration(milliseconds: 50));
 
         expect(position.maxScrollExtent, greaterThan(extentBeforeToken));
-        expect((position.pixels - unpinnedPixels).abs(), lessThanOrEqualTo(1.0));
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isTrue);
+        expect(
+          (position.pixels - unpinnedPixels).abs(),
+          lessThanOrEqualTo(1.0),
+        );
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isTrue,
+        );
 
         // Allow button slide/fade-in animation to complete.
         await tester.pump(const Duration(milliseconds: 250));
@@ -212,8 +262,14 @@ void main() {
         for (int i = 0; i < 10; i++) {
           await tester.pump(const Duration(milliseconds: 30));
         }
-        expect((position.pixels - position.maxScrollExtent).abs(), lessThanOrEqualTo(1.0));
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isFalse);
+        expect(
+          (position.pixels - position.maxScrollExtent).abs(),
+          lessThanOrEqualTo(1.0),
+        );
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isFalse,
+        );
         await tester.pump(const Duration(milliseconds: 150));
         expect(find.byType(JumpToLatestButton).hitTestable(), findsNothing);
 
@@ -231,7 +287,9 @@ void main() {
           client: fakeStream,
           deltaFlushInterval: const Duration(milliseconds: 10),
         );
-        final convController = ConversationListController(api: FakeConversationsApi());
+        final convController = ConversationListController(
+          api: FakeConversationsApi(),
+        );
 
         await tester.pumpWidget(
           wrapChatScreen(
@@ -245,7 +303,10 @@ void main() {
         await tester.pump();
 
         // Send a message and stream large content.
-        await tester.enterText(find.byType(TextField), 'Long conversation stream');
+        await tester.enterText(
+          find.byType(TextField),
+          'Long conversation stream',
+        );
         await tester.pump();
         await tester.tap(find.byTooltip('Send message'));
         await tester.pump();
@@ -263,8 +324,14 @@ void main() {
         final jumpBtnFinder = find.byType(JumpToLatestButton);
 
         // At end: button is not visible and has no accessible semantics.
-        expect((position.pixels - position.maxScrollExtent).abs(), lessThanOrEqualTo(1.0));
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isFalse);
+        expect(
+          (position.pixels - position.maxScrollExtent).abs(),
+          lessThanOrEqualTo(1.0),
+        );
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isFalse,
+        );
         expect(find.byType(JumpToLatestButton).hitTestable(), findsNothing);
         // Scroll away from bottom (drag down to view history).
         final listFinder = find.descendant(
@@ -276,12 +343,17 @@ void main() {
 
         // When unpinned: button becomes visible and has Semantics label.
         expect(position.pixels, lessThan(position.maxScrollExtent - 48.0));
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isTrue);
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isTrue,
+        );
         expect(find.byType(JumpToLatestButton).hitTestable(), findsOneWidget);
         final semanticsFinder = find.descendant(
           of: jumpBtnFinder,
           matching: find.byWidgetPredicate(
-            (w) => w is Semantics && w.properties.label == 'Jump to latest message',
+            (w) =>
+                w is Semantics &&
+                w.properties.label == 'Jump to latest message',
           ),
         );
         expect(semanticsFinder, findsOneWidget);
@@ -291,8 +363,14 @@ void main() {
         }
 
         // Verifies scroll reached end and button is hidden again.
-        expect((position.pixels - position.maxScrollExtent).abs(), lessThanOrEqualTo(1.0));
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isFalse);
+        expect(
+          (position.pixels - position.maxScrollExtent).abs(),
+          lessThanOrEqualTo(1.0),
+        );
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isFalse,
+        );
         await tester.pump(const Duration(milliseconds: 150));
         expect(find.byType(JumpToLatestButton).hitTestable(), findsNothing);
       },
@@ -307,7 +385,9 @@ void main() {
           client: fakeStream,
           deltaFlushInterval: const Duration(milliseconds: 10),
         );
-        final convController = ConversationListController(api: FakeConversationsApi());
+        final convController = ConversationListController(
+          api: FakeConversationsApi(),
+        );
 
         await tester.pumpWidget(
           wrapChatScreen(
@@ -339,21 +419,33 @@ void main() {
           matching: find.byType(ListView),
         );
         final badgeSemantics = find.byWidgetPredicate(
-          (w) => w is Semantics && w.properties.label == 'New messages, jump to latest',
+          (w) =>
+              w is Semantics &&
+              w.properties.label == 'New messages, jump to latest',
         );
         final plainSemantics = find.byWidgetPredicate(
-          (w) => w is Semantics && w.properties.label == 'Jump to latest message',
+          (w) =>
+              w is Semantics && w.properties.label == 'Jump to latest message',
         );
 
         // Pinned at bottom: no badge.
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent, isFalse);
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent,
+          isFalse,
+        );
 
         // Scroll up while the stream is still running.
         await tester.drag(listFinder, const Offset(0, 300));
         await tester.pump(const Duration(milliseconds: 250));
         expect(position.pixels, lessThan(position.maxScrollExtent - 48.0));
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isTrue);
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent, isFalse);
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isTrue,
+        );
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent,
+          isFalse,
+        );
         expect(plainSemantics, findsOneWidget);
 
         // New streamed content arrives while scrolled up: badge appears.
@@ -361,8 +453,14 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
         await tester.pump(const Duration(milliseconds: 250));
 
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent, isTrue);
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isTrue);
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent,
+          isTrue,
+        );
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isTrue,
+        );
         expect(badgeSemantics, findsOneWidget);
         expect(plainSemantics, findsNothing);
         expect(find.text('New messages'), findsOneWidget);
@@ -374,9 +472,18 @@ void main() {
         }
         await tester.pump(const Duration(milliseconds: 250));
 
-        expect((position.pixels - position.maxScrollExtent).abs(), lessThanOrEqualTo(1.0));
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent, isFalse);
-        expect(tester.widget<JumpToLatestButton>(jumpBtnFinder).visible, isFalse);
+        expect(
+          (position.pixels - position.maxScrollExtent).abs(),
+          lessThanOrEqualTo(1.0),
+        );
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).hasNewContent,
+          isFalse,
+        );
+        expect(
+          tester.widget<JumpToLatestButton>(jumpBtnFinder).visible,
+          isFalse,
+        );
         expect(badgeSemantics, findsNothing);
         expect(find.text('New messages'), findsNothing);
 

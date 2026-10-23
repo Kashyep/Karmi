@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_motion.dart';
 import 'state/chat_controller.dart';
+
 /// Displays staged summary during assistant generation without exposing model reasoning.
 class ProcessingPanel extends StatelessWidget {
   const ProcessingPanel({super.key, required this.phase});
@@ -51,14 +52,10 @@ class ProcessingPanel extends StatelessWidget {
 
     final surfaceColor =
         karmiColors?.sidebarSurface ?? colorScheme.surfaceContainerLow;
-    final borderColor =
-        karmiColors?.borderSubtle ?? colorScheme.outlineVariant;
-    final primaryTextColor =
-        karmiColors?.primaryText ?? colorScheme.primary;
-    final textColor =
-        karmiColors?.foreground ?? colorScheme.onSurfaceVariant;
-    final subtleColor =
-        karmiColors?.mutedForeground ?? colorScheme.outline;
+    final borderColor = karmiColors?.borderSubtle ?? colorScheme.outlineVariant;
+    final primaryTextColor = karmiColors?.primaryText ?? colorScheme.primary;
+    final textColor = karmiColors?.foreground ?? colorScheme.onSurfaceVariant;
+    final subtleColor = karmiColors?.mutedForeground ?? colorScheme.outline;
 
     return Semantics(
       liveRegion: true,
@@ -83,11 +80,7 @@ class ProcessingPanel extends StatelessWidget {
                   SizedBox.square(
                     dimension: 14,
                     child: disableAnimations
-                        ? Icon(
-                            Icons.more_horiz,
-                            size: 14,
-                            color: subtleColor,
-                          )
+                        ? Icon(Icons.more_horiz, size: 14, color: subtleColor)
                         : CircularProgressIndicator(
                             strokeWidth: 2,
                             color: primaryTextColor,
@@ -105,9 +98,7 @@ class ProcessingPanel extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       subtleLabel,
-                      style: textTheme.labelSmall?.copyWith(
-                        color: subtleColor,
-                      ),
+                      style: textTheme.labelSmall?.copyWith(color: subtleColor),
                     ),
                   ],
                 ],

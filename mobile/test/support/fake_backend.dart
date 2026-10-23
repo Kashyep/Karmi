@@ -128,7 +128,12 @@ class FakeBackend {
   static List<Map<String, dynamic>> defaultConversationsJson([DateTime? now]) {
     final current = now ?? DateTime.now();
     final today = DateTime(current.year, current.month, current.day, 12);
-    final yesterday = DateTime(current.year, current.month, current.day - 1, 12);
+    final yesterday = DateTime(
+      current.year,
+      current.month,
+      current.day - 1,
+      12,
+    );
     final prev7 = DateTime(current.year, current.month, current.day - 3, 12);
     final older = DateTime(current.year, current.month, current.day - 30, 12);
     return [

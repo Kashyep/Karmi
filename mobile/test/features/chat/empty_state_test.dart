@@ -30,12 +30,14 @@ class _FakeRunStreamClient extends RunStreamClient {
   }
 
   void emitStarted() {
-    _activeRunController?.add(const RunStartedEvent(
-      runId: 'run-1',
-      conversationId: 'conv-1',
-      userMessageId: 'user-1',
-      assistantMessageId: 'asst-1',
-    ));
+    _activeRunController?.add(
+      const RunStartedEvent(
+        runId: 'run-1',
+        conversationId: 'conv-1',
+        userMessageId: 'user-1',
+        assistantMessageId: 'asst-1',
+      ),
+    );
   }
 }
 
@@ -79,8 +81,7 @@ class _FakeConversationsApi implements ConversationsApi {
     String? title,
     bool? pinned,
     bool? archived,
-  }) async =>
-      throw UnimplementedError();
+  }) async => throw UnimplementedError();
 
   @override
   Future<void> delete(String id) async => throw UnimplementedError();
@@ -90,14 +91,13 @@ class _FakeConversationsApi implements ConversationsApi {
       throw UnimplementedError();
 
   @override
-  Future<List<ConversationSearchResult>> search(String q, {int limit = 20}) async =>
-      [];
+  Future<List<ConversationSearchResult>> search(
+    String q, {
+    int limit = 20,
+  }) async => [];
 }
 
-Widget _wrapWithApp({
-  required Widget child,
-  bool reduceMotion = false,
-}) {
+Widget _wrapWithApp({required Widget child, bool reduceMotion = false}) {
   return LiquidGlassWidgets.wrap(
     child: KarmiAccessibility(
       reduceMotion: reduceMotion,
@@ -108,7 +108,9 @@ Widget _wrapWithApp({
           builder: (context) => MediaQuery(
             // Copy the real view metrics: a bare MediaQueryData has a zero size,
             // which would collapse the screen-relative dock padding.
-            data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+            data: MediaQuery.of(
+              context,
+            ).copyWith(disableAnimations: reduceMotion),
             child: Scaffold(body: child),
           ),
         ),
@@ -186,58 +188,58 @@ void main() {
       expect(find.text('Good morning, Rosso'), findsOneWidget);
     });
 
-    testWidgets('Case 2: exactly 4 starter chips found and tap invokes onStarterPicked', (
-      tester,
-    ) async {
-      String? tappedPrompt;
-      await tester.pumpWidget(
-        _wrapWithApp(
-          child: ChatEmptyState(
-            onStarterPicked: (prompt) => tappedPrompt = prompt,
-            clock: () => DateTime(2026, 1, 1, 8),
+    testWidgets(
+      'Case 2: exactly 4 starter chips found and tap invokes onStarterPicked',
+      (tester) async {
+        String? tappedPrompt;
+        await tester.pumpWidget(
+          _wrapWithApp(
+            child: ChatEmptyState(
+              onStarterPicked: (prompt) => tappedPrompt = prompt,
+              clock: () => DateTime(2026, 1, 1, 8),
+            ),
           ),
-        ),
-      );
+        );
 
-      // Verify the const starterPrompts list has exactly 4 items
-      expect(ChatEmptyState.starterPrompts.length, 4);
+        // Verify the const starterPrompts list has exactly 4 items
+        expect(ChatEmptyState.starterPrompts.length, 4);
 
-      // Verify all 4 prompts are rendered
-      for (final prompt in ChatEmptyState.starterPrompts) {
-        expect(find.text(prompt), findsOneWidget);
-      }
+        // Verify all 4 prompts are rendered
+        for (final prompt in ChatEmptyState.starterPrompts) {
+          expect(find.text(prompt), findsOneWidget);
+        }
 
-      // Verify chips have button semantics
-      final chipButtons = find.byWidgetPredicate(
-        (widget) =>
-            widget is Semantics &&
-            widget.properties.button == true &&
-            ChatEmptyState.starterPrompts.contains(widget.properties.label),
-      );
-      expect(chipButtons, findsNWidgets(4));
+        // Verify chips have button semantics
+        final chipButtons = find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics &&
+              widget.properties.button == true &&
+              ChatEmptyState.starterPrompts.contains(widget.properties.label),
+        );
+        expect(chipButtons, findsNWidgets(4));
 
-      // Tap one of the chips
-      const targetPrompt = 'Review my code for bugs';
-      await tester.tap(find.text(targetPrompt));
-      await tester.pump();
+        // Tap one of the chips
+        const targetPrompt = 'Review my code for bugs';
+        await tester.tap(find.text(targetPrompt));
+        await tester.pump();
 
-      expect(tappedPrompt, equals(targetPrompt));
-    });
+        expect(tappedPrompt, equals(targetPrompt));
+      },
+    );
   });
 
   group('ChatScreen composer dock transition', () {
     testWidgets(
       'Case 3: Dock after send moves dock from center to bottom with 220ms curve',
       (tester) async {
-
-
         final fakeStream = _FakeRunStreamClient();
         final controller = ChatController(
           client: fakeStream,
           deltaFlushInterval: Duration.zero,
         );
-        final convController =
-            ConversationListController(api: _FakeConversationsApi());
+        final convController = ConversationListController(
+          api: _FakeConversationsApi(),
+        );
 
         await tester.pumpWidget(
           _wrapWithApp(
@@ -295,15 +297,14 @@ void main() {
     testWidgets(
       'Case 4: Reduced motion instant docks immediately on single pump without intermediate position',
       (tester) async {
-
-
         final fakeStream = _FakeRunStreamClient();
         final controller = ChatController(
           client: fakeStream,
           deltaFlushInterval: Duration.zero,
         );
-        final convController =
-            ConversationListController(api: _FakeConversationsApi());
+        final convController = ConversationListController(
+          api: _FakeConversationsApi(),
+        );
 
         await tester.pumpWidget(
           _wrapWithApp(

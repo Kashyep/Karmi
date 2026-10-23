@@ -33,8 +33,7 @@ class SharedPrefsDraftStore implements DraftStore {
   final String userId;
   final SharedPreferences? _prefs;
 
-  static String storageKey(String userId, String key) =>
-      '$_prefix$userId.$key';
+  static String storageKey(String userId, String key) => '$_prefix$userId.$key';
 
   Future<SharedPreferences> _getPrefs() async =>
       _prefs ?? await SharedPreferences.getInstance();

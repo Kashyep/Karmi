@@ -30,7 +30,8 @@ http.Response sseResponse(
   String finishReason = 'stop',
   String outcome = 'success',
 }) {
-  final sse = 'event: run.started\n'
+  final sse =
+      'event: run.started\n'
       'data: {"run_id":"$runId","conversation_id":"conv-1","user_message_id":"msg-u","assistant_message_id":"msg-a","seq":0}\n\n'
       'id: 1\n'
       'event: message.delta\n'
@@ -64,13 +65,15 @@ class _FakeHttpHeaders implements HttpHeaders {
   }
 
   @override
-  void remove(String name, Object value) => _headers[name.toLowerCase()]?.remove(value.toString());
+  void remove(String name, Object value) =>
+      _headers[name.toLowerCase()]?.remove(value.toString());
 
   @override
   void removeAll(String name) => _headers.remove(name.toLowerCase());
 
   @override
-  void forEach(void Function(String name, List<String> values) action) => _headers.forEach(action);
+  void forEach(void Function(String name, List<String> values) action) =>
+      _headers.forEach(action);
 
   @override
   bool chunkedTransferEncoding = false;
@@ -101,8 +104,13 @@ class _FakeHttpHeaders implements HttpHeaders {
   void noFolding(String name) {}
 }
 
-class _BackendHttpClientResponse extends Stream<List<int>> implements HttpClientResponse {
-  _BackendHttpClientResponse(this.statusCode, Map<String, String> rawHeaders, this.body) {
+class _BackendHttpClientResponse extends Stream<List<int>>
+    implements HttpClientResponse {
+  _BackendHttpClientResponse(
+    this.statusCode,
+    Map<String, String> rawHeaders,
+    this.body,
+  ) {
     rawHeaders.forEach((k, v) => headers.set(k, v));
   }
 
@@ -149,8 +157,11 @@ class _BackendHttpClientResponse extends Stream<List<int>> implements HttpClient
   @override
   HttpConnectionInfo? get connectionInfo => null;
   @override
-  Future<HttpClientResponse> redirect([String? method, Uri? url, bool? followLoops]) =>
-      throw UnimplementedError();
+  Future<HttpClientResponse> redirect([
+    String? method,
+    Uri? url,
+    bool? followLoops,
+  ]) => throw UnimplementedError();
 }
 
 class _BackendHttpClientRequest implements HttpClientRequest {
@@ -191,7 +202,11 @@ class _BackendHttpClientRequest implements HttpClientRequest {
     req.bodyBytes = _bodyBytes.toBytes();
     final streamed = await backend.client.send(req);
     final responseBytes = await streamed.stream.toBytes();
-    return _BackendHttpClientResponse(streamed.statusCode, streamed.headers, responseBytes);
+    return _BackendHttpClientResponse(
+      streamed.statusCode,
+      streamed.headers,
+      responseBytes,
+    );
   }
 
   @override
@@ -259,20 +274,30 @@ class _BackendHttpClient implements HttpClient {
   @override
   Future<HttpClientRequest> headUrl(Uri url) => openUrl('HEAD', url);
   @override
-  Future<HttpClientRequest> open(String method, String host, int port, String path) =>
-      openUrl(method, Uri.parse('http://$host:$port$path'));
+  Future<HttpClientRequest> open(
+    String method,
+    String host,
+    int port,
+    String path,
+  ) => openUrl(method, Uri.parse('http://$host:$port$path'));
   @override
-  Future<HttpClientRequest> get(String host, int port, String path) => open('GET', host, port, path);
+  Future<HttpClientRequest> get(String host, int port, String path) =>
+      open('GET', host, port, path);
   @override
-  Future<HttpClientRequest> post(String host, int port, String path) => open('POST', host, port, path);
+  Future<HttpClientRequest> post(String host, int port, String path) =>
+      open('POST', host, port, path);
   @override
-  Future<HttpClientRequest> put(String host, int port, String path) => open('PUT', host, port, path);
+  Future<HttpClientRequest> put(String host, int port, String path) =>
+      open('PUT', host, port, path);
   @override
-  Future<HttpClientRequest> delete(String host, int port, String path) => open('DELETE', host, port, path);
+  Future<HttpClientRequest> delete(String host, int port, String path) =>
+      open('DELETE', host, port, path);
   @override
-  Future<HttpClientRequest> patch(String host, int port, String path) => open('PATCH', host, port, path);
+  Future<HttpClientRequest> patch(String host, int port, String path) =>
+      open('PATCH', host, port, path);
   @override
-  Future<HttpClientRequest> head(String host, int port, String path) => open('HEAD', host, port, path);
+  Future<HttpClientRequest> head(String host, int port, String path) =>
+      open('HEAD', host, port, path);
 
   @override
   bool autoUncompress = true;
@@ -285,21 +310,44 @@ class _BackendHttpClient implements HttpClient {
   @override
   String? userAgent;
   @override
-  void addCredentials(Uri url, String realm, HttpClientCredentials credentials) {}
+  void addCredentials(
+    Uri url,
+    String realm,
+    HttpClientCredentials credentials,
+  ) {}
   @override
-  void addProxyCredentials(String host, int port, String realm, HttpClientCredentials credentials) {}
+  void addProxyCredentials(
+    String host,
+    int port,
+    String realm,
+    HttpClientCredentials credentials,
+  ) {}
   @override
   void close({bool force = false}) {}
   @override
-  set authenticate(Future<bool> Function(Uri url, String scheme, String? realm)? f) {}
+  set authenticate(
+    Future<bool> Function(Uri url, String scheme, String? realm)? f,
+  ) {}
   @override
-  set authenticateProxy(Future<bool> Function(String host, int port, String scheme, String? realm)? f) {}
+  set authenticateProxy(
+    Future<bool> Function(String host, int port, String scheme, String? realm)?
+    f,
+  ) {}
   @override
-  set badCertificateCallback(bool Function(X509Certificate cert, String host, int port)? callback) {}
+  set badCertificateCallback(
+    bool Function(X509Certificate cert, String host, int port)? callback,
+  ) {}
   @override
   set findProxy(String Function(Uri url)? f) {}
   @override
-  set connectionFactory(Future<ConnectionTask<Socket>> Function(Uri url, String? proxyHost, int? proxyPort)? f) {}
+  set connectionFactory(
+    Future<ConnectionTask<Socket>> Function(
+      Uri url,
+      String? proxyHost,
+      int? proxyPort,
+    )?
+    f,
+  ) {}
   @override
   set keyLog(Function(String line)? callback) {}
 }
@@ -309,14 +357,17 @@ class _BackendHttpOverrides extends HttpOverrides {
   final FakeBackend Function() backendProvider;
 
   @override
-  HttpClient createHttpClient(SecurityContext? context) => _BackendHttpClient(backendProvider);
+  HttpClient createHttpClient(SecurityContext? context) =>
+      _BackendHttpClient(backendProvider);
 }
 
 FakeBackend? _currentBackend;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  HttpOverrides.global = _BackendHttpOverrides(() => _currentBackend ?? FakeBackend.healthy());
+  HttpOverrides.global = _BackendHttpOverrides(
+    () => _currentBackend ?? FakeBackend.healthy(),
+  );
 
   setUp(() {
     _currentBackend = null;
@@ -378,11 +429,7 @@ void main() {
     final reply = Completer<http.Response>();
     final backend = backendWith((_) => reply.future);
     _currentBackend = backend;
-    await pumpApp(
-      tester,
-      backend: backend,
-      env: const Env(reduceMotion: true),
-    );
+    await pumpApp(tester, backend: backend, env: const Env(reduceMotion: true));
     await send(tester, 'Plan my week');
     expect(find.text('Preparing'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
@@ -405,10 +452,7 @@ void main() {
         (_) => sseResponse('Reply for $wire', outcome: wire),
       );
       _currentBackend = backend;
-      await pumpApp(
-        tester,
-        backend: backend,
-      );
+      await pumpApp(tester, backend: backend);
       await send(tester, 'hello');
       await settle(tester);
       expect(find.text('Reply for $wire'), findsOneWidget);
@@ -442,15 +486,10 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('failed (500): ErrorCard, no raw exception text', (
-    tester,
-  ) async {
+  testWidgets('failed (500): ErrorCard, no raw exception text', (tester) async {
     final backend = backendWith((_) => http.Response('Traceback: boom', 500));
     _currentBackend = backend;
-    await pumpApp(
-      tester,
-      backend: backend,
-    );
+    await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
     await settle(tester);
@@ -473,10 +512,7 @@ void main() {
       if (calls <= 4) return FakeBackend.network()(request);
       return sseResponse('Completed');
     });
-    final app = await pumpApp(
-      tester,
-      backend: backend,
-    );
+    final app = await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
     await settle(tester);
@@ -510,10 +546,7 @@ void main() {
             }, 409)
           : sseResponse('Completed');
     });
-    final app = await pumpApp(
-      tester,
-      backend: backend,
-    );
+    final app = await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
     expect(find.text('Completed'), findsOneWidget);
@@ -537,13 +570,13 @@ void main() {
       }, 429),
     );
     _currentBackend = backend;
-    await pumpApp(
-      tester,
-      backend: backend,
-    );
+    await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
-    expect(find.text("You've reached your plan limit for now."), findsOneWidget);
+    expect(
+      find.text("You've reached your plan limit for now."),
+      findsOneWidget,
+    );
     // Tap View plans
     await tester.tap(find.text('View plans'));
     await settle(tester);
@@ -553,22 +586,17 @@ void main() {
   testWidgets('beta capacity full (429): banner says try again later', (
     tester,
   ) async {
-    final backend = backendWith(
-      (_) {
-        return jsonResponse({
-          'detail': {
-            'code': 'BETA_CAPACITY_FULL',
-            'message': "Karmi's beta has reached today's limit.",
-            'reset_at': '2026-10-22T00:00:00+00:00',
-          },
-        }, 429);
-      },
-    );
+    final backend = backendWith((_) {
+      return jsonResponse({
+        'detail': {
+          'code': 'BETA_CAPACITY_FULL',
+          'message': "Karmi's beta has reached today's limit.",
+          'reset_at': '2026-10-22T00:00:00+00:00',
+        },
+      }, 429);
+    });
     _currentBackend = backend;
-    await pumpApp(
-      tester,
-      backend: backend,
-    );
+    await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
     await settle(tester);
@@ -582,10 +610,7 @@ void main() {
       (_) => jsonResponse({'detail': 'invalid session'}, 401),
     );
     _currentBackend = backend;
-    final app = await pumpApp(
-      tester,
-      backend: backend,
-    );
+    final app = await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
     expect(app.session.isSignedIn, isFalse);

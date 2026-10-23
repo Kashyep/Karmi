@@ -29,35 +29,40 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Composer keyboard handling', () {
-    testWidgets('Enter sends trimmed text, clears input, and notifies onSubmit', (tester) async {
-      ComposerSubmit? submitted;
-      await tester.pumpWidget(
-        _wrap(
-          Composer(
-            draftKey: 'test-enter',
-            busy: false,
-            onSubmit: (s) => submitted = s,
-            onStop: () {},
-            draftStore: _KeyDraftStore(),
+    testWidgets(
+      'Enter sends trimmed text, clears input, and notifies onSubmit',
+      (tester) async {
+        ComposerSubmit? submitted;
+        await tester.pumpWidget(
+          _wrap(
+            Composer(
+              draftKey: 'test-enter',
+              busy: false,
+              onSubmit: (s) => submitted = s,
+              onStop: () {},
+              draftStore: _KeyDraftStore(),
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      final textField = find.byType(TextField);
-      await tester.enterText(textField, 'Hello from Enter');
-      await tester.pump();
+        final textField = find.byType(TextField);
+        await tester.enterText(textField, 'Hello from Enter');
+        await tester.pump();
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
 
-      expect(submitted, isNotNull);
-      expect(submitted!.text, 'Hello from Enter');
-      final field = tester.widget<TextField>(textField);
-      expect(field.controller?.text, isEmpty);
-    });
+        expect(submitted, isNotNull);
+        expect(submitted!.text, 'Hello from Enter');
+        final field = tester.widget<TextField>(textField);
+        expect(field.controller?.text, isEmpty);
+      },
+    );
 
-    testWidgets('Shift+Enter inserts newline and does NOT send', (tester) async {
+    testWidgets('Shift+Enter inserts newline and does NOT send', (
+      tester,
+    ) async {
       ComposerSubmit? submitted;
       await tester.pumpWidget(
         _wrap(
@@ -84,44 +89,41 @@ void main() {
       expect(submitted, isNull);
     });
 
-    testWidgets(
-      'IME composing does not send on Enter',
-      (tester) async {
-        ComposerSubmit? submitted;
-        await tester.pumpWidget(
-          _wrap(
-            Composer(
-              draftKey: 'test-ime',
-              busy: false,
-              onSubmit: (s) => submitted = s,
-              onStop: () {},
-              draftStore: _KeyDraftStore(),
-            ),
+    testWidgets('IME composing does not send on Enter', (tester) async {
+      ComposerSubmit? submitted;
+      await tester.pumpWidget(
+        _wrap(
+          Composer(
+            draftKey: 'test-ime',
+            busy: false,
+            onSubmit: (s) => submitted = s,
+            onStop: () {},
+            draftStore: _KeyDraftStore(),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        final textField = find.byType(TextField);
-        await tester.tap(textField);
-        await tester.pump();
+      final textField = find.byType(TextField);
+      await tester.tap(textField);
+      await tester.pump();
 
-        // Simulate active IME composing candidate
-        final controller = tester.widget<TextField>(textField).controller!;
-        controller.value = const TextEditingValue(
-          text: 'nihon',
-          selection: TextSelection.collapsed(offset: 5),
-          composing: TextRange(start: 0, end: 5),
-        );
-        await tester.pump();
+      // Simulate active IME composing candidate
+      final controller = tester.widget<TextField>(textField).controller!;
+      controller.value = const TextEditingValue(
+        text: 'nihon',
+        selection: TextSelection.collapsed(offset: 5),
+        composing: TextRange(start: 0, end: 5),
+      );
+      await tester.pump();
 
-        // Press Enter during IME composition (confirm candidate)
-        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-        await tester.pump();
+      // Press Enter during IME composition (confirm candidate)
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
 
-        // Must not send while composing
-        expect(submitted, isNull);
-      },
-    );
+      // Must not send while composing
+      expect(submitted, isNull);
+    });
 
     testWidgets(
       'IME composing transitions: valid range blocks Enter, invalid range allows Enter',

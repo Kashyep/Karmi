@@ -7,9 +7,7 @@ import 'package:karmi_app/features/chat/rendering/safe_link.dart';
 
 Widget _host(Widget child) => MaterialApp(
   theme: ThemeData(),
-  home: Scaffold(
-    body: SingleChildScrollView(child: child),
-  ),
+  home: Scaffold(body: SingleChildScrollView(child: child)),
 );
 
 void main() {
@@ -56,7 +54,10 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('void main()', findRichText: true), findsWidgets);
+    expect(
+      find.textContaining('void main()', findRichText: true),
+      findsWidgets,
+    );
   });
 
   testWidgets('file fence renders a FileCard with its name', (tester) async {

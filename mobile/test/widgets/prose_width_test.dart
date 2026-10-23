@@ -43,10 +43,7 @@ void main() {
       await tester.runAsync(GoogleFonts.pendingFonts);
       await tester.pump();
       final textWidth = tester.getSize(find.text(_prose)).width;
-      expect(
-        textWidth,
-        lessThanOrEqualTo(KarmiShape.readableColumnMaxWidth),
-      );
+      expect(textWidth, lessThanOrEqualTo(KarmiShape.readableColumnMaxWidth));
     });
   }
 }

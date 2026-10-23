@@ -11,8 +11,14 @@ void main() {
     });
 
     test('storageKey prefixes with draft.v1.', () {
-      expect(SharedPrefsDraftStore.storageKey('user_a', '123'), 'draft.v1.user_a.123');
-      expect(SharedPrefsDraftStore.storageKey('user_a', 'new'), 'draft.v1.user_a.new');
+      expect(
+        SharedPrefsDraftStore.storageKey('user_a', '123'),
+        'draft.v1.user_a.123',
+      );
+      expect(
+        SharedPrefsDraftStore.storageKey('user_a', 'new'),
+        'draft.v1.user_a.new',
+      );
     });
 
     test('load returns null when no draft exists', () async {

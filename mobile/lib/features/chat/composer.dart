@@ -406,11 +406,7 @@ class _ComposerState extends State<Composer> {
                                           ),
                                         ),
                                       ),
-                                    for (
-                                      int i = 0;
-                                      i < _pasteChips.length;
-                                      i++
-                                    )
+                                    for (int i = 0; i < _pasteChips.length; i++)
                                       Padding(
                                         padding: const EdgeInsets.only(
                                           right: 6,
@@ -502,32 +498,38 @@ class _ComposerState extends State<Composer> {
                                     width: 34,
                                     height: 34,
                                   ),
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: colors.primary,
-                                    foregroundColor: colors.primaryForeground,
-                                    disabledBackgroundColor: colors.muted,
-                                    disabledForegroundColor: colors.mutedForeground,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        widget.busy ? 8 : 17,
-                                      ),
-                                    ),
-                                    minimumSize: const Size(34, 34),
-                                    fixedSize: const Size(34, 34),
-                                    padding: EdgeInsets.zero,
-                                  ).copyWith(
-                                    side: WidgetStateProperty.resolveWith(
-                                      (states) =>
-                                          states.contains(WidgetState.focused)
+                                  style:
+                                      IconButton.styleFrom(
+                                        backgroundColor: colors.primary,
+                                        foregroundColor:
+                                            colors.primaryForeground,
+                                        disabledBackgroundColor: colors.muted,
+                                        disabledForegroundColor:
+                                            colors.mutedForeground,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            widget.busy ? 8 : 17,
+                                          ),
+                                        ),
+                                        minimumSize: const Size(34, 34),
+                                        fixedSize: const Size(34, 34),
+                                        padding: EdgeInsets.zero,
+                                      ).copyWith(
+                                        side: WidgetStateProperty.resolveWith(
+                                          (states) =>
+                                              states.contains(
+                                                WidgetState.focused,
+                                              )
                                               ? BorderSide(
-                                                  color: colors.primaryForeground,
+                                                  color:
+                                                      colors.primaryForeground,
                                                   width: KarmiShape.of(
                                                     context,
                                                   ).focusRingWidth,
                                                 )
                                               : null,
-                                    ),
-                                  ),
+                                        ),
+                                      ),
                                   onPressed: widget.busy
                                       ? widget.onStop
                                       : (_canSend ? _send : null),
@@ -579,10 +581,7 @@ class _ComposerState extends State<Composer> {
 }
 
 class _TopSpecularRimPainter extends CustomPainter {
-  const _TopSpecularRimPainter({
-    required this.color,
-    required this.radius,
-  });
+  const _TopSpecularRimPainter({required this.color, required this.radius});
 
   final Color color;
   final double radius;

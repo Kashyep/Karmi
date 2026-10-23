@@ -10,9 +10,7 @@ Widget _wrap(Widget child) {
   return LiquidGlassWidgets.wrap(
     child: MaterialApp(
       theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
-      home: Scaffold(
-        body: Center(child: child),
-      ),
+      home: Scaffold(body: Center(child: child)),
     ),
   );
 }
@@ -52,10 +50,7 @@ void main() {
         expect(find.byIcon(Icons.stop), findsOneWidget);
 
         // Send icon is absent while streaming
-        expect(
-          find.byKey(const ValueKey('composer-send-icon')),
-          findsNothing,
-        );
+        expect(find.byKey(const ValueKey('composer-send-icon')), findsNothing);
 
         // Semantics label is 'Stop generating'
         final stopSemantics = find.byWidgetPredicate(
@@ -100,10 +95,7 @@ void main() {
         );
 
         // Stop icon is absent when not streaming
-        expect(
-          find.byKey(const ValueKey('composer-stop-icon')),
-          findsNothing,
-        );
+        expect(find.byKey(const ValueKey('composer-stop-icon')), findsNothing);
 
         // Send icon is present
         expect(
@@ -151,10 +143,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const ValueKey('composer-surface')),
-          findsOneWidget,
-        );
+        expect(find.byKey(const ValueKey('composer-surface')), findsOneWidget);
         expect(
           find.byKey(const ValueKey('composer-attachment-tray')),
           findsOneWidget,
@@ -186,21 +175,30 @@ void main() {
         await tester.pumpWidget(buildTestHost(false));
         await tester.pumpAndSettle();
 
-        expect(find.byKey(const ValueKey('composer-send-icon')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('composer-send-icon')),
+          findsOneWidget,
+        );
         expect(find.byKey(const ValueKey('composer-stop-icon')), findsNothing);
 
         // 2. Stream starts (busy: true)
         await tester.pumpWidget(buildTestHost(true));
         await tester.pumpAndSettle();
 
-        expect(find.byKey(const ValueKey('composer-stop-icon')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('composer-stop-icon')),
+          findsOneWidget,
+        );
         expect(find.byKey(const ValueKey('composer-send-icon')), findsNothing);
 
         // 3. Stream completes (busy: false)
         await tester.pumpWidget(buildTestHost(false));
         await tester.pumpAndSettle();
 
-        expect(find.byKey(const ValueKey('composer-send-icon')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('composer-send-icon')),
+          findsOneWidget,
+        );
         expect(find.byKey(const ValueKey('composer-stop-icon')), findsNothing);
       },
     );

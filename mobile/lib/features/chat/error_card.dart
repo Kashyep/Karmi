@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../api/chat/chat_models.dart';
 import '../../theme/karmi_colors.dart';
+
 /// User-facing card for errors during assistant runs.
 class ErrorCard extends StatelessWidget {
   const ErrorCard({
@@ -97,8 +98,8 @@ class ErrorCard extends StatelessWidget {
 
     final borderColor = karmiColors != null
         ? (_isWarning
-            ? karmiColors.warning.withValues(alpha: 0.3)
-            : karmiColors.destructive.withValues(alpha: 0.3))
+              ? karmiColors.warning.withValues(alpha: 0.3)
+              : karmiColors.destructive.withValues(alpha: 0.3))
         : colorScheme.outlineVariant;
 
     final contentColor =
@@ -110,14 +111,14 @@ class ErrorCard extends StatelessWidget {
 
     final buttonBgColor = karmiColors != null
         ? (_isWarning
-            ? karmiColors.warning.withValues(alpha: 0.16)
-            : karmiColors.destructive.withValues(alpha: 0.16))
+              ? karmiColors.warning.withValues(alpha: 0.16)
+              : karmiColors.destructive.withValues(alpha: 0.16))
         : colorScheme.onErrorContainer.withValues(alpha: 0.12);
 
     final buttonBorderColor = karmiColors != null
         ? (_isWarning
-            ? karmiColors.warning.withValues(alpha: 0.35)
-            : karmiColors.destructive.withValues(alpha: 0.35))
+              ? karmiColors.warning.withValues(alpha: 0.35)
+              : karmiColors.destructive.withValues(alpha: 0.35))
         : colorScheme.onErrorContainer.withValues(alpha: 0.25);
 
     return Semantics(
@@ -136,11 +137,7 @@ class ErrorCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
-              Icon(
-                iconFor(category),
-                size: 20,
-                color: iconColor,
-              ),
+              Icon(iconFor(category), size: 20, color: iconColor),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(

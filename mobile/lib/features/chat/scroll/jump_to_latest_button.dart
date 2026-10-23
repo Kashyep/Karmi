@@ -37,9 +37,10 @@ class JumpToLatestButton extends StatelessWidget {
         : 'Jump to latest message';
     final labelText = hasNewContent ? 'New messages' : 'Jump to latest';
 
-    final labelStyle = (Theme.of(context).textTheme.labelMedium ??
-            const TextStyle(fontSize: 13))
-        .copyWith(color: colors.foreground, fontWeight: FontWeight.w600);
+    final labelStyle =
+        (Theme.of(context).textTheme.labelMedium ??
+                const TextStyle(fontSize: 13))
+            .copyWith(color: colors.foreground, fontWeight: FontWeight.w600);
 
     Widget pill = KarmiGlassSurface(
       key: const ValueKey('jump-to-latest'),

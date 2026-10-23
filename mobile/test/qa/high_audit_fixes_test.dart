@@ -41,12 +41,14 @@ class _FakeRunStreamClient extends RunStreamClient {
   }
 
   void emitStarted() {
-    activeRunController?.add(const RunStartedEvent(
-      runId: 'run-1',
-      conversationId: 'conv-1',
-      userMessageId: 'user-1',
-      assistantMessageId: 'asst-1',
-    ));
+    activeRunController?.add(
+      const RunStartedEvent(
+        runId: 'run-1',
+        conversationId: 'conv-1',
+        userMessageId: 'user-1',
+        assistantMessageId: 'asst-1',
+      ),
+    );
   }
 
   void emitDelta(String text) {
@@ -83,13 +85,21 @@ class _FakeConversationsApi implements ConversationsApi {
   void close() {}
 
   @override
-  Future<ConversationPage> list({bool archived = false, String? cursor, int limit = 20}) async {
+  Future<ConversationPage> list({
+    bool archived = false,
+    String? cursor,
+    int limit = 20,
+  }) async {
     callLog.add('list');
     return ConversationPage(items: conversations, nextCursor: null);
   }
 
   @override
-  Future<MessagePage> messages(String id, {String? before, int limit = 50}) async {
+  Future<MessagePage> messages(
+    String id, {
+    String? before,
+    int limit = 50,
+  }) async {
     callLog.add('messages:$id');
     if (throwOnMessages) {
       throw const ServerException(500);
@@ -101,17 +111,25 @@ class _FakeConversationsApi implements ConversationsApi {
   Future<ConversationView> get(String id) async => throw UnimplementedError();
 
   @override
-  Future<ConversationView> update(String id, {String? title, bool? pinned, bool? archived}) async =>
-      throw UnimplementedError();
+  Future<ConversationView> update(
+    String id, {
+    String? title,
+    bool? pinned,
+    bool? archived,
+  }) async => throw UnimplementedError();
 
   @override
   Future<void> delete(String id) async => throw UnimplementedError();
 
   @override
-  Future<ConversationView> restore(String id) async => throw UnimplementedError();
+  Future<ConversationView> restore(String id) async =>
+      throw UnimplementedError();
 
   @override
-  Future<List<ConversationSearchResult>> search(String q, {int limit = 20}) async => [];
+  Future<List<ConversationSearchResult>> search(
+    String q, {
+    int limit = 20,
+  }) async => [];
 }
 
 Widget _wrap(Widget child) {
@@ -131,32 +149,35 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('sign-out clears all draft.v1.* keys while preserving non-draft keys', () async {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('other_setting', 'user_preference');
+    test(
+      'sign-out clears all draft.v1.* keys while preserving non-draft keys',
+      () async {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('other_setting', 'user_preference');
 
-      final store = SharedPrefsDraftStore(userId: 'user_a', prefs: prefs);
-      await store.save('new', 'draft for new conversation');
-      await store.save('conv-123', 'draft for existing conversation');
+        final store = SharedPrefsDraftStore(userId: 'user_a', prefs: prefs);
+        await store.save('new', 'draft for new conversation');
+        await store.save('conv-123', 'draft for existing conversation');
 
-      expect(await store.load('new'), 'draft for new conversation');
-      expect(await store.load('conv-123'), 'draft for existing conversation');
-      expect(prefs.getString('other_setting'), 'user_preference');
+        expect(await store.load('new'), 'draft for new conversation');
+        expect(await store.load('conv-123'), 'draft for existing conversation');
+        expect(prefs.getString('other_setting'), 'user_preference');
 
-      final session = KarmiSession(
-        api: KarmiApi(baseUrl: 'http://fake.test'),
-        prefs: prefs,
-      );
+        final session = KarmiSession(
+          api: KarmiApi(baseUrl: 'http://fake.test'),
+          prefs: prefs,
+        );
 
-      await session.signOut();
+        await session.signOut();
 
-      // Drafts must be completely cleared after sign-out
-      expect(await store.load('new'), isNull);
-      expect(await store.load('conv-123'), isNull);
+        // Drafts must be completely cleared after sign-out
+        expect(await store.load('new'), isNull);
+        expect(await store.load('conv-123'), isNull);
 
-      // Non-draft preferences must remain untouched
-      expect(prefs.getString('other_setting'), 'user_preference');
-    });
+        // Non-draft preferences must remain untouched
+        expect(prefs.getString('other_setting'), 'user_preference');
+      },
+    );
 
     test('SharedPrefsDraftStore.clearAll clears all draft keys', () async {
       final prefs = await SharedPreferences.getInstance();
@@ -172,120 +193,133 @@ void main() {
     });
   });
 
-  group('AUDIT-01: conversation switch cancels owned stream and handles throwing messages()', () {
-    testWidgets('switching conversation cancels previous owned stream subscription', (tester) async {
-      final fakeStream = _FakeRunStreamClient();
-      final fakeConversationsApi = _FakeConversationsApi(
-        messageItems: [
-          ChatMessageView(
-            id: 'loaded-1',
-            conversationId: 'conv-2',
-            role: 'assistant',
-            status: MessageStatus.complete,
-            content: 'Loaded messages for conv-2',
-            createdAt: DateTime.utc(2026, 10, 20),
-            updatedAt: DateTime.utc(2026, 10, 20),
-          ),
-        ],
+  group(
+    'AUDIT-01: conversation switch cancels owned stream and handles throwing messages()',
+    () {
+      testWidgets(
+        'switching conversation cancels previous owned stream subscription',
+        (tester) async {
+          final fakeStream = _FakeRunStreamClient();
+          final fakeConversationsApi = _FakeConversationsApi(
+            messageItems: [
+              ChatMessageView(
+                id: 'loaded-1',
+                conversationId: 'conv-2',
+                role: 'assistant',
+                status: MessageStatus.complete,
+                content: 'Loaded messages for conv-2',
+                createdAt: DateTime.utc(2026, 10, 20),
+                updatedAt: DateTime.utc(2026, 10, 20),
+              ),
+            ],
+          );
+
+          await tester.pumpWidget(
+            _wrap(
+              ChatScreen(
+                api: KarmiApi(baseUrl: 'http://fake.test'),
+                runStreamClient: fakeStream,
+                conversationsApi: fakeConversationsApi,
+                conversationId: null,
+              ),
+            ),
+          );
+          await tester.pump();
+
+          // Enter a prompt in the composer and submit to initiate stream on owned controller
+          await tester.enterText(find.byType(TextField), 'Test prompt');
+          await tester.pump();
+          await tester.tap(find.byTooltip('Send message'));
+          await tester.pump();
+
+          expect(fakeStream.activeRunController, isNotNull);
+          expect(fakeStream.activeRunController!.hasListener, isTrue);
+
+          fakeStream.emitStarted();
+          fakeStream.emitDelta('Partial response');
+          await tester.pump(const Duration(milliseconds: 60));
+          expect(find.textContaining('Partial response'), findsOneWidget);
+
+          // Switch to another conversation
+          await tester.pumpWidget(
+            _wrap(
+              ChatScreen(
+                api: KarmiApi(baseUrl: 'http://fake.test'),
+                runStreamClient: fakeStream,
+                conversationsApi: fakeConversationsApi,
+                conversationId: 'conv-2',
+              ),
+            ),
+          );
+          await tester.pump();
+
+          // The previous stream subscription MUST be cancelled
+          expect(fakeStream.activeRunController!.hasListener, isFalse);
+
+          await tester.pumpAndSettle();
+          expect(
+            find.textContaining('Loaded messages for conv-2'),
+            findsOneWidget,
+          );
+        },
       );
 
-      await tester.pumpWidget(
-        _wrap(
-          ChatScreen(
-            api: KarmiApi(baseUrl: 'http://fake.test'),
-            runStreamClient: fakeStream,
-            conversationsApi: fakeConversationsApi,
-            conversationId: null,
+      testWidgets('throwing messages() leaves prior transcript visible', (
+        tester,
+      ) async {
+        final fakeStream = _FakeRunStreamClient();
+        final fakeConversationsApi = _FakeConversationsApi(
+          throwOnMessages: true,
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            ChatScreen(
+              api: KarmiApi(baseUrl: 'http://fake.test'),
+              runStreamClient: fakeStream,
+              conversationsApi: fakeConversationsApi,
+              conversationId: null,
+            ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      // Enter a prompt in the composer and submit to initiate stream on owned controller
-      await tester.enterText(find.byType(TextField), 'Test prompt');
-      await tester.pump();
-      await tester.tap(find.byTooltip('Send message'));
-      await tester.pump();
+        // Start run on owned controller
+        await tester.enterText(find.byType(TextField), 'Hello');
+        await tester.pump();
+        await tester.tap(find.byTooltip('Send message'));
+        await tester.pump();
+        expect(fakeStream.activeRunController, isNotNull);
 
-      expect(fakeStream.activeRunController, isNotNull);
-      expect(fakeStream.activeRunController!.hasListener, isTrue);
+        fakeStream.emitStarted();
+        fakeStream.emitDelta('Initial tokens');
+        await tester.pump(const Duration(milliseconds: 60));
+        expect(find.textContaining('Initial tokens'), findsOneWidget);
 
-      fakeStream.emitStarted();
-      fakeStream.emitDelta('Partial response');
-      await tester.pump(const Duration(milliseconds: 60));
-      expect(find.textContaining('Partial response'), findsOneWidget);
-
-      // Switch to another conversation
-      await tester.pumpWidget(
-        _wrap(
-          ChatScreen(
-            api: KarmiApi(baseUrl: 'http://fake.test'),
-            runStreamClient: fakeStream,
-            conversationsApi: fakeConversationsApi,
-            conversationId: 'conv-2',
+        // Switch to a conversation whose messages fetch will throw an error
+        await tester.pumpWidget(
+          _wrap(
+            ChatScreen(
+              api: KarmiApi(baseUrl: 'http://fake.test'),
+              runStreamClient: fakeStream,
+              conversationsApi: fakeConversationsApi,
+              conversationId: 'conv-throwing',
+            ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      // The previous stream subscription MUST be cancelled
-      expect(fakeStream.activeRunController!.hasListener, isFalse);
+        // The in-flight run must be stopped on the owned controller
+        expect(fakeStream.stopRunCalled, isTrue);
 
-      await tester.pumpAndSettle();
-      expect(find.textContaining('Loaded messages for conv-2'), findsOneWidget);
-    });
+        // Settle the throwing messages() fetch
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 100));
 
-    testWidgets('throwing messages() leaves prior transcript visible', (tester) async {
-      final fakeStream = _FakeRunStreamClient();
-      final fakeConversationsApi = _FakeConversationsApi(throwOnMessages: true);
-
-      await tester.pumpWidget(
-        _wrap(
-          ChatScreen(
-            api: KarmiApi(baseUrl: 'http://fake.test'),
-            runStreamClient: fakeStream,
-            conversationsApi: fakeConversationsApi,
-            conversationId: null,
-          ),
-        ),
-      );
-      await tester.pump();
-
-      // Start run on owned controller
-      await tester.enterText(find.byType(TextField), 'Hello');
-      await tester.pump();
-      await tester.tap(find.byTooltip('Send message'));
-      await tester.pump();
-      expect(fakeStream.activeRunController, isNotNull);
-
-      fakeStream.emitStarted();
-      fakeStream.emitDelta('Initial tokens');
-      await tester.pump(const Duration(milliseconds: 60));
-      expect(find.textContaining('Initial tokens'), findsOneWidget);
-
-      // Switch to a conversation whose messages fetch will throw an error
-      await tester.pumpWidget(
-        _wrap(
-          ChatScreen(
-            api: KarmiApi(baseUrl: 'http://fake.test'),
-            runStreamClient: fakeStream,
-            conversationsApi: fakeConversationsApi,
-            conversationId: 'conv-throwing',
-          ),
-        ),
-      );
-      await tester.pump();
-
-      // The in-flight run must be stopped on the owned controller
-      expect(fakeStream.stopRunCalled, isTrue);
-
-      // Settle the throwing messages() fetch
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // Prior transcript must remain visible when messages() fetch fails
-      expect(find.textContaining('Hello'), findsOneWidget);
-      expect(find.textContaining('Initial tokens'), findsOneWidget);
-    });
-  });
+        // Prior transcript must remain visible when messages() fetch fails
+        expect(find.textContaining('Hello'), findsOneWidget);
+        expect(find.textContaining('Initial tokens'), findsOneWidget);
+      });
+    },
+  );
 }
