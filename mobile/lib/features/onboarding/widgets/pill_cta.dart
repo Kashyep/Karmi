@@ -28,8 +28,7 @@ class PillCta extends StatelessWidget {
 
     return AnimatedContainer(
       duration: KarmiMotion.fast,
-      height: 52,
-      constraints: const BoxConstraints(minWidth: 120, minHeight: 48),
+      constraints: const BoxConstraints(minWidth: 120, minHeight: 52),
       child: Semantics(
         button: true,
         enabled: isClickable,

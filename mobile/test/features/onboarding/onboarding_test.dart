@@ -194,4 +194,63 @@ void main() {
       expect(find.text('What should we call you?'), findsOneWidget);
     });
   });
+
+  group('OnboardingFlow Auth Step — dev sign-in gate', () {
+    testWidgets('dev sign-in button is hidden when devAuthEnabled is false (release mode)',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final settings = KarmiSettings(prefs);
+      final backend = FakeBackend.healthy();
+      final session = KarmiSession(
+        api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
+        prefs: prefs,
+      );
+
+      await pumpHost(
+        tester,
+        OnboardingFlow(
+          session: session,
+          settings: settings,
+          devAuthEnabled: false, // simulates kReleaseMode / dart-define gate
+        ),
+      );
+
+      // Navigate to auth step
+      expect(find.text('Meet Karmi'), findsOneWidget);
+      await tester.tap(find.text('Get Started'));
+      await settle(tester);
+
+      // Auth step visible but dev sign-in button must be absent
+      expect(find.text("What's your email?"), findsOneWidget);
+      expect(find.text('Continue (development sign-in)'), findsNothing);
+      expect(find.byKey(const ValueKey('onboarding_dev_signin')), findsNothing);
+    });
+
+    testWidgets('dev sign-in button is shown when devAuthEnabled is true (debug/profile mode)',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final settings = KarmiSettings(prefs);
+      final backend = FakeBackend.healthy();
+      final session = KarmiSession(
+        api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
+        prefs: prefs,
+      );
+
+      await pumpHost(
+        tester,
+        OnboardingFlow(
+          session: session,
+          settings: settings,
+          devAuthEnabled: true,
+        ),
+      );
+
+      await tester.tap(find.text('Get Started'));
+      await settle(tester);
+
+      expect(find.byKey(const ValueKey('onboarding_dev_signin')), findsOneWidget);
+    });
+  });
 }

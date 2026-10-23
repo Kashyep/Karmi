@@ -121,10 +121,10 @@ class _OtpFieldState extends State<OtpField> {
           return SizedBox(
             width: 48,
             height: 56,
-            child: RawKeyboardListener(
+            child: KeyboardListener(
               focusNode: FocusNode(skipTraversal: true),
-              onKey: (event) {
-                if (event is RawKeyDownEvent &&
+              onKeyEvent: (event) {
+                if (event is KeyDownEvent &&
                     event.logicalKey == LogicalKeyboardKey.backspace) {
                   if (_boxControllers[index].text.isEmpty && index > 0) {
                     _boxControllers[index - 1].clear();
