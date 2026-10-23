@@ -1,0 +1,37 @@
+{
+  "case_id": "QC-V1-07",
+  "family_id": "quality-corpus-v1",
+  "split": "holdout",
+  "complexity_level": 1,
+  "domain": "resilience",
+  "title": "Provider failure fallback to secondary model",
+  "description": "First model in the eligible pool encounters an upstream error; harness falls back to second eligible model and completes successfully.",
+  "messages": [
+    {"role": "user", "content": "Solve for x: 3x + 12 = 27."}
+  ],
+  "turns": [
+    {
+      "turn_index": 1,
+      "user_input": "Solve for x: 3x + 12 = 27.",
+      "history": [],
+      "mock_response_model_1": null,
+      "mock_response_model_2": "Subtract 12 from both sides: 3x = 15. Divide by 3: x = 5."
+    }
+  ],
+  "harness_expectations": {
+    "first_attempt_fails": true,
+    "fallback_attempt_succeeds": true,
+    "expected_attempts": 2,
+    "final_status": "completed",
+    "final_outcome": "ACCEPT"
+  },
+  "evaluation": {
+    "method": "rubric",
+    "reference_answer": "x = 5. (3x + 12 = 27 -> 3x = 15 -> x = 5).",
+    "rubric": [
+      {"criterion": "Provides correct solution x = 5", "weight": 1},
+      {"criterion": "Shows steps or intermediate calculation", "weight": 1}
+    ],
+    "critical_failures": ["Fails entirely without invoking fallback model", "Incorrect mathematical result"]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "case_id": "QC-V1-02",
+  "family_id": "quality-corpus-v1",
+  "split": "holdout",
+  "complexity_level": 1,
+  "domain": "corrections",
+  "title": "Corrections: user revises prior premise",
+  "description": "User updates initial count; harness sends prior turn so correction is applied in context.",
+  "messages": [
+    {"role": "user", "content": "I have 4 study sessions of 45 minutes planned for today."},
+    {"role": "assistant", "content": "That gives you 180 minutes (3 hours) of total study time today."},
+    {"role": "user", "content": "Actually, make it 3 sessions because I have a football match in the evening. How much study time now?"}
+  ],
+  "turns": [
+    {
+      "turn_index": 1,
+      "user_input": "I have 4 study sessions of 45 minutes planned for today.",
+      "history": [],
+      "mock_response": "That gives you 180 minutes (3 hours) of total study time today."
+    },
+    {
+      "turn_index": 2,
+      "user_input": "Actually, make it 3 sessions because I have a football match in the evening. How much study time now?",
+      "history": [
+        {"role": "user", "content": "I have 4 study sessions of 45 minutes planned for today."},
+        {"role": "assistant", "content": "That gives you 180 minutes (3 hours) of total study time today."}
+      ],
+      "mock_response": "With 3 sessions of 45 minutes, your total study time is 135 minutes (2 hours and 15 minutes).",
+      "expected_sent_messages": [
+        {"role": "system"},
+        {"role": "user", "content": "I have 4 study sessions of 45 minutes planned for today."},
+        {"role": "assistant", "content": "That gives you 180 minutes (3 hours) of total study time today."},
+        {"role": "user", "content": "Actually, make it 3 sessions because I have a football match in the evening. How much study time now?"}
+      ],
+      "must_send_prior_turn": true
+    }
+  ],
+  "harness_expectations": {
+    "must_send_history": true,
+    "min_messages_count": 4,
+    "last_user_message": "Actually, make it 3 sessions because I have a football match in the evening. How much study time now?"
+  },
+  "evaluation": {
+    "method": "rubric",
+    "reference_answer": "With 3 sessions of 45 minutes, your total study time is 135 minutes (2 hours 15 minutes).",
+    "rubric": [
+      {"criterion": "Applies correction to 3 sessions", "weight": 1},
+      {"criterion": "Calculates 135 minutes or 2 hours and 15 minutes", "weight": 1}
+    ],
+    "critical_failures": ["Ignores correction and answers with 4 sessions (180 minutes)"]
+  }
+}
