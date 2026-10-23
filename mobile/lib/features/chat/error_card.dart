@@ -28,6 +28,7 @@ class ErrorCard extends StatelessWidget {
     ErrorCategory.unauthorized => 'Your session expired. Sign in again.',
     ErrorCategory.resumeUnavailable => 'Connection lost. Partial reply kept.',
     ErrorCategory.network => 'You appear to be offline.',
+    ErrorCategory.timeout => 'Karmi is taking too long, try again',
     ErrorCategory.internal => 'Something went wrong.',
   };
 
@@ -37,6 +38,7 @@ class ErrorCard extends StatelessWidget {
     ErrorCategory.providerUnavailable ||
     ErrorCategory.validationFailed ||
     ErrorCategory.network ||
+    ErrorCategory.timeout ||
     ErrorCategory.internal => true,
     ErrorCategory.quotaExhausted ||
     ErrorCategory.unauthorized ||
@@ -51,6 +53,7 @@ class ErrorCard extends StatelessWidget {
     ErrorCategory.unauthorized => Icons.lock_outline,
     ErrorCategory.resumeUnavailable => Icons.sync_problem_outlined,
     ErrorCategory.network => Icons.wifi_off_rounded,
+    ErrorCategory.timeout => Icons.schedule_rounded,
     ErrorCategory.internal => Icons.error_outline,
   };
 
@@ -69,6 +72,7 @@ class ErrorCard extends StatelessWidget {
         ErrorCategory.resumeUnavailable =>
           onContinue != null ? (onContinue!, 'Continue') : null,
         ErrorCategory.network => onRetry != null ? (onRetry!, 'Retry') : null,
+        ErrorCategory.timeout => onRetry != null ? (onRetry!, 'Retry') : null,
         ErrorCategory.internal => onRetry != null ? (onRetry!, 'Retry') : null,
       };
 
@@ -81,6 +85,7 @@ class ErrorCard extends StatelessWidget {
     ErrorCategory.providerUnavailable ||
     ErrorCategory.validationFailed ||
     ErrorCategory.network ||
+    ErrorCategory.timeout ||
     ErrorCategory.internal => false,
   };
 

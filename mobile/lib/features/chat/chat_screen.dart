@@ -773,9 +773,10 @@ class _ChatScreenState extends State<ChatScreen> {
   /// The composer always docks above the keyboard / home indicator. Its position
   /// must not depend on transcript state: the empty state's suggestions scroll
   /// above it rather than pushing it to mid-screen.
+  /// The keyboard is handled by the enclosing Scaffold's body resize, so only
+  /// the system bottom padding is added here (adding the inset would double-count).
   double _composerDockBottomPadding(BuildContext context) =>
-      MediaQuery.paddingOf(context).bottom +
-      MediaQuery.viewInsetsOf(context).bottom;
+      MediaQuery.paddingOf(context).bottom;
 
   /// Account-level failures (plan allowance, server capacity) apply to the whole chat.
   static bool _isAccountError(ErrorCategory? category) =>

@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:karmi_app/api/models.dart';
 import 'package:karmi_app/api/stream/run_stream_client.dart';
+import 'package:karmi_app/features/chat/error_card.dart';
 import 'package:karmi_app/features/chat/state/chat_controller.dart';
 
 class FakeRunStreamClient extends RunStreamClient {
@@ -703,5 +705,141 @@ void main() {
         });
       },
     );
+
+    test(
+      'deferred run finish becomes a failed reply with a retryable error',
+      () {
+        fakeAsync((async) {
+          final controller = ChatController(client: client);
+
+          controller.send('Hard question');
+          async.flushMicrotasks();
+          client.startRunController!.add(
+            const RunStartedEvent(
+              runId: 'run_d',
+              conversationId: 'conv_d',
+              userMessageId: 'msg_u',
+              assistantMessageId: 'msg_a',
+              seq: 0,
+            ),
+          );
+          client.startRunController!.add(
+            const RunFinishedEvent(
+              finishReason: FinishReason.stop,
+              outcome: 'DEFERRED',
+              assistantMessageId: 'msg_a',
+            ),
+          );
+          async.flushMicrotasks();
+
+          expect(controller.phase, ChatRunPhase.error);
+          expect(controller.error, ErrorCategory.providerUnavailable);
+          expect(controller.finishReason, FinishReason.error);
+          final reply = controller.messages.last;
+          expect(reply.status, MessageStatus.failed);
+          expect(reply.outcome, Outcome.deferred);
+          expect(ErrorCard.isRetryable(controller.error!), isTrue);
+
+          controller.dispose();
+        });
+      },
+    );
+
+    test('a completed run with an ACCEPT outcome stays finished', () {
+      fakeAsync((async) {
+        final controller = ChatController(client: client);
+
+        controller.send('Easy question');
+        async.flushMicrotasks();
+        client.startRunController!.add(
+          const RunStartedEvent(
+            runId: 'run_ok',
+            conversationId: 'conv_ok',
+            userMessageId: 'msg_u',
+            assistantMessageId: 'msg_a',
+            seq: 0,
+          ),
+        );
+        client.startRunController!.add(
+          const RunFinishedEvent(
+            finishReason: FinishReason.stop,
+            outcome: 'ACCEPT',
+            assistantMessageId: 'msg_a',
+          ),
+        );
+        async.flushMicrotasks();
+
+        expect(controller.phase, ChatRunPhase.finished);
+        expect(controller.error, isNull);
+        expect(controller.messages.last.status, MessageStatus.complete);
+
+        controller.dispose();
+      });
+    });
+
+    test(
+      'isSlow turns on after 10 s of work and clears when the run finishes',
+      () {
+        fakeAsync((async) {
+          final controller = ChatController(client: client);
+
+          controller.send('Slow model');
+          async.flushMicrotasks();
+          expect(controller.isSlow, isFalse);
+
+          async.elapse(const Duration(seconds: 9, milliseconds: 900));
+          expect(controller.isSlow, isFalse);
+          async.elapse(const Duration(milliseconds: 100));
+          expect(controller.isSlow, isTrue);
+
+          client.startRunController!.add(
+            const RunStartedEvent(
+              runId: 'run_s',
+              conversationId: 'conv_s',
+              userMessageId: 'msg_u',
+              assistantMessageId: 'msg_a',
+              seq: 0,
+            ),
+          );
+          client.startRunController!.add(
+            const RunFinishedEvent(
+              finishReason: FinishReason.stop,
+              assistantMessageId: 'msg_a',
+            ),
+          );
+          async.flushMicrotasks();
+          expect(controller.phase, ChatRunPhase.finished);
+          expect(controller.isSlow, isFalse);
+
+          controller.dispose();
+        });
+      },
+    );
+
+    test('isSlow is cleared by an error and a new send starts not-slow', () {
+      fakeAsync((async) {
+        final controller = ChatController(client: client, maxResumeRetries: 0);
+
+        controller.send('First');
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 11));
+        expect(controller.isSlow, isTrue);
+
+        client.startRunController!.addError(
+          const RunStreamException(category: ErrorCategory.timeout),
+        );
+        async.flushMicrotasks();
+        expect(controller.phase, ChatRunPhase.error);
+        expect(controller.isSlow, isFalse);
+        expect(controller.error, ErrorCategory.timeout);
+
+        controller.send('Second');
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 9));
+        expect(controller.isSlow, isFalse);
+
+        controller.dispose();
+      });
+    });
   });
 }

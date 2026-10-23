@@ -9,6 +9,7 @@ import 'package:karmi_app/features/chat/chat_screen.dart';
 import 'package:karmi_app/features/chat/empty_state.dart';
 import 'package:karmi_app/features/chat/state/chat_controller.dart';
 import 'package:karmi_app/features/history/conversation_list_controller.dart';
+import 'package:karmi_app/shell/bottom_chrome.dart';
 import 'package:karmi_app/theme/karmi_motion.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
@@ -18,6 +19,16 @@ class _FakeRunStreamClient extends RunStreamClient {
   _FakeRunStreamClient() : super(baseUrl: 'http://fake.test');
 
   StreamController<RunEvent>? _activeRunController;
+  int startCalls = 0;
+  int resumeCalls = 0;
+  StreamController<RunEvent>? _resumeController;
+
+  @override
+  Stream<RunEvent> resumeRun({required String runId, required int afterSeq}) {
+    resumeCalls++;
+    _resumeController = StreamController<RunEvent>.broadcast();
+    return _resumeController!.stream;
+  }
 
   @override
   Stream<RunEvent> startRun({
@@ -25,6 +36,7 @@ class _FakeRunStreamClient extends RunStreamClient {
     String? conversationId,
     required String clientMessageId,
   }) {
+    startCalls++;
     _activeRunController = StreamController<RunEvent>.broadcast();
     return _activeRunController!.stream;
   }
@@ -39,6 +51,11 @@ class _FakeRunStreamClient extends RunStreamClient {
       ),
     );
   }
+
+  void emit(RunEvent event) => _activeRunController?.add(event);
+
+  void emitError(RunStreamException error) =>
+      _activeRunController?.addError(error);
 }
 
 class _FakeConversationsApi implements ConversationsApi {
@@ -97,7 +114,11 @@ class _FakeConversationsApi implements ConversationsApi {
   }) async => [];
 }
 
-Widget _wrapWithApp({required Widget child, bool reduceMotion = false}) {
+Widget _wrapWithApp({
+  required Widget child,
+  bool reduceMotion = false,
+  double textScale = 1.0,
+}) {
   return LiquidGlassWidgets.wrap(
     child: KarmiAccessibility(
       reduceMotion: reduceMotion,
@@ -108,9 +129,10 @@ Widget _wrapWithApp({required Widget child, bool reduceMotion = false}) {
           builder: (context) => MediaQuery(
             // Copy the real view metrics: a bare MediaQueryData has a zero size,
             // which would collapse the screen-relative dock padding.
-            data: MediaQuery.of(
-              context,
-            ).copyWith(disableAnimations: reduceMotion),
+            data: MediaQuery.of(context).copyWith(
+              disableAnimations: reduceMotion,
+              textScaler: TextScaler.linear(textScale),
+            ),
             child: Scaffold(body: child),
           ),
         ),
@@ -228,67 +250,288 @@ void main() {
     );
   });
 
+  composerTests();
+}
+
+class _ChatHarness {
+  _ChatHarness(this.stream, this.controller, this.convController);
+
+  final _FakeRunStreamClient stream;
+  final ChatController controller;
+  final ConversationListController convController;
+
+  void dispose() {
+    controller.dispose();
+    convController.dispose();
+  }
+}
+
+Future<_ChatHarness> _pumpChat(
+  WidgetTester tester, {
+  bool reduceMotion = false,
+  double textScale = 1.0,
+  double bottomInset = 0,
+  int maxResumeRetries = 3,
+}) async {
+  tester.view.viewInsets = FakeViewPadding(bottom: bottomInset);
+  addTearDown(tester.view.resetViewInsets);
+
+  final stream = _FakeRunStreamClient();
+  final controller = ChatController(
+    client: stream,
+    deltaFlushInterval: Duration.zero,
+    maxResumeRetries: maxResumeRetries,
+  );
+  final convController = ConversationListController(
+    api: _FakeConversationsApi(),
+  );
+  await tester.pumpWidget(
+    _wrapWithApp(
+      reduceMotion: reduceMotion,
+      textScale: textScale,
+      child: ChatScreen(
+        api: KarmiApi(baseUrl: 'http://fake.test'),
+        chatController: controller,
+        conversationListController: convController,
+        clock: () => DateTime(2026, 1, 1, 10),
+      ),
+    ),
+  );
+  await tester.pump();
+  return _ChatHarness(stream, controller, convController);
+}
+
+Future<void> _sendText(WidgetTester tester, String text) async {
+  await tester.enterText(find.byType(TextField), text);
+  await tester.pump();
+  await tester.tap(find.byKey(const ValueKey('composer-send-button')));
+  await tester.pump();
+}
+
+Future<void> _unmount(WidgetTester tester, _ChatHarness harness) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  harness.dispose();
+}
+
+bool _composerFocused(WidgetTester tester) =>
+    tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus;
+
+RunStreamException _providerDown() => const RunStreamException(
+  category: ErrorCategory.providerUnavailable,
+  message: 'down',
+);
+
+void composerTests() {
   group('ChatScreen composer never moves', () {
     for (final reduceMotion in [false, true]) {
-      testWidgets(
-        'composer surface rect is identical from empty state through send and streaming (reduceMotion: $reduceMotion)',
-        (tester) async {
-          final fakeStream = _FakeRunStreamClient();
-          final controller = ChatController(
-            client: fakeStream,
-            deltaFlushInterval: Duration.zero,
+      for (final bottomInset in [0.0, 300.0]) {
+        for (final textScale in [1.0, 2.0]) {
+          testWidgets(
+            'composer rect is identical across empty, pending, reply and error '
+            '(reduceMotion: $reduceMotion, inset: $bottomInset, textScale: $textScale)',
+            (tester) async {
+              final h = await _pumpChat(
+                tester,
+                reduceMotion: reduceMotion,
+                textScale: textScale,
+                bottomInset: bottomInset,
+              );
+              final surface = find.byKey(const ValueKey('composer-surface'));
+              final screenHeight =
+                  tester.view.physicalSize.height /
+                  tester.view.devicePixelRatio;
+
+              expect(
+                find.byKey(const ValueKey('new-chat-empty-state')),
+                findsOneWidget,
+              );
+              final emptyRect = tester.getRect(surface);
+              // Bottom-docked above the keyboard inset, even on an empty chat.
+              expect(
+                emptyRect.bottom,
+                lessThanOrEqualTo(screenHeight - bottomInset),
+              );
+              expect(
+                screenHeight - bottomInset - emptyRect.bottom,
+                lessThan(120.0),
+              );
+
+              // Pending: sent, no reply yet.
+              await _sendText(tester, 'Explain gravity');
+              expect(tester.getRect(surface), emptyRect);
+
+              // Streaming, then a failed reply: the error sits on the placeholder.
+              h.stream.emitStarted();
+              await tester.pump();
+              expect(tester.getRect(surface), emptyRect);
+              h.stream.emit(
+                const RunErrorEvent(
+                  category: ErrorCategory.providerUnavailable,
+                  retryable: true,
+                  assistantMessageId: 'asst-1',
+                ),
+              );
+              await tester.pumpAndSettle();
+              expect(find.text('Retry'), findsOneWidget);
+              expect(
+                find.byKey(const ValueKey('new-chat-empty-state')),
+                findsNothing,
+              );
+              expect(tester.getRect(surface), emptyRect);
+
+              await _unmount(tester, h);
+            },
           );
-          final convController = ConversationListController(
-            api: _FakeConversationsApi(),
-          );
-
-          await tester.pumpWidget(
-            _wrapWithApp(
-              reduceMotion: reduceMotion,
-              child: ChatScreen(
-                api: KarmiApi(baseUrl: 'http://fake.test'),
-                chatController: controller,
-                conversationListController: convController,
-                clock: () => DateTime(2026, 1, 1, 10),
-              ),
-            ),
-          );
-          await tester.pump();
-
-          expect(
-            find.byKey(const ValueKey('new-chat-empty-state')),
-            findsOneWidget,
-          );
-          final surfaceFinder = find.byKey(const ValueKey('composer-surface'));
-          final screenHeight =
-              tester.view.physicalSize.height / tester.view.devicePixelRatio;
-          final emptyRect = tester.getRect(surfaceFinder);
-          // Docked at the bottom even in the empty state.
-          expect(screenHeight - emptyRect.bottom, lessThanOrEqualTo(120.0));
-
-          await tester.enterText(find.byType(TextField), 'Explain gravity');
-          await tester.pump();
-          await tester.tap(find.byKey(const ValueKey('composer-send-button')));
-          await tester.pump();
-          expect(tester.getRect(surfaceFinder), emptyRect);
-
-          fakeStream.emitStarted();
-          await tester.pumpAndSettle();
-
-          expect(
-            find.byKey(const ValueKey('new-chat-empty-state')),
-            findsNothing,
-          );
-          expect(tester.getRect(surfaceFinder), emptyRect);
-
-          // The fake run never terminates, so the controller's stall timer is
-          // still pending. Unmount, then dispose the injected controllers
-          // (ChatScreen does not own them) to cancel it.
-          await tester.pumpWidget(const SizedBox.shrink());
-          controller.dispose();
-          convController.dispose();
-        },
-      );
+        }
+      }
     }
+  });
+
+  group('ChatScreen honest status', () {
+    testWidgets('after 10 s with no reply the placeholder says still working', (
+      tester,
+    ) async {
+      final h = await _pumpChat(tester);
+      await _sendText(tester, 'Slow one');
+      h.stream.emitStarted();
+      await tester.pump();
+
+      expect(find.text('Working…'), findsOneWidget);
+      expect(find.text('Still working, free models can be slow'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 10));
+      expect(
+        find.text('Still working, free models can be slow'),
+        findsOneWidget,
+      );
+
+      await _unmount(tester, h);
+    });
+
+    testWidgets(
+      'error attaches to the placeholder bubble with a working Retry',
+      (tester) async {
+        final h = await _pumpChat(tester);
+        await _sendText(tester, 'Will fail');
+        h.stream.emitStarted();
+        await tester.pump();
+
+        h.stream.emit(
+          const RunErrorEvent(
+            category: ErrorCategory.providerUnavailable,
+            retryable: true,
+            assistantMessageId: 'asst-1',
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('The model service had a problem.'), findsOneWidget);
+        expect(find.text('Working…'), findsNothing);
+        expect(h.controller.messages.last.status, MessageStatus.failed);
+
+        await tester.tap(find.text('Retry'));
+        await tester.pump();
+        expect(h.stream.startCalls, 2);
+
+        await _unmount(tester, h);
+      },
+    );
+
+    testWidgets('deferred finish is shown as an error with Retry', (
+      tester,
+    ) async {
+      final h = await _pumpChat(tester);
+      await _sendText(tester, 'Deferred one');
+      h.stream.emitStarted();
+      await tester.pump();
+
+      h.stream.emit(
+        const RunFinishedEvent(
+          finishReason: FinishReason.stop,
+          outcome: 'DEFERRED',
+          assistantMessageId: 'asst-1',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('The model service had a problem.'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(h.controller.phase, ChatRunPhase.error);
+
+      await _unmount(tester, h);
+    });
+
+    testWidgets('a stream timeout says taking too long, not offline', (
+      tester,
+    ) async {
+      final h = await _pumpChat(tester, maxResumeRetries: 0);
+      await _sendText(tester, 'Timeout one');
+      h.stream.emitStarted();
+      await tester.pump();
+
+      h.stream.emitError(
+        const RunStreamException(category: ErrorCategory.timeout),
+      );
+      await tester.pumpAndSettle(const Duration(seconds: 10));
+
+      expect(find.text('Karmi is taking too long, try again'), findsOneWidget);
+      expect(find.text('You appear to be offline.'), findsNothing);
+
+      await _unmount(tester, h);
+    });
+
+    testWidgets('a network error still says offline', (tester) async {
+      final h = await _pumpChat(tester);
+      await _sendText(tester, 'Offline one');
+      h.stream.emitStarted();
+      await tester.pump();
+
+      h.stream.emit(
+        const RunErrorEvent(
+          category: ErrorCategory.network,
+          retryable: true,
+          assistantMessageId: 'asst-1',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('You appear to be offline.'), findsOneWidget);
+
+      await _unmount(tester, h);
+    });
+
+    testWidgets(
+      'keyboard is dismissed after a send and restored after an error',
+      (tester) async {
+        final h = await _pumpChat(tester);
+        await tester.tap(find.byType(TextField));
+        await tester.pump();
+        expect(_composerFocused(tester), isTrue);
+
+        await _sendText(tester, 'Focus check');
+        expect(_composerFocused(tester), isFalse);
+
+        h.stream.emitStarted();
+        await tester.pump();
+        h.stream.emitError(_providerDown());
+        await tester.pumpAndSettle(const Duration(seconds: 10));
+        expect(_composerFocused(tester), isTrue);
+
+        await _unmount(tester, h);
+      },
+    );
+
+    testWidgets('BottomChrome publishes the measured composer dock height', (
+      tester,
+    ) async {
+      final h = await _pumpChat(tester);
+      final dock = tester.getRect(
+        find.byKey(const ValueKey('chat-composer-dock')),
+      );
+      expect(BottomChrome.composerHeight, closeTo(dock.height, 0.5));
+
+      await _unmount(tester, h);
+      BottomChrome.composerHeight = 0;
+    });
   });
 }

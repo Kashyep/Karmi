@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:karmi_app/api/karmi_api.dart';
 
 import '../support/fake_backend.dart';
@@ -275,6 +277,17 @@ void main() {
 
     test('default timeout outlasts two 12 s gateway attempts', () {
       expect(KarmiApi().timeout, const Duration(seconds: 60));
+    });
+
+    test('socket exception throws Network (offline), not ApiTimeout', () async {
+      final offline = KarmiApi(
+        baseUrl: 'http://karmi.test',
+        client: MockClient((_) async => throw const SocketException('offline')),
+      );
+      await expectLater(
+        offline.sendMessage('hi', idempotencyKey: 'key-12345678'),
+        throwsA(isA<NetworkException>()),
+      );
     });
 
     test('timeout throws ApiTimeout, not Network', () async {
