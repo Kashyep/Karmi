@@ -100,7 +100,7 @@ from daily_agent.services import (
     trim_history,
 )
 from daily_agent.streaming.registry import sweep_interrupted_runs
-from daily_agent.web import build_manifest, render_shell
+from daily_agent.web import build_manifest, render_admin_page, render_shell
 
 logger = logging.getLogger(__name__)
 
@@ -803,6 +803,10 @@ def create_app() -> FastAPI:
     @app.get("/", include_in_schema=False)
     def index() -> HTMLResponse:
         return HTMLResponse(render_shell())
+
+    @app.get("/admin", include_in_schema=False)
+    def admin_page(settings: Settings = Depends(get_settings)) -> HTMLResponse:
+        return HTMLResponse(render_admin_page(publishable_key=settings.clerk_publishable_key))
 
     @app.get("/static/{path:path}", include_in_schema=False)
     def static_file(path: str) -> FileResponse:

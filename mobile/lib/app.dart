@@ -6,6 +6,8 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'api/conversations/conversations_api.dart';
 import 'armory/armory_controller.dart';
 import 'auth/session.dart';
+import 'features/admin/admin_controller.dart';
+import 'features/admin/admin_shell.dart';
 import 'features/history/conversation_list.dart';
 import 'features/history/conversation_list_controller.dart';
 import 'features/welcome/welcome_screen.dart';
@@ -31,6 +33,7 @@ class KarmiApp extends StatefulWidget {
     required this.armory,
     this.adaptiveGlassQuality = true,
     this.clock,
+    this.admin,
   });
 
   final KarmiSettings settings;
@@ -42,6 +45,9 @@ class KarmiApp extends StatefulWidget {
 
   /// Injected into the chat empty-state greeting; null uses the wall clock.
   final DateTime Function()? clock;
+
+  /// Admin console controller; null disables the admin entry point.
+  final AdminController? admin;
 
   @override
   State<KarmiApp> createState() => _KarmiAppState();
@@ -61,6 +67,7 @@ class _KarmiAppState extends State<KarmiApp> {
     if (_signedIn) {
       _loadArmory();
       _ensureConversationController();
+      unawaited(widget.admin?.probe());
     }
   }
 
@@ -106,6 +113,7 @@ class _KarmiAppState extends State<KarmiApp> {
     if (_signedIn && !signedIn) {
       _navigatorKey.currentState?.popUntil((route) => route.isFirst);
       widget.armory.reset();
+      widget.admin?.reset();
       _conversationListController?.dispose();
       _conversationListController = null;
       _conversationsApi?.close();
@@ -113,6 +121,7 @@ class _KarmiAppState extends State<KarmiApp> {
     } else if (!_signedIn && signedIn) {
       _loadArmory();
       _ensureConversationController();
+      unawaited(widget.admin?.probe());
     }
     setState(() => _signedIn = signedIn);
   }
@@ -120,7 +129,11 @@ class _KarmiAppState extends State<KarmiApp> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([widget.settings, widget.armory]),
+      listenable: Listenable.merge([
+        widget.settings,
+        widget.armory,
+        if (widget.admin != null) widget.admin!,
+      ]),
       builder: (context, _) {
         final tier = widget.armory.effectiveTier;
         return LiquidGlassWidgets.wrap(
@@ -155,6 +168,11 @@ class _KarmiAppState extends State<KarmiApp> {
                     onAcknowledge: () => widget.settings
                         .acknowledgeTesterNotice(kTesterNoticeVersion),
                   )
+                : _signedIn && widget.admin?.isActive == true
+                ? AdminShell(
+                    key: const ValueKey('admin_shell'),
+                    controller: widget.admin!,
+                  )
                 : _signedIn
                 ? KarmiShell(
                     key: const ValueKey('shell'),
@@ -163,6 +181,7 @@ class _KarmiAppState extends State<KarmiApp> {
                     session: widget.session,
                     clock: widget.clock,
                     armory: widget.armory,
+                    admin: widget.admin,
                     historyCommands: _historyCommands,
                     historyRailBuilder: (context) => Builder(
                       builder: (innerContext) =>

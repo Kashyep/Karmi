@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api/karmi_api.dart';
 import 'app.dart';
 import 'armory/armory_controller.dart';
+import 'features/admin/admin_controller.dart';
+import 'features/admin/admin_http_api.dart';
 import 'auth/session.dart';
 import 'fonts.dart';
 import 'settings/karmi_settings.dart';
@@ -40,6 +42,13 @@ Future<void> main() async {
     settings: settings,
     session: session,
     armory: ArmoryController(api: api, prefs: prefs),
+    admin: AdminController(
+      api: HttpAdminApi(
+        baseUrl: api.baseUrl,
+        client: api.client,
+        tokenProvider: api.tokenProvider ?? () async => api.token,
+      ),
+    ),
   );
   if (clerkAuth case final auth?) {
     app = ClerkAuth(authState: auth, child: app);

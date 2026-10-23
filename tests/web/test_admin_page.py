@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+import base64
+import re
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from daily_agent.api import create_app
+from daily_agent.config import Settings, get_settings
+from daily_agent.web import render_admin_page
+
+STATIC = Path(__file__).resolve().parents[2] / "src" / "daily_agent" / "web" / "static"
+HEX_LITERAL = re.compile(r"#[0-9a-fA-F]{3,8}\b")
+FORBIDDEN_JS = ("innerHTML", "localStorage", "sessionStorage", "document.cookie")
+
+
+def _publishable_key(domain: str = "clerk.example.test") -> str:
+    encoded = base64.b64encode(f"{domain}$".encode()).decode().rstrip("=")
+    return f"pk_test_{encoded}"
+
+
+@pytest.fixture
+def client_factory():
+    app = create_app()
+    clients: list[TestClient] = []
+
+    def make(publishable_key: str | None) -> TestClient:
+        settings = Settings(environment="test", clerk_publishable_key=publishable_key)
+        app.dependency_overrides[get_settings] = lambda: settings
+        client = TestClient(app)
+        clients.append(client)
+        return client
+
+    yield make
+    app.dependency_overrides.clear()
+
+
+def test_admin_route_returns_html(client_factory) -> None:
+    response = client_factory(None).get("/admin")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+
+
+def test_admin_page_has_accessibility_and_noindex_basics() -> None:
+    html = render_admin_page(publishable_key=None)
+    assert "Skip to main content" in html
+    assert 'href="#main-content"' in html
+    assert 'id="main-content"' in html
+    assert '<meta name="robots" content="noindex">' in html
+    assert '<script src="/static/admin.js" defer></script>' in html
+    assert '<link rel="stylesheet" href="/static/admin.css">' in html
+    assert 'href="/static/karmi-tokens.css"' in html
+
+
+def test_admin_page_exposes_no_secrets_and_no_customer_surfaces() -> None:
+    html = render_admin_page(publishable_key=None)
+    assert "sk_" not in html
+    assert "clerk_secret" not in html.lower()
+    assert 'id="chat"' not in html
+    assert "#chat" not in html
+    assert "Saved work" not in html
+    assert "Armory" not in html
+
+
+def test_publishable_key_is_embedded_only_when_configured() -> None:
+    key = _publishable_key()
+    configured = render_admin_page(publishable_key=key)
+    assert f'data-clerk-publishable-key="{key}"' in configured
+
+    unconfigured = render_admin_page(publishable_key=None)
+    assert "data-clerk-publishable-key" not in unconfigured
+
+
+def test_publishable_key_is_escaped_in_attribute() -> None:
+    html = render_admin_page(publishable_key='pk_test_"><script>x</script>')
+    assert "<script>x</script>" not in html
+    assert "&quot;&gt;&lt;script&gt;" in html
+
+
+def test_admin_route_passes_configured_key(client_factory) -> None:
+    key = _publishable_key()
+    html = client_factory(key).get("/admin").text
+    assert f'data-clerk-publishable-key="{key}"' in html
+
+
+def test_admin_route_without_key_renders_without_key(client_factory) -> None:
+    html = client_factory(None).get("/admin").text
+    assert "data-clerk-publishable-key" not in html
+
+
+def test_admin_page_has_all_required_views_and_tabs() -> None:
+    html = render_admin_page(publishable_key=None)
+    for element_id in (
+        "view-signin",
+        "view-unavailable",
+        "view-code",
+        "view-dashboard",
+        "tab-users",
+        "tab-monitor",
+        "tab-audit",
+        "confirm-dialog",
+        "confirm-reason",
+    ):
+        assert f'id="{element_id}"' in html
+
+
+def test_admin_js_is_served_with_session_header_and_no_forbidden_apis(client_factory) -> None:
+    client = client_factory(None)
+    response = client.get("/static/admin.js")
+    assert response.status_code == 200
+    assert "X-Admin-Session" in response.text
+    assert "window.KarmiAdmin" in response.text
+    for forbidden in FORBIDDEN_JS:
+        assert forbidden not in response.text
+
+
+def test_admin_css_has_no_hex_literals_and_is_served(client_factory) -> None:
+    client = client_factory(None)
+    response = client.get("/static/admin.css")
+    assert response.status_code == 200
+    assert HEX_LITERAL.search(response.text) is None
+
+
+def test_admin_js_has_no_hex_literals() -> None:
+    source = (STATIC / "admin.js").read_text(encoding="utf-8")
+    assert HEX_LITERAL.search(source) is None
+
+
+def test_reason_field_enforces_length_bounds_in_markup_and_script() -> None:
+    html = render_admin_page(publishable_key=None)
+    assert 'maxlength="500"' in html
+    assert "At least 3 characters" in html
+    source = (STATIC / "admin.js").read_text(encoding="utf-8")
+    assert "REASON_MIN_LENGTH = 3" in source
+    assert ".trim().length < REASON_MIN_LENGTH" in source
