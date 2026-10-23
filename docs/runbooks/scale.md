@@ -64,6 +64,15 @@ it, limits are per process and events are not mirrored.
   not buffered.
 - `UVICORN_LIMIT_CONCURRENCY` (container env, default `1000`) caps in-flight requests per worker.
   Excess connections receive 503 instead of queueing.
+- Input size: every endpoint that accepts user text (`/v1/messages`, `/v1/runs/{id}/regenerate`,
+  `/v1/chat/stream`, continue and regenerate, `/v1/tasks`, `/v1/reminders`, conversation title
+  updates) rejects text above the plan's input budget with HTTP `413` and
+  `{"detail": {"code": "INPUT_TOO_LARGE", "max_input_tokens": n}}` before any budget is reserved.
+  Tokens are estimated at 4 UTF-8 bytes each.
+- `Idempotency-Key` (optional header, 1-120 characters) on `POST /v1/messages/{id}/continue` and
+  `POST /v1/messages/{id}/regenerate`. A repeat with the same key replays the run that key created,
+  even after it finished, and reserves nothing. Different keys create separate continuations or
+  variants. Without the header, the server-derived key applies as before.
 
 ## Background maintenance
 

@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -73,12 +73,14 @@ from daily_agent.services import (
     GatewayAdmission,
     GatewayCapacityFull,
     IdempotencyConflict,
+    InputTooLarge,
     ReservationInFlight,
     accept_internal_event,
     admit_gateway_requests,
     create_task_idempotent,
     current_period_key,
     current_window_key,
+    ensure_input_fits,
     estimate_request_cost_micro,
     gateway_requests_made,
     generate_reply,
@@ -145,6 +147,19 @@ def create_app() -> FastAPI:
     app.include_router(conversations_router)
     app.include_router(admin_router)
     app.add_middleware(MetricsMiddleware)
+
+    @app.exception_handler(InputTooLarge)
+    def input_too_large(_request: Request, exc: InputTooLarge) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            content={
+                "detail": {
+                    "code": "INPUT_TOO_LARGE",
+                    "message": str(exc),
+                    "max_input_tokens": exc.max_input_tokens,
+                }
+            },
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -317,6 +332,8 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> TaskView:
+        _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.title, policy)
         try:
             task = create_task_idempotent(
                 session,
@@ -369,6 +386,8 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> dict[str, object]:
+        _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.text, policy)
         if body.due_at.tzinfo is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -438,6 +457,7 @@ def create_app() -> FastAPI:
                 debug=run_debug_view(existing) if principal.tester else None,
             )
         _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.text, policy)
         amount = estimate_request_cost_micro(policy, settings)
         # Earlier turns are client-supplied and never stored; only what fits the plan's input
         # budget is sent, and it counts toward the token hold like the message itself.

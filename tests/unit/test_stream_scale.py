@@ -7,13 +7,13 @@ from typing import Any
 
 import httpx
 import pytest
-from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from daily_agent.models import BudgetReservation, ChatMessage, Conversation, Run
 from daily_agent.routes import stream as stream_routes
 from daily_agent.schemas_chat import ChatStreamRequest
+from daily_agent.services import InputTooLarge, ensure_input_fits
 from daily_agent.streaming.registry import get_stream_registry
 from tests.unit.test_stream_routes import _parse_sse, _setup_app
 
@@ -31,18 +31,16 @@ def _tiny_policy(
     monkeypatch.setattr(stream_routes, "policy_for", fake_policy_for)
 
 
-def test_enforce_input_budget_rejects_oversize_text() -> None:
+def test_ensure_input_fits_rejects_oversize_text() -> None:
     policy = SimpleNamespace(input_tokens=10)
-    with pytest.raises(HTTPException) as exc:
-        stream_routes._enforce_input_budget("x" * 400, policy)  # ~100 tokens
-    assert exc.value.status_code == 413
-    assert exc.value.detail["code"] == "INPUT_TOO_LARGE"
-    assert exc.value.detail["max_input_tokens"] == 10
+    with pytest.raises(InputTooLarge) as exc:
+        ensure_input_fits("x" * 400, policy)  # ~100 tokens
+    assert exc.value.max_input_tokens == 10
 
 
-def test_enforce_input_budget_accepts_text_within_budget() -> None:
+def test_ensure_input_fits_accepts_text_within_budget() -> None:
     policy = SimpleNamespace(input_tokens=1000)
-    stream_routes._enforce_input_budget("x" * 400, policy)
+    ensure_input_fits("x" * 400, policy)
 
 
 def test_chat_stream_schema_caps_text_length() -> None:

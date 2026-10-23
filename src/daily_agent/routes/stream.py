@@ -12,11 +12,11 @@ import inspect
 import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
 
 import anyio
 import anyio.from_thread
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select, update
 from sqlalchemy.engine import CursorResult
@@ -57,6 +57,7 @@ from daily_agent.services import (
     GatewayCapacityFull,
     ReservationInFlight,
     admit_gateway_requests,
+    ensure_input_fits,
     estimate_request_cost_micro,
     history_from_messages,
     history_tokens,
@@ -96,29 +97,26 @@ def _in_flight_conflict() -> HTTPException:
     )
 
 
-def _enforce_input_budget(text: str, policy: PlanPolicy) -> None:
-    """Reject a message that cannot fit the plan's input budget, before any reservation."""
-    estimated = len(text.encode("utf-8")) // _CHARS_PER_TOKEN
-    if estimated > policy.input_tokens:
-        raise HTTPException(
-            status_code=413,
-            detail={
-                "code": "INPUT_TOO_LARGE",
-                "message": (
-                    f"message is too large for this plan ({estimated} estimated input tokens; "
-                    f"limit {policy.input_tokens})"
-                ),
-                "max_input_tokens": policy.input_tokens,
-            },
-        )
-
-
 def _continue_key(assistant_message_id: str, previous_run_id: str | None) -> str:
     return f"stream:continue:{assistant_message_id}:{previous_run_id or 'none'}"
 
 
+# Optional client-chosen key for continue/regenerate: a repeat with the same key replays its run.
+IdempotencyKeyHeader = Annotated[
+    str | None, Header(alias="Idempotency-Key", min_length=1, max_length=120)
+]
+
+
+def _continue_header_key(assistant_message_id: str, idempotency_key: str) -> str:
+    return f"stream:continue:{assistant_message_id}:{idempotency_key}"
+
+
 def _regen_key(user_message_id: str, variant_index: int) -> str:
     return f"stream:regen:{user_message_id}:{variant_index}"
+
+
+def _regen_header_key(user_message_id: str, idempotency_key: str) -> str:
+    return f"stream:regen:{user_message_id}:{idempotency_key}"
 
 
 def _resume_frame(evt: StreamEvent, after_seq: int, catching_up: bool) -> str | None:
@@ -491,7 +489,7 @@ def chat_stream(
     # 2. The plan's input budget is checked before any row is created, so an oversize
     #    message never leaves a conversation or reservation behind.
     _subscription, policy = policy_for(session, principal.account_id)
-    _enforce_input_budget(body.text, policy)
+    ensure_input_fits(body.text, policy)
 
     # 3. Get or create conversation (first message creates it; no empty records)
     conv = ensure_conversation_for_message(
@@ -657,6 +655,7 @@ def continue_message(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
     gateway: Gateway = Depends(gateway_dependency),
+    idempotency_key: IdempotencyKeyHeader = None,
 ) -> StreamingResponse:
     msg = session.scalar(
         select(ChatMessage)
@@ -690,6 +689,15 @@ def continue_message(
             status_code=status.HTTP_400_BAD_REQUEST, detail="parent user message not found"
         )
 
+    if idempotency_key is not None:
+        # An explicit key names this continuation: a repeat replays its run whatever its status.
+        keyed = _find_run_by_key(
+            session, principal, _continue_header_key(assistant_message_id, idempotency_key)
+        )
+        if keyed is not None:
+            return _replay_response(
+                keyed.id, user_msg, msg, keyed, debug_enabled=principal.tester
+            )
     if msg.status == MessageStatus.STREAMING.value:
         # A concurrent continue already claimed this message. Replay its run if it is the
         # continuation this request would have created; otherwise the message is busy.
@@ -703,11 +711,7 @@ def continue_message(
             == _continue_key(assistant_message_id, inflight.continuation_of_run_id)
         ):
             return _replay_response(
-                inflight.id,
-                user_msg,
-                msg,
-                inflight,
-                debug_enabled=principal.tester,
+                inflight.id, user_msg, msg, inflight, debug_enabled=principal.tester
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="cannot continue streaming message"
@@ -724,7 +728,7 @@ def continue_message(
         )
 
     _subscription, policy = policy_for(session, principal.account_id)
-    _enforce_input_budget(user_msg.content, policy)
+    ensure_input_fits(user_msg.content, policy)
 
     previous_run_id = msg.run_id
     prior_content = msg.content
@@ -735,7 +739,11 @@ def continue_message(
         session, principal, conversation_id, before=user_message_id, text=user_text, policy=policy
     )
     new_run_id = uuid_str()
-    logical_request_id = _continue_key(assistant_message_id, previous_run_id)
+    logical_request_id = (
+        _continue_header_key(assistant_message_id, idempotency_key)
+        if idempotency_key is not None
+        else _continue_key(assistant_message_id, previous_run_id)
+    )
     reservation_id, admission = _reserve_and_admit(
         session,
         principal=principal,
@@ -813,6 +821,7 @@ def regenerate_message(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
     gateway: Gateway = Depends(gateway_dependency),
+    idempotency_key: IdempotencyKeyHeader = None,
 ) -> StreamingResponse:
     msg = session.scalar(
         select(ChatMessage)
@@ -851,13 +860,19 @@ def regenerate_message(
             status_code=status.HTTP_400_BAD_REQUEST, detail="parent user message not found"
         )
 
+    # Keyed by the message being regenerated (not the newest variant), so a repeat request for
+    # the same message replays the variant it already produced instead of adding another.
     max_variant = session.scalar(
         select(func.max(ChatMessage.variant_index)).where(
             ChatMessage.parent_message_id == user_msg.id
         )
     )
     variant_index = (max_variant if max_variant is not None else msg.variant_index) + 1
-    logical_request_id = _regen_key(user_msg.id, variant_index)
+    logical_request_id = (
+        _regen_header_key(user_msg.id, idempotency_key)
+        if idempotency_key is not None
+        else _regen_key(user_msg.id, msg.variant_index + 1)
+    )
 
     # A regenerate for the same variant slot that already has a run (a concurrent or retried
     # request) replays that run instead of reserving budget twice.
@@ -873,7 +888,7 @@ def regenerate_message(
         )
 
     _subscription, policy = policy_for(session, principal.account_id)
-    _enforce_input_budget(user_msg.content, policy)
+    ensure_input_fits(user_msg.content, policy)
 
     user_text = user_msg.content
     user_message_id = user_msg.id

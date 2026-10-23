@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -30,11 +31,23 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 FAKE_HOST = "127.0.0.1"
-FAKE_PORT = 8900
+FAKE_PORT = int(os.environ.get("FAKE_PROVIDER_PORT", "8900"))
 FAKE_BASE_URL = f"http://{FAKE_HOST}:{FAKE_PORT}/api/v1"
 FAKE_CHAT_URL = f"{FAKE_BASE_URL}/chat/completions"
 FAKE_KEY = "fake-local-key"
+REAL_HOST_SUFFIXES = ("openrouter.ai", "typesafe.ai")
 REAL_HOST_SUFFIX = "openrouter.ai"
+# Env defaults for a fake-provider-backed app; variables already set in the shell win.
+FAKE_ENV_DEFAULTS = {
+    "DAILY_AGENT_ENVIRONMENT": "development",
+    "DAILY_AGENT_LIVE_MODELS_ENABLED": "true",
+    "DAILY_AGENT_OPENROUTER_ENABLED": "true",
+    "DAILY_AGENT_OPENROUTER_API_KEY": FAKE_KEY,
+    "DAILY_AGENT_GATEWAY_DAILY_REQUEST_LIMIT": "1000000",
+    "DAILY_AGENT_GATEWAY_PAID_RESERVED_REQUESTS": "0",
+    "DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO": "100000000",
+    "DAILY_AGENT_RATE_LIMIT_PER_MINUTE": "10000",
+}
 TOKEN_DELAY_S = float(os.environ.get("FAKE_TOKEN_DELAY", "0.012"))
 SLOW_DELAY_S = 12.0
 
@@ -233,12 +246,47 @@ class FakeHandler(BaseHTTPRequestHandler):
         self.close_connection = True
 
 
+class FakeServer(ThreadingHTTPServer):
+    # The default backlog of 5 refuses bursts of concurrent provider calls (load tests).
+    request_queue_size = 1024
+    daemon_threads = True
+
+
 def serve_fake(args: argparse.Namespace) -> int:
-    server = ThreadingHTTPServer((args.host, args.port), FakeHandler)
+    server = FakeServer((args.host, args.port), FakeHandler)
     print(f"fake OpenRouter-compatible provider on {FAKE_CHAT_URL}", flush=True)
     with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()
     return 0
+
+
+def wire_fake_provider() -> list[str]:
+    """Point the OpenRouter adapter at the fake and guard real hosts.
+
+    Call BEFORE importing ``daily_agent.api`` (and in every uvicorn worker). Returns the list
+    that collects blocked outbound URLs.
+    """
+    import httpx
+
+    from daily_agent.gateway import adapters
+
+    adapters.OPENROUTER_BASE_URL = FAKE_BASE_URL
+    adapters.OPENROUTER_CHAT_URL = FAKE_CHAT_URL
+    if (
+        REAL_HOST_SUFFIX in adapters.OPENROUTER_CHAT_URL
+        or REAL_HOST_SUFFIX in adapters.OPENROUTER_BASE_URL
+    ):
+        raise RuntimeError("OpenRouter URL still points at openrouter.ai")
+    return _install_url_guard(httpx)
+
+
+def apply_fake_env_defaults(env: MutableMapping[str, str]) -> None:
+    for key, value in FAKE_ENV_DEFAULTS.items():
+        env.setdefault(key, value)
+
+
+def _is_real_host(host: str) -> bool:
+    return any(host == suffix or host.endswith("." + suffix) for suffix in REAL_HOST_SUFFIXES)
 
 
 def _install_url_guard(httpx: Any) -> list[str]:
@@ -247,7 +295,7 @@ def _install_url_guard(httpx: Any) -> list[str]:
 
     def guarded(self: Any, request: Any) -> Any:
         host = request.url.host or ""
-        if host == REAL_HOST_SUFFIX or host.endswith("." + REAL_HOST_SUFFIX):
+        if _is_real_host(host):
             blocked.append(str(request.url))
             sys.stderr.write(f"[guard] BLOCKED outbound request to {host}\n")
             raise httpx.ConnectError("blocked by dev_fake_provider URL guard")
