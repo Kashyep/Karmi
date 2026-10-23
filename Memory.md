@@ -2,15 +2,30 @@
 
 ## Active Release 1 chat redesign resume (2026-10-23)
 
-- Integration checkout: `/tmp/wt2-int`, branch `release1/integration`. Current local HEAD: `4ec67f7` (temporary progress record); no push/deploy/hosted migration/PR action.
-- User asked to continue without a supervisor system; scoped workers requested `gpt-5.6-luna`. Effective runtime model metadata is unavailable, so only requested model is recorded.
-- P1 `c0a529e` is integrated; a long saved reply over 8,000 characters exposed premature DTO validation. Fix `fedc2b1` passes focused Hindi stream/unit regression while retaining the client cap.
-- P6 app-bar/banner candidate integrated through `20d82bf`; integrated combined focused Flutter suite passed 25 tests. P9 `9338561` is integrated and its focused tests/analyzer passed.
-- P10: replaced obsolete stream-history xfail with a mocked Hindi stream regression; added zero-budget no-provider-call/no-output test. Focused tests pass. The new tests are not yet followed by full release gates.
-- P2 zero-score policy was explicitly kept blocked by the owner and its code reverted from integration (`f5d2794`). P4 tester identity is still unspecified and its metadata/migration candidate remains out of integration.
-- P5 candidate `ab71f47` is unaccepted: same client ID replays the failed stream rather than retrying; keyboard inset calculation still needs logical-unit verification at non-1.0 DPR. Rework requested.
-- Remaining: accept P5, implement P7/P8, validate P3, audit local test auth and device harness, run all backend/Flutter gates, then build/test on Pixel 9a only after automated gates. Temporary task checklist: `docs/handoffs/release1-chat-redesign-progress.md`.
-- Do not read `.env.testauth`; no live provider spend, paid call, release PR, production action or device claim has occurred.
+- Integration checkout `/tmp/wt2-int`, branch `release1/integration`, HEAD `eedb13b`.
+  No push, PR, deploy, hosted migration or live provider call has happened.
+- Integrated and gate-verified: P1 long context, P3 reply rendering, P4 tester
+  metadata (merged with P1 history plumbing), P5 composer/status (offline-retry
+  regression fixed so transport retries resume the idempotent start request and
+  only server-terminal failures use `/v1/chat/continue`), P6 app bar/banner,
+  P7 jump-to-latest, P9 suggestion chips, P10 quality corpus, device harness
+  (`scripts/dev_fake_provider.py`, `scripts/device_smoke.py`).
+- Verified gates on `eedb13b`: `ruff check` clean, `mypy` clean (49 files),
+  256 unit + 84 e2e passed, `flutter analyze` 0 issues, `dart format` clean,
+  766 Flutter tests passed. Goldens regenerated for the merged UI and the
+  branding change; owner visual review (R-9) still pending.
+- Branding: assistant replies are always "Karmi" with a code-drawn logo
+  (`mobile/lib/widgets/karmi_logo.dart`). Served model/provider names are no
+  longer rendered anywhere, including the tester diagnostics line.
+- Local run verified: fake provider on 127.0.0.1:8900, backend on 127.0.0.1:8001
+  with a fresh SQLite DB, `/v1/chat/stream` streams fake markdown; the backend
+  refuses openrouter.ai. Debug APK rebuilt with the branding change.
+- NOT verified: the branding build on the Pixel 9a (USB disconnected during the
+  final install), P8 attachment-control removal (kept for an owner decision),
+  local test auth (`.env.testauth` code never supplied), host-level
+  free-model exclusions (P2 kept reverted by owner request).
+- Do not read `.env.testauth`; no live provider spend, paid call, release PR,
+  production action or unverified device claim has occurred.
 
 ## MVP + tester-release branch `mvp-gateway` (2026-10-19) — verified state only
 
