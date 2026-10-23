@@ -144,6 +144,43 @@ def test_candidates_respect_plan_ceiling_context_privacy_and_structure() -> None
     assert candidates(reg, "ananta", prompt_tokens=1_000) == ["eco", "eco-structured"]
     assert candidates(reg, "yanta", structured_output=True) == ["eco-structured"]
 
+def test_candidates_exclude_zero_score_models_per_task() -> None:
+    reg = registry(
+        entry("zero-maths", "economy", scores={"maths": 0.0, "code": 1.0}),
+        entry("ok-eco", "economy", scores={"maths": 0.5, "code": 0.5}),
+    )
+    # On maths, zero-maths is excluded so ok-eco is chosen
+    assert candidates(reg, "ananta", task_type=TaskType.MATHS) == ["ok-eco"]
+    # On code, zero-maths has 1.0 so it is first
+    assert candidates(reg, "ananta", task_type=TaskType.CODE) == ["zero-maths", "ok-eco"]
+
+
+def test_candidates_retain_zero_score_models_if_filtering_would_empty_pool() -> None:
+    reg = registry(
+        entry("only-zero", "economy", scores={"maths": 0.0}),
+    )
+    # Does not empty the pool; keeps original ordering as fallback
+    assert candidates(reg, "ananta", task_type=TaskType.MATHS) == ["only-zero"]
+
+
+def test_ananta_economy_pool_never_empty_and_excluded_model_never_first() -> None:
+    reg = load_registry()
+    openrouter_reg = reg.for_providers(frozenset({"openrouter"}))
+
+    for r in (reg, openrouter_reg):
+        for task in TaskType:
+            req = RouteRequest(
+                plan=SYNTHETIC_POLICIES["ananta"],
+                task_type=task,
+                prompt_tokens=100,
+                max_output_tokens=100,
+            )
+            models = eligible_models(r, req, is_available=lambda _m: True)
+            assert len(models) > 0, f"Ananta economy pool empty for task {task}"
+            if task == TaskType.MATHS:
+                assert models[0].model_id != "nvidia/nemotron-3.5-lightning:free"
+                assert "nvidia/nemotron-3.5-lightning:free" not in [m.model_id for m in models]
+
 
 class Clock:
     def __init__(self) -> None:
