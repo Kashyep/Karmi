@@ -1,0 +1,619 @@
+"""Admin operations on users, usage, audit and the live monitor.
+
+Every mutation stages its ``admin_audit_log`` row in the same transaction as the change it
+records, so an action is never committed without its audit entry (and vice versa). Message
+bodies are never read here: support sees metadata only.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import threading
+import time
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from fastapi import HTTPException, status
+from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy.orm import Session
+
+from daily_agent.admin_auth import append_audit, revoke_admin_sessions
+from daily_agent.admin_metrics import RequestMetrics
+from daily_agent.config import Settings
+from daily_agent.gateway import Gateway
+from daily_agent.models import (
+    Account,
+    AdminAuditLog,
+    AdminCredential,
+    AdminSession,
+    BillingEvent,
+    BudgetReservation,
+    ChatMessage,
+    Conversation,
+    CostLedger,
+    MessageFeedback,
+    OutboxEvent,
+    PlatformBudget,
+    Reminder,
+    RoutingDecision,
+    RoutingRecord,
+    Run,
+    Subscription,
+    Task,
+    UsagePeriod,
+    UsageWindow,
+    User,
+)
+from daily_agent.plans import SYNTHETIC_POLICIES
+from daily_agent.security import as_utc
+from daily_agent.services import (
+    current_window_key,
+    ensure_usage_period,
+    plan_for_tier,
+    plan_policy,
+    sync_account_progression,
+    tier_for_plan,
+)
+from daily_agent.streaming.registry import get_stream_registry
+
+MAX_PAGE = 100
+ACTIVE_WINDOW = timedelta(minutes=5)
+MONITOR_CACHE_SECONDS = 4.0
+
+
+def _iso(value: datetime | None) -> str | None:
+    return as_utc(value).isoformat() if value is not None else None
+
+
+def _not_found() -> HTTPException:
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+
+
+def _bad(message: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
+
+def parse_tier(tier: str | int) -> str:
+    """Accept a plan id (``yanta``) or a tier number 1-4; return the plan id."""
+    if isinstance(tier, int) or (isinstance(tier, str) and tier.isdigit()):
+        number = int(tier)
+        if number not in range(1, 5):
+            raise _bad("tier must be 1-4 or a plan id")
+        return plan_for_tier(number)
+    plan = str(tier).strip().lower()
+    if plan not in SYNTHETIC_POLICIES:
+        raise _bad("unknown tier")
+    return plan
+
+
+def to_micro(settings: Settings, usd: float) -> int:
+    return round(usd * settings.admin_micro_per_usd)
+
+
+def from_micro(settings: Settings, micro: int) -> float:
+    return round(micro / settings.admin_micro_per_usd, 6)
+
+
+def _subscription(session: Session, account_id: str) -> Subscription | None:
+    return session.scalar(select(Subscription).where(Subscription.account_id == account_id))
+
+
+def user_item(user: User, subscription: Subscription | None) -> dict[str, Any]:
+    policy = plan_policy(subscription)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "tier": policy.plan_id,
+        "unlocked_tier": user.unlocked_tier,
+        "disabled": user.disabled,
+        "created_at": _iso(user.created_at),
+        "last_active_at": _iso(user.last_active_at),
+    }
+
+
+def _load_user(session: Session, user_id: str) -> User:
+    user = session.get(User, user_id)
+    if user is None:
+        raise _not_found()
+    return user
+
+
+def _escape_like(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def list_users(
+    session: Session,
+    *,
+    q: str | None,
+    tier: str | None,
+    state: str | None,
+    limit: int,
+    cursor: str | None,
+) -> dict[str, Any]:
+    limit = max(1, min(limit, MAX_PAGE))
+    stmt = select(User, Subscription).outerjoin(Subscription, Subscription.account_id == User.account_id)
+    if q:
+        needle = f"%{_escape_like(q.strip().lower())}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(User.email).like(needle, escape="\\"),
+                func.lower(User.display_name).like(needle, escape="\\"),
+                User.id == q.strip(),
+            )
+        )
+    if tier:
+        plan = parse_tier(tier)
+        if plan == "ananta":
+            stmt = stmt.where(or_(Subscription.plan_id.is_(None), Subscription.plan_id == plan))
+        else:
+            stmt = stmt.where(Subscription.plan_id == plan)
+    if state:
+        if state not in {"active", "suspended"}:
+            raise _bad("status must be active or suspended")
+        stmt = stmt.where(User.disabled.is_(state == "suspended"))
+    if cursor:
+        stmt = stmt.where(User.id > cursor)
+    rows = session.execute(stmt.order_by(User.id).limit(limit + 1)).all()
+    page = rows[:limit]
+    return {
+        "items": [user_item(user, sub) for user, sub in page],
+        "next_cursor": page[-1][0].id if len(rows) > limit and page else None,
+    }
+
+
+def usage_summary(session: Session, settings: Settings, user: User) -> dict[str, Any]:
+    subscription = _subscription(session, user.account_id)
+    policy = plan_policy(subscription)
+    now = datetime.now(UTC)
+    day_key, _reset = current_window_key(now)
+    window = session.scalar(
+        select(UsageWindow).where(
+            UsageWindow.account_id == user.account_id, UsageWindow.window_key == day_key
+        )
+    )
+    period = session.scalars(
+        select(UsagePeriod)
+        .where(UsagePeriod.account_id == user.account_id, UsagePeriod.reset_at > now)
+        .order_by(UsagePeriod.reset_at)
+    ).first()
+    limit = period.spend_limit_micro if period else policy.period_cost_cap_micro
+    spent = (period.settled_micro + period.reserved_micro) if period else 0
+    conversations = session.scalar(
+        select(func.count())
+        .select_from(Conversation)
+        .where(Conversation.user_id == user.id, Conversation.deleted_at.is_(None))
+    )
+    return {
+        "today_requests": window.everyday_used if window else 0,
+        "month_spend_usd": from_micro(settings, spent),
+        "credits_remaining": from_micro(settings, max(0, limit - spent)),
+        "sessions": conversations or 0,
+    }
+
+
+def user_detail(session: Session, settings: Settings, admin_id: str, user_id: str) -> dict[str, Any]:
+    user = _load_user(session, user_id)
+    result = user_item(user, _subscription(session, user.account_id))
+    result["usage"] = usage_summary(session, settings, user)
+    # Access transparency: reading a specific user is itself audited.
+    append_audit(session, admin_user_id=admin_id, action="user.view", target_user_id=user.id)
+    session.commit()
+    return result
+
+
+def _revoke_all(session: Session, user: User) -> None:
+    user.token_version += 1
+    user.sessions_revoked_at = datetime.now(UTC)
+    revoke_admin_sessions(session, user.id)
+
+
+def suspend(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+    if user_id == admin_id:
+        raise _bad("admins cannot suspend themselves")
+    user = _load_user(session, user_id)
+    before = user.disabled
+    user.disabled = True
+    _revoke_all(session, user)
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="user.suspend",
+        target_user_id=user.id,
+        reason=reason,
+        detail={"before": {"disabled": before}, "after": {"disabled": True}},
+    )
+    session.commit()
+    return user_item(user, _subscription(session, user.account_id))
+
+
+def unsuspend(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+    user = _load_user(session, user_id)
+    before = user.disabled
+    user.disabled = False
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="user.unsuspend",
+        target_user_id=user.id,
+        reason=reason,
+        detail={"before": {"disabled": before}, "after": {"disabled": False}},
+    )
+    session.commit()
+    return user_item(user, _subscription(session, user.account_id))
+
+
+def revoke_sessions(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+    user = _load_user(session, user_id)
+    _revoke_all(session, user)
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="user.revoke_sessions",
+        target_user_id=user.id,
+        reason=reason,
+        detail={"token_version": user.token_version},
+    )
+    session.commit()
+    return {"revoked": True, "token_version": user.token_version}
+
+
+def change_tier(
+    session: Session, admin_id: str, user_id: str, tier: str | int, reason: str
+) -> dict[str, Any]:
+    plan = parse_tier(tier)
+    user = _load_user(session, user_id)
+    subscription = _subscription(session, user.account_id)
+    if subscription is None:
+        subscription = Subscription(account_id=user.account_id, plan_id="ananta")
+        session.add(subscription)
+        session.flush()
+    old_policy = plan_policy(subscription)
+    before = {"plan_id": subscription.plan_id, "status": subscription.status}
+    subscription.plan_id = plan
+    subscription.status = "active"
+    subscription.policy_version = "admin-override-v1"
+    new_policy = SYNTHETIC_POLICIES[plan]
+    # Entitlements only; billing is never touched. Re-base the live counters on the new plan.
+    now = datetime.now(UTC)
+    day_key, _reset = current_window_key(now)
+    window = session.scalar(
+        select(UsageWindow).where(
+            UsageWindow.account_id == user.account_id, UsageWindow.window_key == day_key
+        )
+    )
+    if window is not None:
+        window.everyday_limit = new_policy.everyday_limit
+        window.token_limit = new_policy.daily_token_limit
+        window.spend_limit_micro = new_policy.request_cost_cap_micro * new_policy.everyday_limit
+    period = session.scalars(
+        select(UsagePeriod)
+        .where(UsagePeriod.account_id == user.account_id, UsagePeriod.reset_at > now)
+        .order_by(UsagePeriod.reset_at)
+    ).first()
+    if period is not None:
+        period.spend_limit_micro = max(
+            0,
+            period.spend_limit_micro + new_policy.period_cost_cap_micro - old_policy.period_cost_cap_micro,
+        )
+    session.flush()
+    sync_account_progression(session, user.account_id)
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="user.tier",
+        target_user_id=user.id,
+        reason=reason,
+        detail={"before": before, "after": {"plan_id": plan, "tier": tier_for_plan(plan)}},
+    )
+    session.commit()
+    return user_item(user, subscription)
+
+
+def adjust_credits(
+    session: Session,
+    settings: Settings,
+    admin_id: str,
+    user_id: str,
+    *,
+    delta_usd: float | None,
+    budget_usd: float | None,
+    reason: str,
+) -> dict[str, Any]:
+    user = _load_user(session, user_id)
+    subscription = _subscription(session, user.account_id)
+    if subscription is None:
+        subscription = Subscription(account_id=user.account_id, plan_id="ananta")
+        session.add(subscription)
+        session.flush()
+    policy = plan_policy(subscription)
+    period = ensure_usage_period(session, user.account_id, policy, subscription.period_anchor)
+    before = period.spend_limit_micro
+    after = before + to_micro(settings, delta_usd) if delta_usd is not None else to_micro(
+        settings, budget_usd or 0.0
+    )
+    used = period.reserved_micro + period.settled_micro
+    if after < used:
+        session.rollback()
+        raise _bad("budget cannot be set below what the period has already used")
+    period.spend_limit_micro = after
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="user.credits",
+        target_user_id=user.id,
+        reason=reason,
+        detail={
+            "before_budget_micro": before,
+            "after_budget_micro": after,
+            "delta_usd": delta_usd,
+            "budget_usd": budget_usd,
+        },
+    )
+    session.commit()
+    return {
+        "budget_usd": from_micro(settings, after),
+        "credits_remaining": from_micro(settings, after - used),
+    }
+
+
+def export_user(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+    user = _load_user(session, user_id)
+    account = session.get(Account, user.account_id)
+    subscription = _subscription(session, user.account_id)
+    runs = session.scalars(
+        select(Run).where(Run.user_id == user.id).order_by(Run.created_at.desc(), Run.id.desc())
+    ).all()
+    conversations = session.execute(
+        select(Conversation, func.count(ChatMessage.id))
+        .outerjoin(ChatMessage, ChatMessage.conversation_id == Conversation.id)
+        .where(Conversation.user_id == user.id)
+        .group_by(Conversation.id)
+    ).all()
+    tasks = session.scalars(select(Task).where(Task.owner_user_id == user.id)).all()
+    reminders = session.scalars(select(Reminder).where(Reminder.owner_user_id == user.id)).all()
+    periods = session.scalars(
+        select(UsagePeriod).where(UsagePeriod.account_id == user.account_id)
+    ).all()
+    payload: dict[str, Any] = {
+        "exported_at": datetime.now(UTC).isoformat(),
+        "user": {
+            **user_item(user, subscription),
+            "role": user.role,
+            "clerk_subject": user.clerk_subject,
+            "active_theme": user.active_theme,
+        },
+        "account": {"id": user.account_id, "name": account.name if account else None},
+        "subscription": {
+            "plan_id": subscription.plan_id,
+            "status": subscription.status,
+            "policy_version": subscription.policy_version,
+            "period_anchor": subscription.period_anchor.isoformat(),
+        }
+        if subscription
+        else None,
+        "usage_periods": [
+            {
+                "period_key": p.period_key,
+                "spend_limit_micro": p.spend_limit_micro,
+                "settled_micro": p.settled_micro,
+                "reserved_micro": p.reserved_micro,
+            }
+            for p in periods
+        ],
+        "runs": [
+            {
+                "id": r.id,
+                "status": r.status,
+                "outcome": r.outcome,
+                "created_at": _iso(r.created_at),
+                "served_model": r.served_model,
+                "input_tokens": r.input_tokens,
+                "output_tokens": r.output_tokens,
+            }
+            for r in runs
+        ],
+        "conversations": [
+            {
+                "id": c.id,
+                "title": c.title,
+                "created_at": _iso(c.created_at),
+                "deleted_at": _iso(c.deleted_at),
+                "message_count": count,
+            }
+            for c, count in conversations
+        ],
+        "tasks": [{"title": t.title, "completed": t.completed} for t in tasks],
+        "reminders": [
+            {"text": r.text, "due_at_utc": _iso(r.due_at_utc), "state": r.state} for r in reminders
+        ],
+        # Support never reads message bodies; the owner's own history export covers them.
+        "message_bodies_included": False,
+    }
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="user.export",
+        target_user_id=user.id,
+        reason=reason,
+        detail={"runs": len(runs), "conversations": len(conversations)},
+    )
+    session.commit()
+    return payload
+
+
+def erase_user(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+    """Irreversibly delete the user, their account and everything keyed to it.
+
+    Rows are removed explicitly (children first) so erasure is complete even on engines
+    that do not enforce ``ON DELETE CASCADE``. The audit trail keeps only the opaque ids.
+    """
+    if user_id == admin_id:
+        raise _bad("admins cannot delete themselves")
+    user = _load_user(session, user_id)
+    account_id = user.account_id
+    others = session.scalar(
+        select(func.count()).select_from(User).where(User.account_id == account_id, User.id != user.id)
+    )
+    if others:
+        raise _bad("account is shared with other users; refusing to erase")
+    run_ids = select(Run.id).where(Run.account_id == account_id)
+    reservation_ids = select(BudgetReservation.id).where(BudgetReservation.account_id == account_id)
+    conversation_ids = select(Conversation.id).where(Conversation.account_id == account_id)
+    counts: dict[str, int] = {}
+
+    def purge(name: str, statement: Any) -> None:
+        result = session.execute(statement)
+        counts[name] = int(getattr(result, "rowcount", 0) or 0)
+
+    purge("message_feedback", delete(MessageFeedback).where(MessageFeedback.account_id == account_id))
+    purge("outbox_events", delete(OutboxEvent).where(OutboxEvent.run_id.in_(run_ids)))
+    purge("routing_records", delete(RoutingRecord).where(RoutingRecord.run_id.in_(run_ids)))
+    purge("routing_decisions", delete(RoutingDecision).where(RoutingDecision.run_id.in_(run_ids)))
+    purge("cost_ledger", delete(CostLedger).where(CostLedger.reservation_id.in_(reservation_ids)))
+    purge("budget_reservations", delete(BudgetReservation).where(BudgetReservation.account_id == account_id))
+    purge("billing_events", delete(BillingEvent).where(BillingEvent.account_id == account_id))
+    session.execute(update(Run).where(Run.account_id == account_id).values(previous_run_id=None))
+    purge("runs", delete(Run).where(Run.account_id == account_id))
+    purge("chat_messages", delete(ChatMessage).where(ChatMessage.conversation_id.in_(conversation_ids)))
+    purge("conversations", delete(Conversation).where(Conversation.account_id == account_id))
+    purge("tasks", delete(Task).where(Task.account_id == account_id))
+    purge("reminders", delete(Reminder).where(Reminder.account_id == account_id))
+    purge("usage_windows", delete(UsageWindow).where(UsageWindow.account_id == account_id))
+    purge("usage_periods", delete(UsagePeriod).where(UsagePeriod.account_id == account_id))
+    purge("subscriptions", delete(Subscription).where(Subscription.account_id == account_id))
+    purge("admin_sessions", delete(AdminSession).where(AdminSession.user_id == user.id))
+    purge("admin_credentials", delete(AdminCredential).where(AdminCredential.user_id == user.id))
+    purge("users", delete(User).where(User.id == user.id))
+    purge("accounts", delete(Account).where(Account.id == account_id))
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="user.erase",
+        target_user_id=user_id,
+        reason=reason,
+        detail={"deleted_rows": counts},
+    )
+    session.commit()
+    return {"deleted": True, "user_id": user_id}
+
+
+def list_audit(session: Session, *, limit: int, cursor: str | None) -> dict[str, Any]:
+    limit = max(1, min(limit, MAX_PAGE))
+    stmt = select(AdminAuditLog).order_by(AdminAuditLog.id.desc()).limit(limit + 1)
+    if cursor:
+        try:
+            stmt = stmt.where(AdminAuditLog.id < int(cursor))
+        except ValueError:
+            raise _bad("invalid cursor") from None
+    rows = session.scalars(stmt).all()
+    page = rows[:limit]
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "at": _iso(row.at),
+                "admin_user_id": row.admin_user_id,
+                "action": row.action,
+                "target_user_id": row.target_user_id,
+                "reason": row.reason,
+                "detail": json.loads(row.detail),
+            }
+            for row in page
+        ],
+        "next_cursor": str(page[-1].id) if len(rows) > limit and page else None,
+    }
+
+
+def list_runs(session: Session, *, limit: int, cursor: str | None) -> dict[str, Any]:
+    limit = max(1, min(limit, MAX_PAGE))
+    stmt = select(Run).order_by(Run.created_at.desc(), Run.id.desc()).limit(limit + 1)
+    if cursor:
+        try:
+            stamp, run_id = cursor.split("|", 1)
+            at = datetime.fromisoformat(stamp)
+        except ValueError:
+            raise _bad("invalid cursor") from None
+        stmt = stmt.where(
+            or_(Run.created_at < at, and_(Run.created_at == at, Run.id < run_id))
+        )
+    rows = session.scalars(stmt).all()
+    page = rows[:limit]
+    return {
+        "items": [
+            {
+                "run_id": run.id,
+                "status": run.status,
+                "outcome": run.outcome,
+                "created_at": _iso(run.created_at),
+                "account_ref": hashlib.sha256(run.account_id.encode()).hexdigest()[:12],
+                "served_model": run.served_model,
+                "served_provider": run.served_provider,
+                "latency_ms": run.latency_ms,
+                "input_tokens": run.input_tokens,
+                "output_tokens": run.output_tokens,
+                "response": "redacted",
+            }
+            for run in page
+        ],
+        "next_cursor": (
+            f"{as_utc(page[-1].created_at).replace(tzinfo=None).isoformat()}|{page[-1].id}"
+            if len(rows) > limit and page
+            else None
+        ),
+    }
+
+
+class MonitorCache:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._at = 0.0
+        self._value: dict[str, Any] | None = None
+
+    def get(self, build: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+        with self._lock:
+            now = time.monotonic()
+            if self._value is None or now - self._at > MONITOR_CACHE_SECONDS:
+                self._value = build()
+                self._at = now
+            value: dict[str, Any] = self._value
+            return value
+
+
+def build_monitor(
+    session: Session, settings: Settings, gateway: Gateway, metrics: RequestMetrics
+) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    day_key, _reset = current_window_key(now)
+    active_users = session.scalar(
+        select(func.count()).select_from(User).where(User.last_active_at > now - ACTIVE_WINDOW)
+    )
+    budget = session.get(PlatformBudget, day_key)
+    spent = (budget.settled_micro + budget.reserved_micro) if budget else 0
+    limit = budget.spend_limit_micro if budget else settings.global_daily_budget_micro
+    providers: Mapping[str, str] = {
+        provider: (
+            "disabled"
+            if not gateway.live
+            else "down"
+            if gateway.health.provider_open(provider)
+            else "ok"
+        )
+        for provider in sorted({model.provider for model in gateway.registry.models})
+    }
+    snapshot = metrics.snapshot()
+    return {
+        "active_users": active_users or 0,
+        "active_streams": get_stream_registry().active_count(),
+        "req_per_min": snapshot["req_per_min"],
+        "error_rate": snapshot["error_rate"],
+        "p95_latency_ms": snapshot["p95_latency_ms"],
+        "spend_today_usd": from_micro(settings, spent),
+        "platform_budget_usd": from_micro(settings, limit),
+        "provider_health": [{"provider": p, "status": s} for p, s in providers.items()],
+        "generated_at": now.isoformat(),
+    }
+

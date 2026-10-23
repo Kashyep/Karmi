@@ -153,6 +153,9 @@ class StreamRegistry:
             self._runs.pop(run_id, None)
         return len(to_remove)
 
+    def active_count(self) -> int:
+        return sum(1 for state in self._runs.values() if not state.terminal)
+
     def clear(self) -> None:
         self._runs.clear()
 

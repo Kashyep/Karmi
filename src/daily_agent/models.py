@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     func,
     text,
 )
@@ -83,6 +84,19 @@ class User(Base):
     unlocked_tier: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     active_theme: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     tester: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # Admin suspension: a disabled user's tokens are rejected on every request.
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.current_timestamp()
+    )
+    last_active_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    # Tokens issued at or before this instant are rejected (admin "revoke sessions").
+    sessions_revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     account: Mapped[Account] = relationship(back_populates="users")
 
 
@@ -267,6 +281,12 @@ class Run(Base):
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     harness_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.current_timestamp(),
+        index=True,
+    )
 
 
 class MessageFeedback(Base):
@@ -461,3 +481,60 @@ class ChatMessage(Base):
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
     account: Mapped[Account] = relationship()
+
+
+class AdminCredential(Base):
+    """One developer's personal admin code (salted scrypt hash) and its lockout state."""
+
+    __tablename__ = "admin_credentials"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(255))
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AdminSession(Base):
+    """Server-side admin session; only the SHA-256 of the bearer token is stored."""
+
+    __tablename__ = "admin_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AdminAuditLog(Base):
+    """Append-only record of every admin mutation (and per-user read).
+
+    No foreign keys: rows must outlive erased users. UPDATE/DELETE are refused by an ORM
+    guard (``daily_agent.admin_service``) and by database triggers created in the migration.
+    """
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    admin_user_id: Mapped[str] = mapped_column(String(36), index=True)
+    action: Mapped[str] = mapped_column(String(40))
+    target_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+
+
+def _refuse_audit_mutation(*_args: object) -> None:
+    raise RuntimeError("admin_audit_log is append-only")
+
+
+event.listen(AdminAuditLog, "before_update", _refuse_audit_mutation)
+event.listen(AdminAuditLog, "before_delete", _refuse_audit_mutation)
