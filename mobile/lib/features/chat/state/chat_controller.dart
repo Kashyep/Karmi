@@ -21,6 +21,7 @@ class ChatController extends ChangeNotifier {
     int maxResumeRetries = 3,
     Duration retryDelay = const Duration(milliseconds: 500),
     String Function()? idGenerator,
+    Duration slowReplyAfter = const Duration(seconds: 10),
   }) : _client = client,
        _conversationId = conversationId,
        _messages = initialMessages != null
@@ -30,7 +31,8 @@ class ChatController extends ChangeNotifier {
        _deltaFlushInterval = deltaFlushInterval,
        _maxResumeRetries = maxResumeRetries,
        _retryDelay = retryDelay,
-       _idGenerator = idGenerator;
+       _idGenerator = idGenerator,
+       _slowReplyAfter = slowReplyAfter;
 
   final RunStreamClient _client;
   final Duration _stallTimeout;
@@ -38,6 +40,9 @@ class ChatController extends ChangeNotifier {
   final int _maxResumeRetries;
   final Duration _retryDelay;
   final String Function()? _idGenerator;
+  final Duration _slowReplyAfter;
+  Timer? _slowTimer;
+  bool _isSlow = false;
 
   String? _conversationId;
   final List<ChatMessageView> _messages;
@@ -78,6 +83,10 @@ class ChatController extends ChangeNotifier {
 
   /// Current run phase.
   ChatRunPhase get phase => _phase;
+
+  /// True once the current run has been working for the slow-reply threshold
+  /// (about 10 s) without finishing. Drives the "still working" placeholder.
+  bool get isSlow => _isSlow;
 
   /// Error category if the last run failed.
   ErrorCategory? get error => _error;
@@ -366,6 +375,7 @@ class ChatController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _slowTimer?.cancel();
     _cancelStallTimer();
     _deltaFlushTimer?.cancel();
     _deltaFlushTimer = null;
@@ -456,6 +466,24 @@ class ChatController extends ChangeNotifier {
         _terminalReceived = true;
         _cancelStallTimer();
         _stopDeltaFlushTimer();
+
+        // A deferred reply is not a successful answer: surface it as a
+        // retryable error attached to the assistant bubble.
+        final outcome = event.outcome == null
+            ? null
+            : Outcome.fromWire(event.outcome);
+        if (outcome == Outcome.deferred) {
+          _error = ErrorCategory.providerUnavailable;
+          _finishReason = FinishReason.error;
+          _finalizeAssistantMessage(
+            assistantMessageId: event.assistantMessageId,
+            status: MessageStatus.failed,
+            finishReason: FinishReason.error,
+            outcome: outcome,
+          );
+          _setPhase(ChatRunPhase.error);
+          break;
+        }
 
         _finishReason = event.finishReason;
         final MessageStatus msgStatus;
@@ -714,7 +742,31 @@ class ChatController extends ChangeNotifier {
   void _setPhase(ChatRunPhase newPhase) {
     if (_phase == newPhase) return;
     _phase = newPhase;
+    _updateSlowTimer(newPhase);
     _notifySafe();
+  }
+
+  /// Starts the "still working" clock when a run becomes active and clears it
+  /// at every terminal phase, so each new send starts from not-slow.
+  void _updateSlowTimer(ChatRunPhase phase) {
+    switch (phase) {
+      case ChatRunPhase.sending:
+      case ChatRunPhase.streaming:
+      case ChatRunPhase.stalled:
+        if (_isSlow || _slowTimer != null) return;
+        _slowTimer = Timer(_slowReplyAfter, () {
+          _slowTimer = null;
+          if (_disposed) return;
+          _isSlow = true;
+          _notifySafe();
+        });
+      case ChatRunPhase.idle:
+      case ChatRunPhase.finished:
+      case ChatRunPhase.error:
+        _slowTimer?.cancel();
+        _slowTimer = null;
+        _isSlow = false;
+    }
   }
 
   void _notifySafe() {

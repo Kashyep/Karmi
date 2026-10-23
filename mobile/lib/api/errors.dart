@@ -49,6 +49,12 @@ final class NetworkException extends KarmiApiException {
   const NetworkException();
 }
 
+/// The request was sent but no response completed within the client timeout.
+/// Distinct from [NetworkException] so the UI can say "taking too long" rather than "offline".
+final class ApiTimeoutException extends KarmiApiException {
+  const ApiTimeoutException();
+}
+
 /// Any other non-success status, or a response body that could not be parsed.
 final class ServerException extends KarmiApiException {
   const ServerException(this.statusCode);
