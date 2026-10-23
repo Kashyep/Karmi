@@ -25,6 +25,7 @@ from daily_agent.gateway import Gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
 from daily_agent.gzip_middleware import SSEAwareGZip
 from daily_agent.models import (
+    Account,
     BillingEvent,
     MessageFeedback,
     Reminder,
@@ -108,6 +109,28 @@ from daily_agent.streaming.registry import sweep_interrupted_runs
 from daily_agent.web import admin_page_headers, build_manifest, render_admin_page, render_shell
 
 logger = logging.getLogger(__name__)
+
+
+def _profile_user(session: Session, principal: Principal) -> User:
+    """Return the authenticated user, repairing a missing Clerk row if needed."""
+    user = session.get(User, principal.user_id)
+    if user is not None:
+        return user
+    account = session.get(Account, principal.account_id)
+    if account is None:
+        account = Account(id=principal.account_id, name="Karmi user's account")
+        session.add(account)
+        session.flush()
+    user = User(
+        id=principal.user_id,
+        account_id=account.id,
+        display_name="Karmi user",
+        role=principal.role,
+    )
+    session.add(user)
+    session.add(Subscription(account_id=account.id, plan_id="ananta"))
+    session.commit()
+    return user
 
 
 def create_app() -> FastAPI:
@@ -297,9 +320,7 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> UserProfileView:
-        user = session.get(User, principal.user_id)
-        if user is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+        user = _profile_user(session, principal)
         return UserProfileView(id=user.id, display_name=user.display_name)
 
     @app.patch("/v1/user/profile", response_model=UserProfileView)
@@ -308,10 +329,8 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> UserProfileView:
-        user = session.get(User, principal.user_id)
-        if user is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
-        user.display_name = body.display_name.strip()
+        user = _profile_user(session, principal)
+        user.display_name = body.display_name
         session.commit()
         return UserProfileView(id=user.id, display_name=user.display_name)
 
