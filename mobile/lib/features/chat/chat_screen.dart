@@ -553,8 +553,7 @@ class _ChatScreenState extends State<ChatScreen> {
             KarmiChatHeader(
               title: _activeConversationTitle,
               onOpenHistory: _resolveOpenHistory(context),
-              onNewChat: _startNewChat,
-              onOpenPlans: widget.onOpenPlans,
+              onNewChat: _isBusy ? null : _startNewChat,
               trailing: widget.trailing,
             ),
             if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),

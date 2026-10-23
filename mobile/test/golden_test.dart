@@ -227,7 +227,7 @@ void main() {
               active: tier,
             ),
           );
-          await tester.tap(find.byTooltip('More options'));
+          await openTab(tester, 'Settings');
           await fontsReady(tester);
           await tester.tap(find.text('Armory').last);
           await fontsReady(tester);

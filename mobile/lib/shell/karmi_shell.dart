@@ -133,8 +133,6 @@ class _KarmiShellState extends State<KarmiShell> {
     ),
   );
 
-  void _openLicences() =>
-      showLicensePage(context: context, applicationName: 'Karmi');
 
   Widget _buildPage(int index) {
     switch (index) {
@@ -145,11 +143,6 @@ class _KarmiShellState extends State<KarmiShell> {
           draftStore: widget.session.draftStore,
           historyCommands: widget.historyCommands,
           clock: widget.clock,
-          trailing: _OverflowMenu(
-            onArmory: _openArmory,
-            onPlans: _openPlans,
-            onLicences: _openLicences,
-          ),
         );
       case 1:
         return TasksScreen(api: widget.api);
@@ -274,12 +267,12 @@ class _KarmiShellState extends State<KarmiShell> {
       children: [for (var i = 0; i < 4; i++) _pageFor(i)],
     );
 
-    final width = MediaQuery.sizeOf(context).width;
+    final mq = MediaQuery.of(context);
+    final width = mq.size.width;
     final isCompactNav = width < 600;
     final isPhone = width < KarmiShape.tabletBreakpoint;
     final content = _buildContent(context, body);
     final isChat = _index == 0;
-
     if (KarmiAccessibility.reduceTransparencyOf(context)) {
       return HistoryPanelScope(
         isOpen: _isHistoryOverlayOpen,
@@ -294,16 +287,14 @@ class _KarmiShellState extends State<KarmiShell> {
           appBar: isChat
               ? null
               : AppBar(
+                  automaticallyImplyLeading: false,
+                  centerTitle: true,
                   title: Semantics(header: true, child: title),
-                  actions: [
-                    _OverflowMenu(
-                      onArmory: _openArmory,
-                      onPlans: _openPlans,
-                      onLicences: _openLicences,
-                    ),
-                  ],
                 ),
-          body: _withPreviewBanner(content, top: 8),
+          body: _withPreviewBanner(
+            content,
+            top: (isChat ? mq.padding.top + 56 : 0) + 8,
+          ),
           bottomNavigationBar: isCompactNav
               ? NavigationBar(
                   selectedIndex: _index,
@@ -325,15 +316,6 @@ class _KarmiShellState extends State<KarmiShell> {
     final appBar = GlassAppBar(
       backgroundColor: KarmiColors.of(context).glassBase,
       title: Semantics(header: true, child: title),
-      // Material menu, not GlassMenu: on device GlassMenu's items were
-      // missing from the accessibility tree (TalkBack could not reach them).
-      actions: [
-        _OverflowMenu(
-          onArmory: _openArmory,
-          onPlans: _openPlans,
-          onLicences: _openLicences,
-        ),
-      ],
     );
     final tabBar = GlassTabBar.bottom(
       selectedIndex: _index,
@@ -351,7 +333,6 @@ class _KarmiShellState extends State<KarmiShell> {
 
     // The glass bars float over the body; report their extent as padding so
     // content can scroll behind them without being hidden at rest.
-    final mq = MediaQuery.of(context);
     final bodyPadding = mq.padding.copyWith(
       top: isChat
           ? mq.padding.top
@@ -387,7 +368,10 @@ class _KarmiShellState extends State<KarmiShell> {
             data: mq.copyWith(padding: bodyPadding),
             child: IconTheme(
               data: Theme.of(context).iconTheme,
-              child: _withPreviewBanner(content, top: bodyPadding.top + 8),
+              child: _withPreviewBanner(
+                content,
+                top: (isChat ? mq.padding.top + 56 : bodyPadding.top) + 8,
+              ),
             ),
           ),
         ),
@@ -416,25 +400,3 @@ class _KarmiShellState extends State<KarmiShell> {
       );
 }
 
-class _OverflowMenu extends StatelessWidget {
-  const _OverflowMenu({
-    required this.onArmory,
-    required this.onPlans,
-    required this.onLicences,
-  });
-
-  final VoidCallback onArmory;
-  final VoidCallback onPlans;
-  final VoidCallback onLicences;
-
-  @override
-  Widget build(BuildContext context) => PopupMenuButton<VoidCallback>(
-    tooltip: 'More options',
-    onSelected: (action) => action(),
-    itemBuilder: (context) => [
-      PopupMenuItem(value: onArmory, child: const Text('Armory')),
-      PopupMenuItem(value: onPlans, child: const Text('Plans')),
-      PopupMenuItem(value: onLicences, child: const Text('Licences')),
-    ],
-  );
-}
