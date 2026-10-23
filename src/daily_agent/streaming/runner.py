@@ -16,6 +16,7 @@ from sqlalchemy.pool import SingletonThreadPool
 
 from daily_agent.config import Settings
 from daily_agent.conversations.service import touch_conversation
+from daily_agent.db_admission import leased_session
 from daily_agent.gateway.service import Gateway, build_system_prompt
 from daily_agent.gateway.types import (
     CapacityFullError,
@@ -187,7 +188,7 @@ class StreamRunner:
         single final copy: ``response_text`` when the run completes, ``partial_text`` when it is
         cancelled or fails.
         """
-        with self._flush_lock, self.session_factory() as session:
+        with self._flush_lock, leased_session(self.session_factory) as session:
             run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
             if run is not None:
                 run.last_seq = self.seq
@@ -226,7 +227,7 @@ class StreamRunner:
             self.last_flushed_len = len(text)
 
     def _touch_heartbeat(self) -> None:
-        with self._flush_lock, self.session_factory() as session:
+        with self._flush_lock, leased_session(self.session_factory) as session:
             run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
             if run is not None:
                 run.heartbeat_at = utcnow()
@@ -237,7 +238,7 @@ class StreamRunner:
             if self._budget_settled:
                 return
             self._budget_settled = True
-            with self.session_factory() as session:
+            with leased_session(self.session_factory) as session:
                 reservation = session.get(BudgetReservation, self.reservation_id)
                 if reservation is not None:
                     if release or (self.final_call is None and not self.accumulated_text):

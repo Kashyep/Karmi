@@ -4,6 +4,12 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from daily_agent.config import Settings, get_settings
+from daily_agent.db_admission import (
+    acquire_session_lease,
+    attach_lease,
+    install_admission,
+    release_session,
+)
 
 
 class Base(DeclarativeBase):
@@ -16,7 +22,7 @@ def build_engine(settings: Settings) -> Engine:
         connect_args["check_same_thread"] = False
     if settings.database_url.startswith("postgresql"):
         connect_args["connect_timeout"] = settings.database_connect_timeout
-        return create_engine(
+        engine = create_engine(
             settings.database_url,
             connect_args=connect_args,
             pool_pre_ping=True,
@@ -29,7 +35,8 @@ def build_engine(settings: Settings) -> Engine:
             pool_use_lifo=True,
             hide_parameters=True,
         )
-    engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
+    else:
+        engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
     if settings.database_url.startswith("sqlite"):
 
         @event.listens_for(engine, "connect")
@@ -38,6 +45,13 @@ def build_engine(settings: Settings) -> Engine:
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
 
+    # Admission slots equal pool capacity: a request waits for a slot instead of queueing inside
+    # the pool, so SQLAlchemy's pool timeout is a backstop rather than the normal failure path.
+    install_admission(
+        engine,
+        capacity=settings.database_pool_size + settings.database_max_overflow,
+        wait_seconds=settings.database_admission_wait_seconds,
+    )
     return engine
 
 
@@ -59,8 +73,16 @@ SessionLocal = sessionmaker(autoflush=False, expire_on_commit=False)
 def get_session() -> Generator[Session, None, None]:
     if SessionLocal.kw.get("bind") is None:
         SessionLocal.configure(bind=get_engine())
-    with SessionLocal() as session:
+    engine = SessionLocal.kw["bind"]
+    # The slot is held until the handler calls ``release_session`` or the request ends. Streaming
+    # handlers release before returning, so no slot or connection is held while SSE streams.
+    lease = acquire_session_lease(engine)
+    session = SessionLocal()
+    attach_lease(session, lease)
+    try:
         yield session
+    finally:
+        release_session(session)
 
 
 def create_schema(target_engine: Engine | None = None) -> None:

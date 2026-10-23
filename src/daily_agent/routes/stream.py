@@ -30,6 +30,7 @@ from daily_agent.conversations.service import (
     touch_conversation,
 )
 from daily_agent.db import get_session
+from daily_agent.db_admission import release_session
 from daily_agent.deps import gateway_dependency, limited_principal, own_run
 from daily_agent.gateway.router import classify_task
 from daily_agent.gateway.service import Gateway
@@ -237,6 +238,7 @@ async def _replay_from_db(
 
 
 def _replay_response(
+    session: Session,
     run_id: str,
     user_msg: ChatMessage,
     assistant_msg: ChatMessage | None,
@@ -247,9 +249,12 @@ def _replay_response(
     """Replay a run: local registry first, then Redis if another worker owns it live."""
     run_state = get_stream_registry().get(run_id)
     if run_state is not None:
+        release_session(session)
         return _sse(stream_run_events(run_state, after_seq=-1))
     if anyio.from_thread.run(_redis_run_live, run_id):
+        release_session(session)
         return _sse(_redis_resume_events(run_id, -1))
+    release_session(session)
     return _sse(_replay_from_db(user_msg, assistant_msg, run, debug_enabled=debug_enabled))
 
 
@@ -415,6 +420,7 @@ def _launch_run(
         start_stream_run(**start_kwargs)
 
     anyio.from_thread.run_sync(_register_and_start)
+    release_session(session)
     return _sse(stream_run_events(run_state, after_seq=-1))
 
 
@@ -479,6 +485,7 @@ def chat_stream(
                 )
             )
             return _replay_response(
+                session,
                 run_id,
                 existing_user_msg,
                 assistant_msg,
@@ -581,8 +588,10 @@ def run_events(
 
     run_state = get_stream_registry().get(run_id)
     if run_state is not None and after_seq <= run_state.last_seq:
+        release_session(session)
         return _sse(stream_run_events(run_state, after_seq=after_seq))
     if run_state is None and anyio.from_thread.run(_redis_run_live, run_id):
+        release_session(session)
         return _sse(_redis_resume_events(run_id, after_seq))
 
     assistant_msg = _assistant_for_run(session, principal, run_id)
@@ -602,6 +611,7 @@ def run_events(
             },
         )
 
+    release_session(session)
     return _sse(_resume_unavailable())
 
 
@@ -696,7 +706,7 @@ def continue_message(
         )
         if keyed is not None:
             return _replay_response(
-                keyed.id, user_msg, msg, keyed, debug_enabled=principal.tester
+                session, keyed.id, user_msg, msg, keyed, debug_enabled=principal.tester
             )
     if msg.status == MessageStatus.STREAMING.value:
         # A concurrent continue already claimed this message. Replay its run if it is the
@@ -711,7 +721,7 @@ def continue_message(
             == _continue_key(assistant_message_id, inflight.continuation_of_run_id)
         ):
             return _replay_response(
-                inflight.id, user_msg, msg, inflight, debug_enabled=principal.tester
+                session, inflight.id, user_msg, msg, inflight, debug_enabled=principal.tester
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="cannot continue streaming message"
@@ -880,6 +890,7 @@ def regenerate_message(
     if existing is not None:
         sibling = _assistant_for_run(session, principal, existing.id)
         return _replay_response(
+            session,
             existing.id,
             user_msg,
             sibling,
