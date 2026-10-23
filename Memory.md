@@ -1,5 +1,17 @@
 # Daily Agent implementation memory
 
+## Active Release 1 chat redesign resume (2026-10-23)
+
+- Integration checkout: `/tmp/wt2-int`, branch `release1/integration`. Current local HEAD: `f5d2794` (P2 policy revert); no push/deploy/hosted migration/PR action.
+- User asked to continue without a supervisor system; scoped workers requested `gpt-5.6-luna`. Effective runtime model metadata is unavailable, so only requested model is recorded.
+- P1 `c0a529e` is integrated; a long saved reply over 8,000 characters exposed premature DTO validation. Fix `fedc2b1` passes focused Hindi stream/unit regression while retaining the client cap.
+- P6 app-bar/banner candidate integrated through `20d82bf`; integrated combined focused Flutter suite passed 25 tests. P9 `9338561` is integrated and its focused tests/analyzer passed.
+- P10: replaced obsolete stream-history xfail with a mocked Hindi stream regression; added zero-budget no-provider-call/no-output test. Focused tests pass. The new tests are not yet followed by full release gates.
+- P2 zero-score policy was explicitly kept blocked by the owner and its code reverted from integration (`f5d2794`). P4 tester identity is still unspecified and its metadata/migration candidate remains out of integration.
+- P5 candidate `ab71f47` is unaccepted: same client ID replays the failed stream rather than retrying; keyboard inset calculation still needs logical-unit verification at non-1.0 DPR. Rework requested.
+- Remaining: accept P5, implement P7/P8, validate P3, audit local test auth and device harness, run all backend/Flutter gates, then build/test on Pixel 9a only after automated gates. Temporary task checklist: `docs/handoffs/release1-chat-redesign-progress.md`.
+- Do not read `.env.testauth`; no live provider spend, paid call, release PR, production action or device claim has occurred.
+
 ## MVP + tester-release branch `mvp-gateway` (2026-10-19) — verified state only
 
 - Branch `mvp-gateway` (from `readiness-harness` working tree; pre-work patch saved to
