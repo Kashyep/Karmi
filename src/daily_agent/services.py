@@ -771,7 +771,9 @@ def trim_history(
                 # Newest turn alone exceeds remaining budget: truncate it
                 truncated = _truncate_turn_content(turn.content, budget_bytes)
                 if truncated is not None:
-                    kept.append(HistoryTurn(role=turn.role, content=truncated))
+                    # The internal turn may exceed the client DTO cap; it is now
+                    # bounded by the provider request budget instead.
+                    kept.append(HistoryTurn.model_construct(role=turn.role, content=truncated))
             break  # dropping a newer turn but keeping an older one would garble the thread
         budget_bytes -= size
         kept.append(turn)
@@ -813,14 +815,21 @@ def history_from_messages(messages: Sequence[ChatMessage]) -> list[HistoryTurn]:
     for m in messages:
         if m.role == "user":
             if m.content:
-                turns.append(HistoryTurn(role="user", content=m.content))
+                # Persisted replies are trusted server-side data and may predate the
+                # client DTO's 8,000-character limit.  Bypass client validation here
+                # so trim_history can reduce them before any provider request.
+                turns.append(HistoryTurn.model_construct(role="user", content=m.content))
             reply = chosen.get(m.id)
             if reply is not None:
-                turns.append(HistoryTurn(role="assistant", content=reply.content))
+                turns.append(
+                    HistoryTurn.model_construct(role="assistant", content=reply.content)
+                )
         elif m.role == "assistant" and m.parent_message_id not in user_ids:
             # Reply whose user turn is outside this window: keep it in place if it was chosen.
             if chosen.get(m.parent_message_id or m.id) is m:
-                turns.append(HistoryTurn(role="assistant", content=m.content))
+                turns.append(
+                    HistoryTurn.model_construct(role="assistant", content=m.content)
+                )
     return turns
 
 

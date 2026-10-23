@@ -357,6 +357,24 @@ def test_history_from_messages_keeps_orphan_reply_once() -> None:
     ]
 
 
+def test_history_from_messages_allows_stored_long_turn_for_trimming() -> None:
+    user = _stored("u-long", "user", "q")
+    reply = _stored("a-long", "assistant", "x" * 16_001, parent="u-long")
+
+    history = history_from_messages([user, reply])
+
+    assert len(history) == 2
+    assert len(history[1].content) == 16_001
+    trimmed = trim_history(history, text="next", plan=SYNTHETIC_POLICIES["ananta"])
+    assert len(trimmed) == 1
+    assert "[…trimmed…]" in trimmed[0].content
+    assert len(trimmed[0].content.encode("utf-8")) <= (
+        SYNTHETIC_POLICIES["ananta"].input_tokens * 4
+        - SYSTEM_PROMPT_MAX_CHARS
+        - len(b"next")
+    )
+
+
 def test_message_request_hash() -> None:
     text = "Explain photosynthesis"
     expected_no_hist = hashlib.sha256(text.encode("utf-8")).hexdigest()
