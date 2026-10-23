@@ -232,7 +232,9 @@ class _UsersScreenState extends State<UsersScreen> {
                 final value = await showDialog<String>(
                   context: context,
                   builder: (dialogContext) {
-                    final controller = TextEditingController(text: _testerLabel);
+                    final controller = TextEditingController(
+                      text: _testerLabel,
+                    );
                     return AlertDialog(
                       title: const Text('Tester label'),
                       content: TextField(
@@ -248,7 +250,8 @@ class _UsersScreenState extends State<UsersScreen> {
                           child: const Text('Cancel'),
                         ),
                         FilledButton(
-                          onPressed: () => Navigator.pop(dialogContext, controller.text),
+                          onPressed: () =>
+                              Navigator.pop(dialogContext, controller.text),
                           child: const Text('Apply'),
                         ),
                       ],
