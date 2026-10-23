@@ -23,7 +23,7 @@ from daily_agent.gateway import build_gateway
 from daily_agent.gateway.registry import parse_registry
 from daily_agent.models import Reminder, Task
 from tests.conftest import create_identity
-from tests.quality_corpus import grade_response_quality, load_corpus_v1
+from tests.quality_corpus import grade_response_quality, load_corpus_v1, run_corpus_live
 
 pytestmark = pytest.mark.e2e
 
@@ -374,13 +374,19 @@ def test_e2e_case_08_identical_strings_recorded_bad_answer() -> None:
 def test_live_variant_gated_by_budget_cap() -> None:
     """Live model evaluation gated by KARMI_LIVE_EVAL_BUDGET.
 
-    How to run live evaluation:
-        KARMI_LIVE_EVAL_BUDGET=5 OPENCODE_API_KEY=<key> \\
+    How to run live evaluation against OpenRouter free pool:
+        KARMI_LIVE_EVAL_BUDGET=5 OPENROUTER_API_KEY=<key> \\
             .venv/bin/python -m pytest tests/e2e/test_quality_corpus.py -k test_live_variant
     """
     budget = int(os.environ.get("KARMI_LIVE_EVAL_BUDGET", "0"))
     if budget <= 0:
         pytest.skip(
             "Live evaluation skipped (KARMI_LIVE_EVAL_BUDGET=0). "
-            "Set KARMI_LIVE_EVAL_BUDGET > 0 and OPENCODE_API_KEY to run live candidate evaluation."
+            "Set KARMI_LIVE_EVAL_BUDGET > 0 and OPENROUTER_API_KEY in settings to run live evaluation."
         )
+    settings = Settings()
+    if not (settings.openrouter_enabled and settings.openrouter_api_key):
+        pytest.skip("OpenRouter configuration and API key are missing in settings.")
+
+    results = run_corpus_live(budget=budget, settings=settings)
+    assert len(results) <= budget

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from daily_agent.gateway.health import HealthTracker
@@ -17,7 +19,7 @@ from daily_agent.providers import ProviderCall
 from daily_agent.schemas import HistoryTurn
 from daily_agent.services import trim_history
 from model_lab.core import candidate_record, prompt_hash, validate_cases
-from tests.quality_corpus import grade_response_quality, load_corpus_v1
+from tests.quality_corpus import grade_response_quality, load_corpus_v1, run_corpus_live
 
 FIXED_NOW = datetime(2026, 10, 21, 16, 23, tzinfo=UTC)
 
@@ -197,3 +199,28 @@ def test_harness_long_hindi_trim_history_unit() -> None:
     assert len(trimmed) == 2
     assert trimmed[0].content == t1_user
     assert trimmed[1].content == t1_resp
+
+
+def test_live_runner_budget_hard_stops_at_n_with_mock_adapter(tmp_path: Path) -> None:
+    reg = _registry(_entry("vendor/m:free"))
+    provider = MockProvider()
+    gateway = Gateway(
+        registry=reg,
+        providers={"openrouter": provider},
+        health=HealthTracker(),
+        clock=lambda: FIXED_NOW,
+    )
+    # Total cases and turns exceed budget 2; runner must hard-stop at exactly 2 requests
+    results = run_corpus_live(
+        budget=2,
+        gateway=gateway,
+        results_dir=tmp_path / "results",
+    )
+    assert len(results) == 2
+    assert len(provider.requests) == 2
+    assert (tmp_path / "results").exists()
+    run_files = list((tmp_path / "results").glob("live_run_*.json"))
+    assert len(run_files) == 1
+    saved_records = json.loads(run_files[0].read_text(encoding="utf-8"))
+    assert len(saved_records) == 2
+    assert saved_records[0]["case_id"] == "QC-V1-01"
