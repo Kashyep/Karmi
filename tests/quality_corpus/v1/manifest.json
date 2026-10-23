@@ -1,0 +1,55 @@
+{
+  "corpus_version": "v1",
+  "created_date": "2026-10-23",
+  "description": "Synthetic multi-turn conversations checking expected Karmi AI harness behavior with mocked and live providers.",
+  "cases": [
+    {
+      "case_id": "QC-V1-01",
+      "file": "01_reference_resolution.json",
+      "behavior": "reference_resolution",
+      "summary": "User asks 'what about the second one?'; prior turn must be sent."
+    },
+    {
+      "case_id": "QC-V1-02",
+      "file": "02_corrections.json",
+      "behavior": "corrections",
+      "summary": "User modifies/corrects prior statement; history preserves prior turns."
+    },
+    {
+      "case_id": "QC-V1-03",
+      "file": "03_long_hindi_followup.json",
+      "behavior": "long_hindi_followup",
+      "summary": "Long Hindi assistant reply followed by follow-up; history kept and trimmed."
+    },
+    {
+      "case_id": "QC-V1-04",
+      "file": "04_date_timezone.json",
+      "behavior": "date_timezone",
+      "summary": "Current IST date and timezone injected into system context."
+    },
+    {
+      "case_id": "QC-V1-05",
+      "file": "05_unknown_facts.json",
+      "behavior": "unknown_facts",
+      "summary": "Missing required facts prompt a single clarifying question."
+    },
+    {
+      "case_id": "QC-V1-06",
+      "file": "06_false_action_claims.json",
+      "behavior": "false_action_claims",
+      "summary": "Chat route forbids action claims ('remind me at 6'); no tasks/reminders created in DB."
+    },
+    {
+      "case_id": "QC-V1-07",
+      "file": "07_provider_fallback.json",
+      "behavior": "provider_fallback",
+      "summary": "Upstream failure on primary model triggers seamless fallback to secondary model."
+    },
+    {
+      "case_id": "QC-V1-08",
+      "file": "08_identical_strings_bad_answer.json",
+      "behavior": "identical_strings_bad_answer",
+      "summary": "2026-10-23 verbatim echo regression fixture ('Hello, Karmi!' -> 'Hello, Karmi!')."
+    }
+  ]
+}

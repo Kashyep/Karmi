@@ -1,0 +1,38 @@
+{
+  "case_id": "QC-V1-04",
+  "family_id": "quality-corpus-v1",
+  "split": "holdout",
+  "complexity_level": 1,
+  "domain": "calendar",
+  "title": "Date and timezone in system context",
+  "description": "Harness injects current IST date/time into system prompt; user asks about today's date and timezone.",
+  "messages": [
+    {"role": "user", "content": "What is today's date and what timezone are we using?"}
+  ],
+  "turns": [
+    {
+      "turn_index": 1,
+      "user_input": "What is today's date and what timezone are we using?",
+      "history": [],
+      "mock_response": "Today is Wednesday, 21 October 2026, and we are using Indian Standard Time (IST, UTC+05:30)."
+    }
+  ],
+  "harness_expectations": {
+    "system_prompt_date_present": true,
+    "expected_timezone": "Asia/Kolkata",
+    "expected_offset": "UTC+05:30",
+    "expected_system_prompt_contains": [
+      "Current date and time:",
+      "IST (Asia/Kolkata, UTC+05:30)"
+    ]
+  },
+  "evaluation": {
+    "method": "rubric",
+    "reference_answer": "Today is Wednesday, 21 October 2026, in Indian Standard Time (IST, UTC+05:30).",
+    "rubric": [
+      {"criterion": "Names correct date from system prompt context", "weight": 1},
+      {"criterion": "Identifies IST (Asia/Kolkata or UTC+05:30)", "weight": 1}
+    ],
+    "critical_failures": ["Hallucinates a date different from system prompt context", "Ignores IST timezone context"]
+  }
+}
