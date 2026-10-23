@@ -20,8 +20,10 @@ void main() {
 
     test('leaves unknown and malformed references untouched', () {
       expect(unescapeHtmlEntities('&notAnEntity;'), '&notAnEntity;');
-      expect(unescapeHtmlEntities('&#0; &#xD800; &#x110000;'),
-          '&#0; &#xD800; &#x110000;');
+      expect(
+        unescapeHtmlEntities('&#0; &#xD800; &#x110000;'),
+        '&#0; &#xD800; &#x110000;',
+      );
       expect(unescapeHtmlEntities('&#;'), '&#;');
     });
 

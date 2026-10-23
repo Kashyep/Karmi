@@ -59,10 +59,7 @@ def solve():
       const Padding(
         padding: EdgeInsets.all(16),
         child: SingleChildScrollView(
-          child: MarkdownMessage(
-            text: renderedReplyText,
-            streaming: false,
-          ),
+          child: MarkdownMessage(text: renderedReplyText, streaming: false),
         ),
       ),
       env: const Env(brightness: Brightness.light),
@@ -81,10 +78,7 @@ def solve():
       const Padding(
         padding: EdgeInsets.all(16),
         child: SingleChildScrollView(
-          child: MarkdownMessage(
-            text: renderedReplyText,
-            streaming: false,
-          ),
+          child: MarkdownMessage(text: renderedReplyText, streaming: false),
         ),
       ),
       env: const Env(brightness: Brightness.dark),
