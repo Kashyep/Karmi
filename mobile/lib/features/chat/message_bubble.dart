@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../api/chat/chat_models.dart';
 import '../../api/models.dart';
 import '../../theme/karmi_colors.dart';
+import '../../theme/karmi_motion.dart';
 import '../../theme/karmi_theme.dart';
 import 'chat_entry.dart';
 import 'rendering/markdown_message.dart';
@@ -336,10 +337,12 @@ class _PendingNotice extends StatelessWidget {
         children: [
           SizedBox.square(
             dimension: 14,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: colors.foreground,
-            ),
+            child: KarmiAccessibility.reduceMotionOf(context)
+                ? Icon(Icons.more_horiz, size: 14, color: colors.foreground)
+                : CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.foreground,
+                  ),
           ),
           const SizedBox(width: 8),
           Flexible(

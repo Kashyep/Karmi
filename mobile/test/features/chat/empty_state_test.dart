@@ -228,132 +228,67 @@ void main() {
     );
   });
 
-  group('ChatScreen composer dock transition', () {
-    testWidgets(
-      'Case 3: Dock after send moves dock from center to bottom with 220ms curve',
-      (tester) async {
-        final fakeStream = _FakeRunStreamClient();
-        final controller = ChatController(
-          client: fakeStream,
-          deltaFlushInterval: Duration.zero,
-        );
-        final convController = ConversationListController(
-          api: _FakeConversationsApi(),
-        );
+  group('ChatScreen composer never moves', () {
+    for (final reduceMotion in [false, true]) {
+      testWidgets(
+        'composer surface rect is identical from empty state through send and streaming (reduceMotion: $reduceMotion)',
+        (tester) async {
+          final fakeStream = _FakeRunStreamClient();
+          final controller = ChatController(
+            client: fakeStream,
+            deltaFlushInterval: Duration.zero,
+          );
+          final convController = ConversationListController(
+            api: _FakeConversationsApi(),
+          );
 
-        await tester.pumpWidget(
-          _wrapWithApp(
-            reduceMotion: false,
-            child: ChatScreen(
-              api: KarmiApi(baseUrl: 'http://fake.test'),
-              chatController: controller,
-              conversationListController: convController,
-              clock: () => DateTime(2026, 1, 1, 10),
+          await tester.pumpWidget(
+            _wrapWithApp(
+              reduceMotion: reduceMotion,
+              child: ChatScreen(
+                api: KarmiApi(baseUrl: 'http://fake.test'),
+                chatController: controller,
+                conversationListController: convController,
+                clock: () => DateTime(2026, 1, 1, 10),
+              ),
             ),
-          ),
-        );
-        await tester.pump();
+          );
+          await tester.pump();
 
-        // Initially: empty state is visible and dock is centered
-        expect(
-          find.byKey(const ValueKey('new-chat-empty-state')),
-          findsOneWidget,
-        );
-        final dockFinder = find.byKey(const ValueKey('chat-composer-dock'));
-        expect(dockFinder, findsOneWidget);
-        // The dock's AnimatedPadding box always spans to the screen bottom; the
-        // visible composer surface is what moves with the dock padding.
-        final surfaceFinder = find.byKey(const ValueKey('composer-surface'));
+          expect(
+            find.byKey(const ValueKey('new-chat-empty-state')),
+            findsOneWidget,
+          );
+          final surfaceFinder = find.byKey(const ValueKey('composer-surface'));
+          final screenHeight =
+              tester.view.physicalSize.height / tester.view.devicePixelRatio;
+          final emptyRect = tester.getRect(surfaceFinder);
+          // Docked at the bottom even in the empty state.
+          expect(screenHeight - emptyRect.bottom, lessThanOrEqualTo(120.0));
 
-        final screenHeight =
-            tester.view.physicalSize.height / tester.view.devicePixelRatio;
-        final initialBottomDy = tester.getBottomLeft(surfaceFinder).dy;
+          await tester.enterText(find.byType(TextField), 'Explain gravity');
+          await tester.pump();
+          await tester.tap(find.byKey(const ValueKey('composer-send-button')));
+          await tester.pump();
+          expect(tester.getRect(surfaceFinder), emptyRect);
 
-        // In centered empty state, dock has large bottom padding (> 150px from bottom)
-        expect(screenHeight - initialBottomDy, greaterThan(150.0));
+          fakeStream.emitStarted();
+          await tester.pumpAndSettle();
 
-        // Enter text in composer and tap send
-        await tester.enterText(find.byType(TextField), 'Explain gravity');
-        await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('composer-send-button')));
-        await tester.pump();
+          expect(
+            find.byKey(const ValueKey('new-chat-empty-state')),
+            findsNothing,
+          );
+          expect(tester.getRect(surfaceFinder), emptyRect);
 
-        fakeStream.emitStarted();
-        await tester.pumpAndSettle();
-
-        // After send completes: empty state is gone
-        expect(
-          find.byKey(const ValueKey('new-chat-empty-state')),
-          findsNothing,
-        );
-
-        // Composer dock is now at the bottom (within 120px of screen bottom)
-        final dockedBottomDy = tester.getBottomLeft(surfaceFinder).dy;
-        expect(screenHeight - dockedBottomDy, lessThanOrEqualTo(120.0));
-        expect(dockedBottomDy, greaterThan(initialBottomDy));
-      },
-    );
-
-    testWidgets(
-      'Case 4: Reduced motion instant docks immediately on single pump without intermediate position',
-      (tester) async {
-        final fakeStream = _FakeRunStreamClient();
-        final controller = ChatController(
-          client: fakeStream,
-          deltaFlushInterval: Duration.zero,
-        );
-        final convController = ConversationListController(
-          api: _FakeConversationsApi(),
-        );
-
-        await tester.pumpWidget(
-          _wrapWithApp(
-            reduceMotion: true,
-            child: ChatScreen(
-              api: KarmiApi(baseUrl: 'http://fake.test'),
-              chatController: controller,
-              conversationListController: convController,
-              clock: () => DateTime(2026, 1, 1, 10),
-            ),
-          ),
-        );
-        await tester.pump();
-
-        expect(
-          find.byKey(const ValueKey('new-chat-empty-state')),
-          findsOneWidget,
-        );
-        final surfaceFinder = find.byKey(const ValueKey('composer-surface'));
-        final screenHeight =
-            tester.view.physicalSize.height / tester.view.devicePixelRatio;
-        final initialBottomDy = tester.getBottomLeft(surfaceFinder).dy;
-        expect(screenHeight - initialBottomDy, greaterThan(150.0));
-
-        // Send a message
-        await tester.enterText(find.byType(TextField), 'Reduced motion test');
-        await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('composer-send-button')));
-
-        fakeStream.emitStarted();
-
-        // Under reduced motion, duration is Duration.zero.
-        // A single pump() immediately reaches the final docked position without animation.
-        await tester.pump(Duration.zero);
-
-        expect(
-          find.byKey(const ValueKey('new-chat-empty-state')),
-          findsNothing,
-        );
-        final dockedBottomDy = tester.getBottomLeft(surfaceFinder).dy;
-        expect(screenHeight - dockedBottomDy, lessThanOrEqualTo(120.0));
-        expect(dockedBottomDy, greaterThan(initialBottomDy));
-        // The fake run never terminates, so the controller's stall timer is
-        // still pending. Unmount, then dispose the injected controllers (ChatScreen
-        // does not own them) to cancel it.
-        await tester.pumpWidget(const SizedBox.shrink());
-        controller.dispose();
-        convController.dispose();
-      },
-    );
+          // The fake run never terminates, so the controller's stall timer is
+          // still pending. Unmount, then dispose the injected controllers
+          // (ChatScreen does not own them) to cancel it.
+          await tester.pumpWidget(const SizedBox.shrink());
+          controller.dispose();
+          convController.dispose();
+        },
+      );
+    }
   });
 }
