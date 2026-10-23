@@ -16,6 +16,7 @@ from daily_agent.gateway.service import (
     build_system_prompt,
 )
 from daily_agent.gateway.types import ChatRequest, ChatResult, TaskType
+from daily_agent.models import ChatMessage
 from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.providers import ProviderCall
 from daily_agent.schemas import (
@@ -24,7 +25,9 @@ from daily_agent.schemas import (
     RegenerateCreate,
 )
 from daily_agent.services import (
+    DEFERRED_TEXT,
     HISTORY_REQUEST_CAP_BYTES,
+    history_from_messages,
     history_tokens,
     message_request_hash,
     trim_history,
@@ -144,7 +147,8 @@ def test_prompt_tokens_includes_history_routes_or_fails_context_check() -> None:
     # With len(text)=10, len(system)=675, max_output_tokens=100:
     # Text alone: (10 + 675) // 4 = 171 prompt tokens -> needed = 171 + 100 = 271.
     # Text + 4000-byte history: (10 + 675 + 4000) // 4 = 1171 prompt tokens -> needed = 1271.
-    # A model with context_length=500 accommodates text alone (271 <= 500) but rejects text + history (1271 > 500).
+    # A model with context_length=500 accommodates text alone (271 <= 500) but rejects
+    # text + history (1271 > 500).
     provider = FakeChatProvider()
     reg = make_registry(entry("vendor/tiny-context:free", "economy", context_length=500))
     gateway = Gateway(
@@ -249,7 +253,9 @@ def test_trim_history_truncation_cases() -> None:
     # 1. Long Hindi newest turn alone exceeding remaining budget:
     # Budget leaves 120 bytes
     text = "q" * (plan.input_tokens * 4 - SYSTEM_PROMPT_MAX_CHARS - 120)
-    hindi_long = HistoryTurn(role="assistant", content="नमस्ते भारत! यह एक बहुत लंबा हिंदी उत्तर है। " * 20)
+    hindi_long = HistoryTurn(
+        role="assistant", content="नमस्ते भारत! यह एक बहुत लंबा हिंदी उत्तर है। " * 20
+    )
     res_hi = trim_history([hindi_long], text=text, plan=plan)
     assert len(res_hi) == 1
     assert "[…trimmed…]" in res_hi[0].content
@@ -293,6 +299,64 @@ def test_trim_history_truncation_cases() -> None:
     # 4. Empty history:
     res_empty = trim_history([], text="hello", plan=plan)
     assert res_empty == ()
+
+
+def _stored(
+    mid: str,
+    role: str,
+    content: str,
+    *,
+    status: str = "complete",
+    parent: str | None = None,
+    variant: int = 0,
+) -> ChatMessage:
+    return ChatMessage(
+        id=mid,
+        conversation_id="conv",
+        account_id="acct",
+        role=role,
+        status=status,
+        content=content,
+        parent_message_id=parent,
+        variant_index=variant,
+    )
+
+
+def test_history_from_messages_sends_one_usable_reply_per_turn() -> None:
+    msgs = [
+        _stored("u1", "user", "q1"),
+        _stored("a1", "assistant", "old answer", parent="u1"),
+        _stored("a1b", "assistant", "regenerated answer", parent="u1", variant=1),
+        _stored("a1c", "assistant", DEFERRED_TEXT, status="failed", parent="u1", variant=2),
+        _stored("u2", "user", "q2"),
+        _stored("a2", "assistant", "half", status="streaming", parent="u2"),
+        _stored("a2b", "assistant", "", status="stopped", parent="u2", variant=1),
+        _stored("a2c", "assistant", "stopped with text", status="stopped", parent="u2", variant=2),
+        _stored("u3", "user", "q3"),
+        _stored("a3", "assistant", DEFERRED_TEXT, parent="u3"),
+    ]
+    assert history_from_messages(msgs) == [
+        HistoryTurn(role="user", content="q1"),
+        HistoryTurn(role="assistant", content="regenerated answer"),
+        HistoryTurn(role="user", content="q2"),
+        HistoryTurn(role="assistant", content="stopped with text"),
+        HistoryTurn(role="user", content="q3"),
+    ]
+
+
+def test_history_from_messages_keeps_orphan_reply_once() -> None:
+    # Parent turn outside the window: only the chosen variant is kept, at its own position.
+    msgs = [
+        _stored("x0", "assistant", "first try", parent="gone"),
+        _stored("x1", "assistant", "second try", parent="gone", variant=1),
+        _stored("u9", "user", "q9"),
+    ]
+    assert history_from_messages(msgs) == [
+        HistoryTurn(role="assistant", content="second try"),
+        HistoryTurn(role="user", content="q9"),
+    ]
+
+
 def test_message_request_hash() -> None:
     text = "Explain photosynthesis"
     expected_no_hist = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -323,9 +387,7 @@ def test_message_request_hash() -> None:
     assert h_with_t1 != h_with_t1_t2
 
     # Same history -> same hash
-    h_identical = message_request_hash(
-        text, [HistoryTurn(role="user", content="What is biology?")]
-    )
+    h_identical = message_request_hash(text, [HistoryTurn(role="user", content="What is biology?")])
     assert h_with_t1 == h_identical
 
 
@@ -340,9 +402,7 @@ def test_schema_history_validation() -> None:
             cls(
                 text="test query",
                 idempotency_key="key-12345678",
-                history=[
-                    HistoryTurn(role="user", content=f"msg {i}") for i in range(21)
-                ],
+                history=[HistoryTurn(role="user", content=f"msg {i}") for i in range(21)],
             )
 
         # 8001-char turn -> ValidationError

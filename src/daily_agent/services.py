@@ -20,6 +20,7 @@ from daily_agent.gateway.service import SYSTEM_PROMPT_MAX_CHARS
 from daily_agent.models import (
     Account,
     BudgetReservation,
+    ChatMessage,
     CostLedger,
     GatewayRequestDay,
     InboxEvent,
@@ -42,12 +43,12 @@ from daily_agent.providers import (
     classify_intent,
 )
 from daily_agent.schemas import HistoryTurn, Outcome
+from daily_agent.schemas_chat import MessageStatus
 
 logger = logging.getLogger(__name__)
 
 # Fixed cost of the local deterministic route per completed request.
 LOCAL_FAKE_COST_MICRO = 100
-
 
 
 class BudgetDenied(Exception):
@@ -150,7 +151,10 @@ def plan_for_tier(tier: int) -> str:
 
 
 def sync_theme_progression(session: Session, user: User) -> None:
-    """Sets user.unlocked_tier from the account's effective plan, clamping active_theme if needed."""
+    """Sets user.unlocked_tier from the account's effective plan.
+
+    Clamps active_theme if needed.
+    """
     subscription = session.scalar(
         select(Subscription).where(Subscription.account_id == user.account_id)
     )
@@ -163,9 +167,7 @@ def sync_theme_progression(session: Session, user: User) -> None:
 
 def sync_account_progression(session: Session, account_id: str) -> None:
     """Syncs theme progression for all users belonging to the given account."""
-    subscription = session.scalar(
-        select(Subscription).where(Subscription.account_id == account_id)
-    )
+    subscription = session.scalar(select(Subscription).where(Subscription.account_id == account_id))
     policy = plan_policy(subscription)
     unlocked = tier_for_plan(policy.plan_id)
     users = session.scalars(select(User).where(User.account_id == account_id)).all()
@@ -364,14 +366,10 @@ def _reclaim_stale_reservations(
     for row in candidates[:limit]:
         if _reservation_is_live(row, now):
             continue
-        settle_budget(
-            session, row, attempt_id=f"{row.id}:lease-expired", actual_micro=None
-        )
+        settle_budget(session, row, attempt_id=f"{row.id}:lease-expired", actual_micro=None)
         reclaimed += 1
     if reclaimed:
-        logger.warning(
-            "reclaimed %d abandoned reservations in window %s", reclaimed, window_key
-        )
+        logger.warning("reclaimed %d abandoned reservations in window %s", reclaimed, window_key)
     return reclaimed
 
 
@@ -387,7 +385,10 @@ def _reserve_hold(
     window = ensure_usage_window(session, account_id, settings)
     _reclaim_stale_reservations(session, window.window_key, now)
     token_guard = (
-        [UsageWindow.tokens_reserved + UsageWindow.tokens_settled + tokens <= UsageWindow.token_limit]
+        [
+            UsageWindow.tokens_reserved + UsageWindow.tokens_settled + tokens
+            <= UsageWindow.token_limit
+        ]
         if tokens > 0
         else []
     )
@@ -414,7 +415,10 @@ def _reserve_hold(
             tokens,
         )
         session.refresh(window)
-        if tokens > 0 and window.tokens_reserved + window.tokens_settled + tokens > window.token_limit:
+        if (
+            tokens > 0
+            and window.tokens_reserved + window.tokens_settled + tokens > window.token_limit
+        ):
             raise BudgetDenied("daily token quota exhausted", reset_at=window.reset_at)
         raise BudgetDenied("account allowance exhausted", reset_at=window.reset_at)
     subscription, policy = policy_for(session, account_id)
@@ -429,9 +433,7 @@ def _reserve_hold(
         .values(reserved_micro=UsagePeriod.reserved_micro + amount_micro)
     )
     if not isinstance(period_result, CursorResult) or period_result.rowcount != 1:
-        logger.warning(
-            "budget denied: period cap account=%s amount=%s", account_id, amount_micro
-        )
+        logger.warning("budget denied: period cap account=%s amount=%s", account_id, amount_micro)
         raise BudgetDenied("account period budget exhausted", reset_at=period.reset_at)
     platform_result = session.execute(
         update(PlatformBudget)
@@ -443,12 +445,8 @@ def _reserve_hold(
         .values(reserved_micro=PlatformBudget.reserved_micro + amount_micro)
     )
     if not isinstance(platform_result, CursorResult) or platform_result.rowcount != 1:
-        logger.warning(
-            "budget denied: platform cap account=%s amount=%s", account_id, amount_micro
-        )
-        raise BudgetDenied(
-            "platform spending is temporarily paused", reset_at=window.reset_at
-        )
+        logger.warning("budget denied: platform cap account=%s amount=%s", account_id, amount_micro)
+        raise BudgetDenied("platform spending is temporarily paused", reset_at=window.reset_at)
     return window, period
 
 
@@ -571,17 +569,13 @@ def release_budget(session: Session, reservation: BudgetReservation) -> None:
     session.execute(
         update(PlatformBudget)
         .where(PlatformBudget.window_key == window.window_key)
-        .values(
-            reserved_micro=PlatformBudget.reserved_micro - reservation.reserved_micro
-        )
+        .values(reserved_micro=PlatformBudget.reserved_micro - reservation.reserved_micro)
     )
     if reservation.usage_period_id is not None:
         session.execute(
             update(UsagePeriod)
             .where(UsagePeriod.id == reservation.usage_period_id)
-            .values(
-                reserved_micro=UsagePeriod.reserved_micro - reservation.reserved_micro
-            )
+            .values(reserved_micro=UsagePeriod.reserved_micro - reservation.reserved_micro)
         )
     logger.info(
         "released reservation %s account=%s micro=%s",
@@ -686,6 +680,7 @@ def create_task_idempotent(
     session.flush()
     return task
 
+
 @dataclass(frozen=True)
 class GenerationResult:
     response: str
@@ -762,7 +757,8 @@ def trim_history(
     """Keep the newest whole turns that fit the plan's input budget next to the system prompt and
     the current message (``bytes // 4`` estimate). Oldest turns go first; ``text`` always stays.
     If the newest turn alone exceeds the remaining budget, keep a truncated copy
-    (head + '[…trimmed…]' + tail, byte-budget aware for UTF-8 Devanagari) instead of dropping everything."""
+    (head + '[…trimmed…]' + tail, byte-budget aware for UTF-8 Devanagari) instead of dropping
+    everything."""
     total_bytes = min(plan.input_tokens * 4, HISTORY_REQUEST_CAP_BYTES)
     budget_bytes = total_bytes - SYSTEM_PROMPT_MAX_CHARS - _utf8_len(text)
     if budget_bytes <= 0:
@@ -782,8 +778,50 @@ def trim_history(
     kept.reverse()
     return tuple(kept)
 
+
 def history_tokens(history: Sequence[HistoryTurn]) -> int:
     return sum(_utf8_len(turn.content) for turn in history) // 4
+
+
+# Text persisted in place of a reply that never generated; it must not be sent back as history.
+_NON_HISTORY_REPLIES = frozenset({DEFERRED_TEXT, OVERSIZE_TEXT})
+
+
+def _usable_reply(msg: ChatMessage) -> bool:
+    if msg.status in (MessageStatus.STREAMING.value, MessageStatus.FAILED.value):
+        return False
+    return bool(msg.content) and msg.content not in _NON_HISTORY_REPLIES
+
+
+def history_from_messages(messages: Sequence[ChatMessage]) -> list[HistoryTurn]:
+    """Build model history from a conversation's messages, oldest first.
+
+    Every user message with text is kept. Each user turn contributes at most one assistant reply:
+    the usable variant with the highest ``variant_index``, so a regenerated answer replaces the
+    original. Streaming, failed, empty and placeholder replies are skipped.
+    """
+    user_ids = {m.id for m in messages if m.role == "user"}
+    chosen: dict[str, ChatMessage] = {}
+    for m in messages:
+        if m.role != "assistant" or not _usable_reply(m):
+            continue
+        key = m.parent_message_id or m.id
+        current = chosen.get(key)
+        if current is None or m.variant_index >= current.variant_index:
+            chosen[key] = m
+    turns: list[HistoryTurn] = []
+    for m in messages:
+        if m.role == "user":
+            if m.content:
+                turns.append(HistoryTurn(role="user", content=m.content))
+            reply = chosen.get(m.id)
+            if reply is not None:
+                turns.append(HistoryTurn(role="assistant", content=reply.content))
+        elif m.role == "assistant" and m.parent_message_id not in user_ids:
+            # Reply whose user turn is outside this window: keep it in place if it was chosen.
+            if chosen.get(m.parent_message_id or m.id) is m:
+                turns.append(HistoryTurn(role="assistant", content=m.content))
+    return turns
 
 
 def generate_reply(
@@ -811,20 +849,29 @@ def generate_reply(
             # The caller performs the actual Task write for this intent so the
             # response copy is only returned when the mutation really happens.
             return GenerationResult(
-                f"I have saved your task: {text.strip()}", Outcome.ACCEPT,
-                intent=intent, route="typesafe-system-one", provider_calls=routing_calls,
+                f"I have saved your task: {text.strip()}",
+                Outcome.ACCEPT,
+                intent=intent,
+                route="typesafe-system-one",
+                provider_calls=routing_calls,
             )
         if intent is not None and not live:
             return GenerationResult(
-                f"Draft ready: {text.strip()}", Outcome.ACCEPT,
-                intent=intent, route="typesafe-system-one", provider_calls=routing_calls,
+                f"Draft ready: {text.strip()}",
+                Outcome.ACCEPT,
+                intent=intent,
+                route="typesafe-system-one",
+                provider_calls=routing_calls,
             )
         # Provider unreachable or malformed response: fall through to rules.
 
     if not live:
         return GenerationResult(
-            f"Draft ready: {text.strip()}", Outcome.ACCEPT,
-            intent=None, route=LOCAL_ROUTE, provider_calls=routing_calls,
+            f"Draft ready: {text.strip()}",
+            Outcome.ACCEPT,
+            intent=None,
+            route=LOCAL_ROUTE,
+            provider_calls=routing_calls,
         )
 
     assert gateway is not None
@@ -841,8 +888,12 @@ def generate_reply(
         # No eligible model means nothing external ran: report the local route honestly.
         route = outcome.action if outcome.calls and outcome.action else LOCAL_ROUTE
         return GenerationResult(
-            DEFERRED_TEXT, Outcome.DEFERRED, intent=intent, route=route,
-            provider_calls=calls_all, release_reservation=True,
+            DEFERRED_TEXT,
+            Outcome.DEFERRED,
+            intent=intent,
+            route=route,
+            provider_calls=calls_all,
+            release_reservation=True,
         )
     assert outcome.action is not None
     return GenerationResult(
@@ -890,9 +941,7 @@ def accept_internal_event(
     )
     if existing is not None:
         if existing.payload_hash != payload_hash:
-            raise IdempotencyConflict(
-                "event id was replayed with a different payload"
-            )
+            raise IdempotencyConflict("event id was replayed with a different payload")
         return existing, False
     event = InboxEvent(
         channel=channel,

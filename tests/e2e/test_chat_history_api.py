@@ -23,6 +23,7 @@ from daily_agent.gateway import build_gateway
 from daily_agent.gateway.registry import parse_registry
 from daily_agent.models import (
     BudgetReservation,
+    ChatMessage,
     Run,
     Subscription,
     UsageWindow,
@@ -37,7 +38,11 @@ FIXED_NOW = datetime(2026, 10, 21, 16, 23, tzinfo=UTC)
 
 
 def _entry(
-    model_id: str, model_class: str = "economy", *, private: bool = False, provider: str = "openrouter"
+    model_id: str,
+    model_class: str = "economy",
+    *,
+    private: bool = False,
+    provider: str = "openrouter",
 ) -> dict[str, Any]:
     return {
         "model_id": model_id,
@@ -147,10 +152,11 @@ def reply(text: str, *, finish: str = "stop") -> httpx.Response:
 
 
 def sse_reply(text: str, *, finish: str = "stop") -> httpx.Response:
-    frames = [
-        f"data: {json.dumps({'choices': [{'delta': {'content': text}, 'finish_reason': finish}], 'usage': {'prompt_tokens': 12, 'completion_tokens': 4}})}\n\n",
-        "data: [DONE]\n\n",
-    ]
+    payload = {
+        "choices": [{"delta": {"content": text}, "finish_reason": finish}],
+        "usage": {"prompt_tokens": 12, "completion_tokens": 4},
+    }
+    frames = [f"data: {json.dumps(payload)}\n\n", "data: [DONE]\n\n"]
     return httpx.Response(
         200,
         text="".join(frames),
@@ -158,7 +164,9 @@ def sse_reply(text: str, *, finish: str = "stop") -> httpx.Response:
     )
 
 
-def unified_handler(text: str, *, finish: str = "stop") -> Callable[[httpx.Request], httpx.Response]:
+def unified_handler(
+    text: str, *, finish: str = "stop"
+) -> Callable[[httpx.Request], httpx.Response]:
     def handler(req: httpx.Request) -> httpx.Response:
         body = json.loads(req.content)
         if body.get("stream"):
@@ -166,6 +174,7 @@ def unified_handler(text: str, *, finish: str = "stop") -> Callable[[httpx.Reque
         return reply(text, finish=finish)
 
     return handler
+
 
 def identity(harness: Harness, plan_id: str = "ananta") -> tuple[str, str]:
     with harness.factory() as session:
@@ -313,7 +322,10 @@ def test_idempotent_replay_and_history_conflict(make_harness: Callable[..., Harn
     harness = make_harness([ECO_A], lambda _r: reply("Replay test answer."))
     _account, token = identity(harness)
 
-    history = [{"role": "user", "content": "prev query"}, {"role": "assistant", "content": "prev ans"}]
+    history = [
+        {"role": "user", "content": "prev query"},
+        {"role": "assistant", "content": "prev ans"},
+    ]
     first = send(harness, token, "replay-key-1", "current prompt", history=history)
     assert first.status_code == 200
     first_run_id = first.json()["run_id"]
@@ -371,9 +383,7 @@ def test_regenerate_with_history(make_harness: Callable[..., Harness]) -> None:
     assert no_hist_init.status_code == 200
     no_hist_run_id = no_hist_init.json()["run_id"]
 
-    regen_nohist = regenerate(
-        harness, token, no_hist_run_id, "regen-nohist-key-1", "solo text"
-    )
+    regen_nohist = regenerate(harness, token, no_hist_run_id, "regen-nohist-key-1", "solo text")
     assert regen_nohist.status_code == 200
 
 
@@ -456,9 +466,8 @@ def test_token_hold_counts_kept_history(make_harness: Callable[..., Harness]) ->
         # 10-byte text // 4 + 800 history bytes // 4, plus the plan's output allowance.
         assert reservation.reserved_tokens == 2 + 200 + SYNTHETIC_POLICIES["ananta"].output_tokens
 
-def test_e2e_long_hindi_history_truncated_both_routes(
-    make_harness: Callable[..., Harness]
-) -> None:
+
+def test_e2e_long_hindi_history_truncated_both_routes(make_harness: Callable[..., Harness]) -> None:
     harness = make_harness([ECO_A], unified_handler("हाँ, मैं समझ गया।"))
     _account_id, token = identity(harness)
 
@@ -522,42 +531,184 @@ def test_e2e_long_hindi_history_truncated_both_routes(
     assert stream_msgs[-1] == {"role": "user", "content": prompt_text}
     assert any("[…trimmed…]" in m["content"] for m in stream_msgs[1:-1])
 
-def test_e2e_stream_followup_includes_earlier_turn(
-    make_harness: Callable[..., Harness]
-) -> None:
+
+def scripted_handler(replies: list[tuple[str, str]]) -> Callable[[httpx.Request], httpx.Response]:
+    """Answer each provider call with the next (text, finish_reason) pair, in order."""
+    pending = list(replies)
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        text, finish = pending.pop(0)
+        if json.loads(req.content).get("stream"):
+            return sse_reply(text, finish=finish)
+        return reply(text, finish=finish)
+
+    return handler
+
+
+def stream_turn(
+    harness: Harness,
+    token: str,
+    text: str,
+    client_id: str,
+    conversation_id: str | None = None,
+) -> tuple[httpx.Response, str]:
+    body: dict[str, Any] = {"text": text, "clientMessageId": client_id}
+    if conversation_id is not None:
+        body["conversationId"] = conversation_id
+    res = harness.client.post(
+        "/v1/chat/stream", headers={"Authorization": f"Bearer {token}"}, json=body
+    )
+    with harness.factory() as session:
+        user_msg = session.scalar(
+            select(ChatMessage).where(ChatMessage.client_message_id == client_id)
+        )
+        conv_id = user_msg.conversation_id if user_msg is not None else ""
+    return res, conv_id
+
+
+def sent_turns(harness: Harness, index: int) -> list[tuple[str, str]]:
+    """Messages sent for request ``index`` minus the system prompt, as (role, content)."""
+    messages = json.loads(harness.seen[index].content)["messages"]
+    assert messages[0]["role"] == "system"
+    return [(m["role"], m["content"]) for m in messages[1:]]
+
+
+def reply_id(harness: Harness, user_text: str) -> str:
+    """Id of the newest assistant variant answering the user message with ``user_text``."""
+    with harness.factory() as session:
+        user = session.scalar(
+            select(ChatMessage).where(ChatMessage.role == "user", ChatMessage.content == user_text)
+        )
+        assert user is not None
+        latest = session.scalar(
+            select(ChatMessage)
+            .where(ChatMessage.parent_message_id == user.id)
+            .order_by(ChatMessage.variant_index.desc())
+        )
+        assert latest is not None
+        return latest.id
+
+
+def auth(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_e2e_stream_followup_includes_earlier_turn(make_harness: Callable[..., Harness]) -> None:
     harness = make_harness([ECO_A], unified_handler("Understood."))
     _account_id, token = identity(harness)
     first_q = "My name is Rosso"
-    resp_s1 = harness.client.post(
-        "/v1/chat/stream",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"text": first_q, "clientMessageId": "followup-01"},
-    )
-    assert resp_s1.status_code == 200
-    conv_id = None
-    for line in resp_s1.text.split("\n"):
-        if line.startswith("data: ") and "conversation_id" in line:
-            conv_id = json.loads(line[6:])["conversation_id"]
-            break
-    assert conv_id is not None
+    res_1, conv_id = stream_turn(harness, token, first_q, "followup-01")
+    assert res_1.status_code == 200
 
     second_q = "What is my name?"
-    resp_s2 = harness.client.post(
-        "/v1/chat/stream",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "text": second_q,
-            "conversationId": conv_id,
-            "clientMessageId": "followup-02",
-        },
-    )
-    assert resp_s2.status_code == 200
+    res_2, _ = stream_turn(harness, token, second_q, "followup-02", conv_id)
+    assert res_2.status_code == 200
     assert len(harness.seen) == 2
-    sent_body = json.loads(harness.seen[-1].content)
-    stream_msgs = sent_body["messages"]
-    assert stream_msgs[0]["role"] == "system"
-    # earlier turns included: user msg, assistant reply
-    roles_and_contents = [(m["role"], m["content"]) for m in stream_msgs[1:]]
-    assert ("user", first_q) in roles_and_contents
-    assert ("assistant", "Understood.") in roles_and_contents
-    assert ("user", second_q) == roles_and_contents[-1]
+    assert sent_turns(harness, 1) == [
+        ("user", first_q),
+        ("assistant", "Understood."),
+        ("user", second_q),
+    ]
+
+
+def test_stream_history_excludes_other_users_and_conversations(
+    make_harness: Callable[..., Harness],
+) -> None:
+    harness = make_harness(
+        [ECO_A],
+        scripted_handler(
+            [("alpha answer", "stop"), ("bravo answer", "stop"), ("gamma answer", "stop")]
+        ),
+    )
+    _account_id, token_a = identity(harness)
+    with harness.factory() as session:
+        _account_b, _user_b, token_b = create_identity(session, harness.settings, name="B")
+
+    res_a1, conv_a1 = stream_turn(harness, token_a, "alpha question", "iso-a1")
+    assert res_a1.status_code == 200
+    res_b1, _conv_b1 = stream_turn(harness, token_b, "bravo question", "iso-b1")
+    assert res_b1.status_code == 200
+    # A new conversation of user A starts with no history from conversation A1 or user B.
+    res_a2, _conv_a2 = stream_turn(harness, token_a, "gamma question", "iso-a2")
+    assert res_a2.status_code == 200
+    assert sent_turns(harness, 2) == [("user", "gamma question")]
+
+    # User B cannot reach user A's conversation at all.
+    res_cross, _ = stream_turn(harness, token_b, "bravo follow-up", "iso-b2", conv_a1)
+    assert res_cross.status_code == 404
+
+    res_a3, _ = stream_turn(harness, token_a, "delta question", "iso-a3", conv_a1)
+    assert res_a3.status_code == 200
+    assert sent_turns(harness, 3) == [
+        ("user", "alpha question"),
+        ("assistant", "alpha answer"),
+        ("user", "delta question"),
+    ]
+
+
+def test_continue_and_regenerate_send_history_without_duplicates(
+    make_harness: Callable[..., Harness],
+) -> None:
+    harness = make_harness(
+        [ECO_A],
+        scripted_handler(
+            [
+                ("first answer", "stop"),
+                ("second answer", "length"),
+                ("continued answer", "stop"),
+                ("regenerated answer", "stop"),
+            ]
+        ),
+    )
+    _account_id, token = identity(harness)
+    res_1, conv_id = stream_turn(harness, token, "first question", "dup-01")
+    assert res_1.status_code == 200
+    res_2, _ = stream_turn(harness, token, "second question", "dup-02", conv_id)
+    assert res_2.status_code == 200
+    prior = [("user", "first question"), ("assistant", "first answer")]
+    assert sent_turns(harness, 1) == [*prior, ("user", "second question")]
+
+    truncated_id = reply_id(harness, "second question")
+    cont = harness.client.post(f"/v1/messages/{truncated_id}/continue", headers=auth(token))
+    assert cont.status_code == 200
+    assert sent_turns(harness, 2) == [*prior, ("user", "second question")]
+
+    regen = harness.client.post(f"/v1/messages/{truncated_id}/regenerate", headers=auth(token))
+    assert regen.status_code == 200
+    assert sent_turns(harness, 3) == [*prior, ("user", "second question")]
+
+
+def test_next_turn_after_regenerate_sends_single_reply(
+    make_harness: Callable[..., Harness],
+) -> None:
+    harness = make_harness(
+        [ECO_A],
+        scripted_handler(
+            [
+                ("first answer", "stop"),
+                ("second answer", "stop"),
+                ("regenerated answer", "stop"),
+                ("third answer", "stop"),
+            ]
+        ),
+    )
+    _account_id, token = identity(harness)
+    res_1, conv_id = stream_turn(harness, token, "first question", "next-01")
+    assert res_1.status_code == 200
+    res_2, _ = stream_turn(harness, token, "second question", "next-02", conv_id)
+    assert res_2.status_code == 200
+
+    regen = harness.client.post(
+        f"/v1/messages/{reply_id(harness, 'second question')}/regenerate", headers=auth(token)
+    )
+    assert regen.status_code == 200
+
+    res_3, _ = stream_turn(harness, token, "third question", "next-03", conv_id)
+    assert res_3.status_code == 200
+    assert sent_turns(harness, 3) == [
+        ("user", "first question"),
+        ("assistant", "first answer"),
+        ("user", "second question"),
+        ("assistant", "regenerated answer"),
+        ("user", "third question"),
+    ]
