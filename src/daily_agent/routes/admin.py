@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, StrictInt, StringConstraints, model_validator
 from sqlalchemy.orm import Session
 
 from daily_agent import admin_service as svc
@@ -45,8 +45,34 @@ class ReasonBody(BaseModel):
 
 
 class TierBody(ReasonBody):
-    tier: str | int
+    tier: str | StrictInt
+    expires_at: datetime | None = None
 
+    @model_validator(mode="after")
+    def future_expiry(self) -> TierBody:
+        if self.expires_at is not None:
+            expiry = self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=UTC)
+            if expiry <= datetime.now(UTC):
+                raise ValueError("expires_at must be in the future")
+            self.expires_at = expiry
+        return self
+
+
+class UserEditBody(ReasonBody):
+    display_name: str | None = Field(default=None, max_length=120)
+    tester: bool | None = None
+    tester_label: str | None = Field(default=None, max_length=40)
+    admin_notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_edit(self) -> UserEditBody:
+        if self.display_name is not None and not self.display_name.strip():
+            raise ValueError("display_name cannot be blank")
+        return self
+
+
+class BulkTierBody(TierBody):
+    user_ids: list[str] = Field(min_length=1, max_length=100)
 
 class CreditsBody(ReasonBody):
     delta_usd: float | None = Field(default=None, ge=-1_000_000, le=1_000_000)
@@ -116,13 +142,17 @@ def users(
     q: str | None = Query(default=None, max_length=200),
     tier: str | None = Query(default=None, max_length=20),
     status_filter: str | None = Query(default=None, alias="status", max_length=20),
+    tester_label: str | None = Query(default=None, max_length=40),
+    suspended: bool | None = None,
+    plan_expiring_before: datetime | None = None,
     limit: int = Query(default=25, ge=1, le=svc.MAX_PAGE),
     cursor: str | None = Query(default=None, max_length=64),
     _admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     return svc.list_users(
-        session, q=q, tier=tier, state=status_filter, limit=limit, cursor=cursor
+        session, q=q, tier=tier, state=status_filter, tester_label=tester_label,
+        suspended=suspended, plan_expiring_before=plan_expiring_before, limit=limit, cursor=cursor
     )
 
 
@@ -134,6 +164,19 @@ def user_detail(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     return svc.user_detail(session, settings, admin.user.id, user_id)
+@router.patch("/users/{user_id}")
+def edit_user(
+    user_id: str,
+    body: UserEditBody,
+    admin: AdminContext = Depends(require_admin_session),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    return svc.edit_user(
+        session, settings, admin.user.id, user_id,
+        display_name=body.display_name, tester=body.tester,
+        tester_label=body.tester_label, admin_notes=body.admin_notes, reason=body.reason,
+    )
 
 
 @router.post("/users/{user_id}/suspend")
@@ -153,8 +196,9 @@ def unsuspend_user(
     body: ReasonBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    return svc.unsuspend(session, admin.user.id, user_id, body.reason)
+    return svc.unsuspend(session, settings, admin.user.id, user_id, body.reason)
 
 
 @router.post("/users/{user_id}/revoke-sessions")
@@ -163,9 +207,10 @@ def revoke_user_sessions(
     body: ReasonBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
     clerk: ClerkBackend | None = Depends(get_clerk_backend),
 ) -> dict[str, Any]:
-    return svc.revoke_sessions(session, admin.user.id, user_id, body.reason, clerk)
+    return svc.revoke_sessions(session, settings, admin.user.id, user_id, body.reason, clerk)
 
 
 @router.post("/users/{user_id}/tier")
@@ -176,7 +221,17 @@ def set_user_tier(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    return svc.change_tier(session, settings, admin.user.id, user_id, body.tier, body.reason)
+    return svc.change_tier(session, settings, admin.user.id, user_id, body.tier, body.reason, body.expires_at)
+
+
+@router.post("/users/bulk-tier")
+def bulk_tier(
+    body: BulkTierBody,
+    admin: AdminContext = Depends(require_admin_session),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    return svc.bulk_change_tier(session, settings, admin.user.id, body.user_ids, body.tier, body.reason, body.expires_at)
 
 
 @router.post("/users/{user_id}/credits")

@@ -126,10 +126,17 @@ def subscription_period(anchor: date, now: datetime | None = None) -> tuple[str,
 
 
 def plan_policy(subscription: Subscription | None) -> PlanPolicy:
-    """Effective plan: an active subscription's plan, else the free tier."""
+    """Return the currently effective plan, lazily reverting expired overrides."""
     if subscription is None or subscription.status != "active":
         return SYNTHETIC_POLICIES["ananta"]
-    return SYNTHETIC_POLICIES.get(subscription.plan_id, SYNTHETIC_POLICIES["ananta"])
+    expires_at = subscription.tier_expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at is not None and expires_at <= datetime.now(UTC):
+        plan_id = subscription.revert_plan_id or "ananta"
+    else:
+        plan_id = subscription.plan_id
+    return SYNTHETIC_POLICIES.get(plan_id, SYNTHETIC_POLICIES["ananta"])
 
 
 def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPolicy]:
@@ -139,7 +146,19 @@ def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPol
         subscription = Subscription(account_id=account_id, plan_id="ananta")
         session.add(subscription)
         session.flush()
-    return subscription, plan_policy(subscription)
+    policy = plan_policy(subscription)
+    expires_at = subscription.tier_expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at is not None and expires_at <= datetime.now(UTC):
+        subscription.plan_id = policy.plan_id
+        subscription.tier_expires_at = None
+        subscription.revert_plan_id = None
+        for user in session.scalars(select(User).where(User.account_id == account_id)):
+            user.unlocked_tier = tier_for_plan(policy.plan_id)
+            if user.active_theme > user.unlocked_tier:
+                user.active_theme = user.unlocked_tier
+    return subscription, policy
 
 
 PLAN_TO_TIER: dict[str, int] = {
@@ -225,6 +244,15 @@ def ensure_usage_window(session: Session, account_id: str, settings: Settings) -
             if window is None:
                 raise
     platform = session.get(PlatformBudget, key)
+    desired_daily = policy.everyday_limit
+    desired_tokens = policy.daily_token_limit
+    desired_spend = policy.request_cost_cap_micro * policy.everyday_limit
+    if window.everyday_limit != desired_daily:
+        window.everyday_limit = desired_daily
+    if window.token_limit != desired_tokens:
+        window.token_limit = desired_tokens
+    if window.spend_limit_micro != desired_spend:
+        window.spend_limit_micro = desired_spend
     if platform is None:
         try:
             with session.begin_nested():
@@ -279,6 +307,8 @@ def ensure_usage_period(
             ).first()
             if period is None:
                 raise
+    if period.spend_limit_micro != policy.period_cost_cap_micro:
+        period.spend_limit_micro = policy.period_cost_cap_micro
     return period
 
 
