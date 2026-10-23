@@ -87,8 +87,11 @@ def _dummy() -> str:
     return _dummy_hash
 
 
-def enroll_code(session: Session, user: User, code: str) -> None:
-    """Create or rotate a developer's code; clears any lockout and revokes open sessions."""
+def stage_enroll_code(session: Session, user: User, code: str) -> None:
+    """Create or rotate a developer's code; clears any lockout and revokes open sessions.
+
+    Stages the change only: the caller commits, so enrollment and its audit row are atomic.
+    """
     validate_code(code)
     now = datetime.now(UTC)
     credential = session.get(AdminCredential, user.id)
@@ -100,6 +103,10 @@ def enroll_code(session: Session, user: User, code: str) -> None:
         credential.locked_until = None
         credential.updated_at = now
     revoke_admin_sessions(session, user.id)
+
+
+def enroll_code(session: Session, user: User, code: str) -> None:
+    stage_enroll_code(session, user, code)
     session.commit()
 
 
@@ -156,7 +163,14 @@ def forbid_unless_admin(session: Session, settings: Settings, principal: Princip
 
 def open_session(session: Session, user: User, code: str) -> tuple[str, datetime]:
     now = datetime.now(UTC)
-    credential = session.get(AdminCredential, user.id)
+    # Row lock (FOR UPDATE): concurrent guesses for one developer serialise here, so the lockout
+    # check and the failure count cannot race past MAX_FAILED_ATTEMPTS.
+    credential = session.scalar(
+        select(AdminCredential)
+        .where(AdminCredential.user_id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if credential is not None and credential.locked_until is not None:
         remaining = as_utc(credential.locked_until) - now
         if remaining > timedelta(0):

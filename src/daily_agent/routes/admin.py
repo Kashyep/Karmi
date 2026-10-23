@@ -23,6 +23,7 @@ from daily_agent.admin_auth import (
     require_admin_session,
 )
 from daily_agent.admin_metrics import METRICS
+from daily_agent.clerk_backend import ClerkBackend, get_clerk_backend
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import get_session
 from daily_agent.deps import gateway_dependency
@@ -141,8 +142,9 @@ def suspend_user(
     body: ReasonBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    return svc.suspend(session, admin.user.id, user_id, body.reason)
+    return svc.suspend(session, settings, admin.user.id, user_id, body.reason)
 
 
 @router.post("/users/{user_id}/unsuspend")
@@ -161,8 +163,9 @@ def revoke_user_sessions(
     body: ReasonBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    clerk: ClerkBackend | None = Depends(get_clerk_backend),
 ) -> dict[str, Any]:
-    return svc.revoke_sessions(session, admin.user.id, user_id, body.reason)
+    return svc.revoke_sessions(session, admin.user.id, user_id, body.reason, clerk)
 
 
 @router.post("/users/{user_id}/tier")
@@ -171,8 +174,9 @@ def set_user_tier(
     body: TierBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    return svc.change_tier(session, admin.user.id, user_id, body.tier, body.reason)
+    return svc.change_tier(session, settings, admin.user.id, user_id, body.tier, body.reason)
 
 
 @router.post("/users/{user_id}/credits")
@@ -216,8 +220,9 @@ def delete_user(
     body: DeleteBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    return svc.erase_user(session, admin.user.id, user_id, body.reason)
+    return svc.erase_user(session, settings, admin.user.id, user_id, body.reason)
 
 
 @router.get("/monitor")

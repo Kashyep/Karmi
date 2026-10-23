@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import get_session
-from daily_agent.models import Account, Subscription, User
+from daily_agent.models import Account, ErasedClerkSubject, Subscription, User
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,11 @@ ACTIVITY_TOUCH_INTERVAL = timedelta(seconds=60)
 def as_utc(value: datetime) -> datetime:
     """SQLite returns naive datetimes; every stored instant is UTC."""
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def clerk_subject_digest(subject: str) -> str:
+    """Stored form of a Clerk subject (erasure tombstones); the raw id is never persisted."""
+    return hashlib.sha256(subject.encode()).hexdigest()
 
 
 def _admit_user(session: Session, user: User, issued_at: int | None = None) -> None:
@@ -117,6 +122,11 @@ def verify_clerk_token(token: str, settings: Settings, session: Session) -> Prin
 
     user = session.scalar(select(User).where(User.clerk_subject == subject))
     if user is None:
+        if session.get(ErasedClerkSubject, clerk_subject_digest(subject)) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "ACCOUNT_ERASED", "message": "this account was deleted"},
+            )
         display_name = claims.get("name")
         if not isinstance(display_name, str) or not display_name.strip():
             display_name = "Karmi user"

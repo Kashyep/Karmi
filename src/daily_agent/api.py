@@ -105,7 +105,7 @@ from daily_agent.services import (
     trim_history,
 )
 from daily_agent.streaming.registry import sweep_interrupted_runs
-from daily_agent.web import build_manifest, render_admin_page, render_shell
+from daily_agent.web import admin_page_headers, build_manifest, render_admin_page, render_shell
 
 logger = logging.getLogger(__name__)
 
@@ -188,44 +188,6 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
         user = seed_development_identity(session, role=role)
         return {"token": issue_development_token(user, settings), "user_id": user.id}
-
-    @app.get("/admin/overview")
-    def admin_overview(
-        _admin: Principal = Depends(require_admin),
-        session: Session = Depends(get_session),
-        settings: Settings = Depends(get_settings),
-    ) -> dict[str, object]:
-        statuses = session.execute(select(Run.status, func.count()).group_by(Run.status)).all()
-        return {
-            "customers": session.scalar(select(func.count()).select_from(Account)) or 0,
-            "runs_by_status": {str(run_status): count for run_status, count in statuses},
-            "open_reservations": session.scalar(
-                select(func.count())
-                .select_from(BudgetReservation)
-                .where(BudgetReservation.status == "reserved")
-            )
-            or 0,
-            "live_models": settings.live_models_enabled,
-            "whatsapp": "policy_disabled",
-            "raw_message_access": "not_available",
-        }
-
-    @app.get("/admin/runs")
-    def admin_runs(
-        _admin: Principal = Depends(require_admin),
-        session: Session = Depends(get_session),
-    ) -> list[dict[str, object]]:
-        runs = session.scalars(select(Run).order_by(Run.created_at.desc(), Run.id.desc()).limit(100)).all()
-        return [
-            {
-                "run_id": run.id,
-                "status": run.status,
-                "outcome": run.outcome,
-                "account_ref": hashlib.sha256(run.account_id.encode()).hexdigest()[:12],
-                "response": "redacted",
-            }
-            for run in runs
-        ]
 
     @app.get("/v1/usage", response_model=UsageView)
     def usage(
@@ -844,7 +806,10 @@ def create_app() -> FastAPI:
 
     @app.get("/admin", include_in_schema=False)
     def admin_page(settings: Settings = Depends(get_settings)) -> HTMLResponse:
-        return HTMLResponse(render_admin_page(publishable_key=settings.clerk_publishable_key))
+        return HTMLResponse(
+            render_admin_page(publishable_key=settings.clerk_publishable_key),
+            headers=admin_page_headers(publishable_key=settings.clerk_publishable_key),
+        )
 
     @app.get("/static/{path:path}", include_in_schema=False)
     def static_file(path: str) -> FileResponse:

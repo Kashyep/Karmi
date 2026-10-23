@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from daily_agent.admin_auth import append_audit, revoke_admin_sessions
 from daily_agent.admin_metrics import RequestMetrics
+from daily_agent.clerk_backend import ClerkBackend, ClerkBackendError
 from daily_agent.config import Settings
 from daily_agent.gateway import Gateway
 from daily_agent.models import (
@@ -33,6 +34,7 @@ from daily_agent.models import (
     ChatMessage,
     Conversation,
     CostLedger,
+    ErasedClerkSubject,
     MessageFeedback,
     OutboxEvent,
     PlatformBudget,
@@ -47,7 +49,7 @@ from daily_agent.models import (
     User,
 )
 from daily_agent.plans import SYNTHETIC_POLICIES
-from daily_agent.security import as_utc
+from daily_agent.security import as_utc, clerk_subject_digest
 from daily_agent.services import (
     current_window_key,
     ensure_usage_period,
@@ -211,10 +213,34 @@ def _revoke_all(session: Session, user: User) -> None:
     revoke_admin_sessions(session, user.id)
 
 
-def suspend(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+def _refuse_admin_target(
+    session: Session, settings: Settings, admin_id: str, user: User, action: str, reason: str
+) -> None:
+    """Admins cannot act on another admin's account; the attempt is audited, then refused."""
+    if user.clerk_subject not in settings.admin_clerk_user_ids and user.role != "admin":
+        return
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action=f"{action}.denied",
+        target_user_id=user.id,
+        reason=reason,
+        detail={"refused": "target_is_admin"},
+    )
+    session.commit()
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": "ADMIN_TARGET_PROTECTED", "message": "admins cannot act on another admin"},
+    )
+
+
+def suspend(
+    session: Session, settings: Settings, admin_id: str, user_id: str, reason: str
+) -> dict[str, Any]:
     if user_id == admin_id:
         raise _bad("admins cannot suspend themselves")
     user = _load_user(session, user_id)
+    _refuse_admin_target(session, settings, admin_id, user, "user.suspend", reason)
     before = user.disabled
     user.disabled = True
     _revoke_all(session, user)
@@ -246,8 +272,35 @@ def unsuspend(session: Session, admin_id: str, user_id: str, reason: str) -> dic
     return user_item(user, _subscription(session, user.account_id))
 
 
-def revoke_sessions(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+def revoke_sessions(
+    session: Session,
+    admin_id: str,
+    user_id: str,
+    reason: str,
+    clerk: ClerkBackend | None,
+) -> dict[str, Any]:
+    """End the user's Clerk sessions, then reject every token issued before now locally."""
     user = _load_user(session, user_id)
+    clerk_revoked = 0
+    if user.clerk_subject is not None:
+        if clerk is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "CLERK_SECRET_NOT_CONFIGURED",
+                    "message": (
+                        "revoking Clerk sessions needs DAILY_AGENT_CLERK_SECRET_KEY; "
+                        "suspend the user instead to cut access"
+                    ),
+                },
+            )
+        try:
+            clerk_revoked = clerk.revoke_user_sessions(user.clerk_subject)
+        except ClerkBackendError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"code": "CLERK_REVOKE_FAILED", "message": str(exc)},
+            ) from exc
     _revoke_all(session, user)
     append_audit(
         session,
@@ -255,17 +308,28 @@ def revoke_sessions(session: Session, admin_id: str, user_id: str, reason: str) 
         action="user.revoke_sessions",
         target_user_id=user.id,
         reason=reason,
-        detail={"token_version": user.token_version},
+        detail={"token_version": user.token_version, "clerk_sessions_revoked": clerk_revoked},
     )
     session.commit()
-    return {"revoked": True, "token_version": user.token_version}
+    return {
+        "revoked": True,
+        "token_version": user.token_version,
+        "clerk_sessions_revoked": clerk_revoked,
+    }
 
 
 def change_tier(
-    session: Session, admin_id: str, user_id: str, tier: str | int, reason: str
+    session: Session,
+    settings: Settings,
+    admin_id: str,
+    user_id: str,
+    tier: str | int,
+    reason: str,
 ) -> dict[str, Any]:
     plan = parse_tier(tier)
     user = _load_user(session, user_id)
+    _refuse_admin_target(session, settings, admin_id, user, "user.tier", reason)
+
     subscription = _subscription(session, user.account_id)
     if subscription is None:
         subscription = Subscription(account_id=user.account_id, plan_id="ananta")
@@ -445,7 +509,9 @@ def export_user(session: Session, admin_id: str, user_id: str, reason: str) -> d
     return payload
 
 
-def erase_user(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+def erase_user(
+    session: Session, settings: Settings, admin_id: str, user_id: str, reason: str
+) -> dict[str, Any]:
     """Irreversibly delete the user, their account and everything keyed to it.
 
     Rows are removed explicitly (children first) so erasure is complete even on engines
@@ -454,6 +520,7 @@ def erase_user(session: Session, admin_id: str, user_id: str, reason: str) -> di
     if user_id == admin_id:
         raise _bad("admins cannot delete themselves")
     user = _load_user(session, user_id)
+    _refuse_admin_target(session, settings, admin_id, user, "user.erase", reason)
     account_id = user.account_id
     others = session.scalar(
         select(func.count()).select_from(User).where(User.account_id == account_id, User.id != user.id)
@@ -487,6 +554,12 @@ def erase_user(session: Session, admin_id: str, user_id: str, reason: str) -> di
     purge("subscriptions", delete(Subscription).where(Subscription.account_id == account_id))
     purge("admin_sessions", delete(AdminSession).where(AdminSession.user_id == user.id))
     purge("admin_credentials", delete(AdminCredential).where(AdminCredential.user_id == user.id))
+    if user.clerk_subject is not None:
+        session.merge(
+            ErasedClerkSubject(
+                subject_hash=clerk_subject_digest(user.clerk_subject), erased_at=datetime.now(UTC)
+            )
+        )
     purge("users", delete(User).where(User.id == user.id))
     purge("accounts", delete(Account).where(Account.id == account_id))
     append_audit(
@@ -534,7 +607,7 @@ def list_runs(session: Session, *, limit: int, cursor: str | None) -> dict[str, 
     if cursor:
         try:
             stamp, run_id = cursor.split("|", 1)
-            at = datetime.fromisoformat(stamp)
+            at = as_utc(datetime.fromisoformat(stamp))
         except ValueError:
             raise _bad("invalid cursor") from None
         stmt = stmt.where(
@@ -560,7 +633,8 @@ def list_runs(session: Session, *, limit: int, cursor: str | None) -> dict[str, 
             for run in page
         ],
         "next_cursor": (
-            f"{as_utc(page[-1].created_at).replace(tzinfo=None).isoformat()}|{page[-1].id}"
+            f"{as_utc(page[-1].created_at).astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%S.%fZ')}"
+            f"|{page[-1].id}"
             if len(rows) > limit and page
             else None
         ),

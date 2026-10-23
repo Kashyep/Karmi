@@ -118,17 +118,8 @@ def test_admin_endpoints_are_role_scoped_and_redacted(test_context: dict[str, ob
         _same_account, _admin, admin_token = create_identity(
             session, settings, name="Admin", role="admin"  # type: ignore[arg-type]
         )
-    assert client.get("/admin/overview", headers=auth(customer_token)).status_code == 403  # type: ignore[union-attr]
-    overview = client.get("/admin/overview", headers=auth(admin_token))  # type: ignore[union-attr]
-    assert overview.status_code == 200
-    assert overview.json()["raw_message_access"] == "not_available"
-    assert overview.json()["live_models"] is False
-    settings.live_models_enabled = True  # type: ignore[union-attr]
-    overview = client.get("/admin/overview", headers=auth(admin_token))  # type: ignore[union-attr]
-    assert overview.json()["live_models"] is True
-    runs = client.get("/admin/runs", headers=auth(admin_token))  # type: ignore[union-attr]
-    assert runs.status_code == 200
-    assert all(row["response"] == "redacted" for row in runs.json())
+    assert client.get("/admin/overview", headers=auth(admin_token)).status_code == 404  # type: ignore[union-attr]
+    assert client.get("/admin/runs", headers=auth(admin_token)).status_code == 404  # type: ignore[union-attr]
 
 
 def test_billing_sandbox_is_not_routed_in_production(
