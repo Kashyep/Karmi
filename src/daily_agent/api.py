@@ -19,6 +19,7 @@ from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_fo
 from daily_agent.admin_metrics import MetricsMiddleware
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_engine, get_session
+from daily_agent.db_admission import DatabaseBusy
 from daily_agent.deps import gateway_dependency, limited_principal, own_run
 from daily_agent.gateway import Gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
@@ -154,6 +155,20 @@ def create_app() -> FastAPI:
                     "code": "INPUT_TOO_LARGE",
                     "message": str(exc),
                     "max_input_tokens": exc.max_input_tokens,
+                }
+            },
+        )
+
+    @app.exception_handler(DatabaseBusy)
+    def database_busy(_request: Request, exc: DatabaseBusy) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            headers={"Retry-After": str(exc.retry_after_s)},
+            content={
+                "detail": {
+                    "code": "DATABASE_BUSY",
+                    "message": str(exc),
+                    "retry_after_s": exc.retry_after_s,
                 }
             },
         )

@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     database_pool_timeout: int = Field(default=15, ge=1, le=120)
     database_connect_timeout: int = Field(default=15, ge=1, le=120)
     database_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86_400)
+    # A request waits this long for a free DB slot (pool size + overflow, per process) before it
+    # is refused with 503 + Retry-After. Waiting here keeps queued requests off the pool timeout.
+    database_admission_wait_seconds: float = Field(default=10.0, gt=0, le=120)
     redis_url: str | None = None
     # Redis calls fail open after this timeout; the in-process fallbacks take over.
     redis_socket_timeout_seconds: float = Field(default=0.25, gt=0, le=10)

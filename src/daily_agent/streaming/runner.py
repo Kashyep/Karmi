@@ -16,6 +16,12 @@ from sqlalchemy.pool import SingletonThreadPool
 
 from daily_agent.config import Settings
 from daily_agent.conversations.service import touch_conversation
+from daily_agent.db_admission import (
+    RUNNER_WAIT_SECONDS,
+    acquire_for_factory_async,
+    leased_session,
+    run_with_lease,
+)
 from daily_agent.gateway.service import Gateway, build_system_prompt
 from daily_agent.gateway.types import (
     CapacityFullError,
@@ -166,7 +172,10 @@ class StreamRunner:
     async def _run_in_thread(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         if self._is_sqlite_singleton_memory():
             return fn(*args, **kwargs)
-        return await asyncio.to_thread(fn, *args, **kwargs)
+        # Take the DB slot on the loop, then run the section in a thread holding it. Waiting for
+        # the slot inside the thread would pin one of AnyIO's worker threads per waiting stream.
+        lease = await acquire_for_factory_async(self.session_factory, RUNNER_WAIT_SECONDS)
+        return await asyncio.to_thread(run_with_lease, lease, fn, *args, **kwargs)
 
     def _flush_db(
         self,
@@ -187,7 +196,7 @@ class StreamRunner:
         single final copy: ``response_text`` when the run completes, ``partial_text`` when it is
         cancelled or fails.
         """
-        with self._flush_lock, self.session_factory() as session:
+        with self._flush_lock, leased_session(self.session_factory) as session:
             run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
             if run is not None:
                 run.last_seq = self.seq
@@ -226,7 +235,7 @@ class StreamRunner:
             self.last_flushed_len = len(text)
 
     def _touch_heartbeat(self) -> None:
-        with self._flush_lock, self.session_factory() as session:
+        with self._flush_lock, leased_session(self.session_factory) as session:
             run = session.scalar(select(Run).where(Run.id == self.run_state.run_id))
             if run is not None:
                 run.heartbeat_at = utcnow()
@@ -237,7 +246,7 @@ class StreamRunner:
             if self._budget_settled:
                 return
             self._budget_settled = True
-            with self.session_factory() as session:
+            with leased_session(self.session_factory) as session:
                 reservation = session.get(BudgetReservation, self.reservation_id)
                 if reservation is not None:
                     if release or (self.final_call is None and not self.accumulated_text):
