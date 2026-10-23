@@ -16,6 +16,10 @@ class KarmiSettings extends ChangeNotifier {
 
   static const _keyApiBaseUrl = 'api_base_url';
   static const _keyTesterNoticeVersion = 'acknowledged_tester_notice_version';
+  static const _keyOnboardingStep = 'onboarding_active_step';
+  static const _keyHasCompletedOnboarding = 'has_completed_onboarding';
+  static const _keyPreferredLanguage = 'preferred_language';
+  static const _keyPromptMode = 'prompt_mode';
   final SharedPreferences _prefs;
   bool _reduceTransparency;
   ThemeMode _themeMode;
@@ -72,5 +76,34 @@ class KarmiSettings extends ChangeNotifier {
     _acknowledgedNoticeVersion = version;
     notifyListeners();
     await _prefs.setInt(_keyTesterNoticeVersion, version);
+  }
+
+  int get onboardingStep => _prefs.getInt(_keyOnboardingStep) ?? 0;
+
+  Future<void> setOnboardingStep(int step) async {
+    notifyListeners();
+    await _prefs.setInt(_keyOnboardingStep, step);
+  }
+
+  bool get hasCompletedOnboarding =>
+      _prefs.getBool(_keyHasCompletedOnboarding) ?? false;
+
+  Future<void> setHasCompletedOnboarding(bool value) async {
+    notifyListeners();
+    await _prefs.setBool(_keyHasCompletedOnboarding, value);
+  }
+
+  String? get preferredLanguage => _prefs.getString(_keyPreferredLanguage);
+
+  Future<void> setPreferredLanguage(String lang) async {
+    notifyListeners();
+    await _prefs.setString(_keyPreferredLanguage, lang);
+  }
+
+  String? get promptMode => _prefs.getString(_keyPromptMode);
+
+  Future<void> setPromptMode(String mode) async {
+    notifyListeners();
+    await _prefs.setString(_keyPromptMode, mode);
   }
 }

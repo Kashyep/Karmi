@@ -10,6 +10,7 @@ import 'package:karmi_app/features/chat/error_card.dart';
 import 'package:karmi_app/features/chat/message_bubble.dart';
 import 'package:karmi_app/features/plans/plan_selection_screen.dart';
 import 'package:karmi_app/features/tasks/task_confirmation_sheet.dart';
+import 'package:karmi_app/features/onboarding/onboarding.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/widgets/feedback.dart';
@@ -615,7 +616,7 @@ void main() {
     await send(tester, 'hello');
     await settle(tester);
     expect(app.session.isSignedIn, isFalse);
-    expect(find.text('Session ended'), findsOneWidget);
+    expect(find.byType(OnboardingFlow), findsOneWidget);
     await tester.pumpWidget(
       MaterialApp(
         theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),

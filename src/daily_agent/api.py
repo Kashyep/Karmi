@@ -58,6 +58,8 @@ from daily_agent.schemas import (
     TaskCreate,
     TaskView,
     UsageView,
+    UserProfileUpdate,
+    UserProfileView,
 )
 from daily_agent.security import (
     Principal,
@@ -289,6 +291,29 @@ def create_app() -> FastAPI:
             active_theme=user.active_theme,
             tiers=list(ARMORY_TIERS),
         )
+
+    @app.get("/v1/user/profile", response_model=UserProfileView)
+    def get_user_profile(
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> UserProfileView:
+        user = session.get(User, principal.user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+        return UserProfileView(id=user.id, display_name=user.display_name)
+
+    @app.patch("/v1/user/profile", response_model=UserProfileView)
+    def update_user_profile(
+        body: UserProfileUpdate,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> UserProfileView:
+        user = session.get(User, principal.user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+        user.display_name = body.display_name.strip()
+        session.commit()
+        return UserProfileView(id=user.id, display_name=user.display_name)
 
     @app.get("/v1/tasks", response_model=list[TaskView])
     def list_tasks(

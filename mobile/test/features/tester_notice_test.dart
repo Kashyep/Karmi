@@ -5,7 +5,7 @@ import 'package:karmi_app/armory/armory_controller.dart';
 import 'package:karmi_app/auth/session.dart';
 import 'package:karmi_app/features/welcome/tester_notice.dart';
 import 'package:karmi_app/features/welcome/tester_notice_screen.dart';
-import 'package:karmi_app/features/welcome/welcome_screen.dart';
+import 'package:karmi_app/features/onboarding/onboarding.dart';
 import 'package:karmi_app/settings/karmi_settings.dart';
 import 'package:karmi_app/shell/karmi_shell.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -62,7 +62,7 @@ void main() {
   });
 
   testWidgets(
-    'unacknowledged without session leads to WelcomeScreen after acknowledgment',
+    'unacknowledged without session leads to OnboardingFlow after acknowledgment',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
@@ -90,13 +90,13 @@ void main() {
       await tester.pump();
 
       expect(find.byType(TesterNoticeScreen), findsOneWidget);
-      expect(find.byType(WelcomeScreen), findsNothing);
+      expect(find.byType(OnboardingFlow), findsNothing);
 
       await tester.tap(find.text('I Understand and Acknowledge'));
       await tester.pumpAndSettle();
 
       expect(find.byType(TesterNoticeScreen), findsNothing);
-      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(find.byType(OnboardingFlow), findsOneWidget);
     },
   );
 

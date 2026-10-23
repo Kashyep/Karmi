@@ -186,19 +186,19 @@ void main() {
 
   // Device: Tab focused "Continue (development sign-in)" but the 2px ring was
   // drawn in --ring, which equals the --primary fill, so nothing changed.
-  testWidgets('a focused filled button changes visibly (Welcome)', (
+  testWidgets('a focused filled button changes visibly (Onboarding)', (
     tester,
   ) async {
     await pumpApp(tester, signedIn: false);
     final button = find.widgetWithText(
       FilledButton,
-      'Continue (development sign-in)',
+      'Get Started',
     );
     final changed = await changedPixels(
       tester,
       tester.getRect(button),
       () =>
-          focusByKeyboard(tester, find.text('Continue (development sign-in)')),
+          focusByKeyboard(tester, find.text('Get Started')),
     );
     expect(changed, greaterThan(400), reason: 'changed=$changed');
   });

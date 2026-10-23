@@ -154,6 +154,20 @@ class KarmiApi {
     return TaskView.fromJson(body as Map<String, dynamic>);
   }
 
+  Future<UserProfileView> getProfile() async {
+    final body = await _send('GET', '/v1/user/profile');
+    return UserProfileView.fromJson(body as Map<String, dynamic>);
+  }
+
+  Future<UserProfileView> updateProfile(String displayName) async {
+    final body = await _send(
+      'PATCH',
+      '/v1/user/profile',
+      json: {'display_name': displayName},
+    );
+    return UserProfileView.fromJson(body as Map<String, dynamic>);
+  }
+
   Future<ArmoryView> getArmory() => _armory(_send('GET', '/v1/armory'));
 
   /// Throws [TierLockedException] when [tier] is above the unlocked tier.

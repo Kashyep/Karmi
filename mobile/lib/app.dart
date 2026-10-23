@@ -10,7 +10,7 @@ import 'features/admin/admin_controller.dart';
 import 'features/admin/admin_shell.dart';
 import 'features/history/conversation_list.dart';
 import 'features/history/conversation_list_controller.dart';
-import 'features/welcome/welcome_screen.dart';
+import 'features/onboarding/onboarding.dart';
 import 'features/welcome/tester_notice.dart';
 import 'features/welcome/tester_notice_screen.dart';
 import 'settings/karmi_settings.dart';
@@ -173,7 +173,7 @@ class _KarmiAppState extends State<KarmiApp> {
                     key: const ValueKey('admin_shell'),
                     controller: widget.admin!,
                   )
-                : _signedIn
+                : _signedIn && widget.settings.hasCompletedOnboarding
                 ? KarmiShell(
                     key: const ValueKey('shell'),
                     api: widget.session.api,
@@ -215,10 +215,13 @@ class _KarmiAppState extends State<KarmiApp> {
                           ),
                     ),
                   )
-                : WelcomeScreen(
-                    key: const ValueKey('welcome'),
+                : OnboardingFlow(
+                    key: const ValueKey('onboarding_flow'),
                     session: widget.session,
                     settings: widget.settings,
+                    onComplete: () {
+                      setState(() {});
+                    },
                   ),
           ),
         );

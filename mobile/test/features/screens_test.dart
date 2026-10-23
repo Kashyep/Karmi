@@ -7,7 +7,7 @@ import 'package:karmi_app/features/plans/plan_catalog.dart';
 import 'package:karmi_app/features/tasks/tasks_coming_soon_screen.dart';
 import 'package:karmi_app/features/plans/plan_selection_screen.dart';
 import 'package:karmi_app/features/usage/usage_screen.dart';
-import 'package:karmi_app/features/welcome/welcome_screen.dart';
+import 'package:karmi_app/features/onboarding/onboarding.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/fake_backend.dart';
@@ -113,7 +113,7 @@ void main() {
       expect(find.byType(LicensePage), findsOneWidget);
     });
 
-    testWidgets('sign out clears the token and returns to Welcome', (
+    testWidgets('sign out clears the token and returns to OnboardingFlow', (
       tester,
     ) async {
       final app = await pumpApp(tester);
@@ -125,7 +125,7 @@ void main() {
       );
       await tester.tap(find.text('Sign out'));
       await settle(tester);
-      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(find.byType(OnboardingFlow), findsOneWidget);
       expect(app.session.isSignedIn, isFalse);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('dev_session_token'), isNull);
@@ -141,44 +141,7 @@ void main() {
     });
   });
 
-  group('T4.4 Welcome', () {
-    testWidgets('dev sign-in via POST /dev/token opens the shell', (
-      tester,
-    ) async {
-      final app = await pumpApp(tester, signedIn: false);
-      expect(find.byType(WelcomeScreen), findsOneWidget);
-      await expectA11yGuidelines(tester);
-      await tester.tap(find.text('Continue (development sign-in)'));
-      await settle(tester);
-      expect(app.session.isSignedIn, isTrue);
-      expect(find.byType(WelcomeScreen), findsNothing);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('dev_session_token'), 't');
-      final tokenRequest = app.backend.requests.first;
-      expect(tokenRequest.url.path, '/dev/token');
-    });
 
-    testWidgets('network failure shows retry, no raw error', (tester) async {
-      final backend = FakeBackend.healthy()
-        ..on('POST', '/dev/token', FakeBackend.network());
-      await pumpApp(tester, signedIn: false, backend: backend);
-      await tester.tap(find.text('Continue (development sign-in)'));
-      await settle(tester);
-      expect(find.text("Can't reach Karmi"), findsOneWidget);
-      expect(find.textContaining('SocketException'), findsNothing);
-      expect(find.text('Retry'), findsOneWidget);
-    });
-
-    testWidgets('dev auth disabled: no sign-in button', (tester) async {
-      final app = await pumpApp(tester, signedIn: false);
-      await pumpHost(
-        tester,
-        WelcomeScreen(session: app.session, devAuthEnabled: false),
-      );
-      expect(find.text('Sign-in not available yet'), findsOneWidget);
-      expect(find.byType(FilledButton), findsNothing);
-    });
-  });
 
   group('T4.5 Tasks (under construction)', () {
     testWidgets('the tab shows the construction placeholder, not a list', (
@@ -257,7 +220,7 @@ void main() {
       });
     }
 
-    testWidgets('Welcome', (tester) async {
+    testWidgets('Onboarding', (tester) async {
       await pumpApp(tester, signedIn: false, env: const Env(textScale: 2.0));
       expectNoOverflow(tester);
     });

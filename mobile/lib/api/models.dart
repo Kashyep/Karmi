@@ -214,3 +214,17 @@ class AccessCodeResult {
   final String planLabel;
   final bool changed;
 }
+
+/// User profile information (`GET /v1/user/profile`, `PATCH /v1/user/profile`).
+class UserProfileView {
+  const UserProfileView({required this.id, required this.displayName});
+
+  factory UserProfileView.fromJson(Map<String, dynamic> json) =>
+      UserProfileView(
+        id: json['id'] as String,
+        displayName: json['display_name'] as String,
+      );
+
+  final String id;
+  final String displayName;
+}

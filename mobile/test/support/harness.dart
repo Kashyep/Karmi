@@ -189,7 +189,10 @@ Future<AppHandle> pumpApp(
     'reduce_transparency': env.reduceTransparency,
     'theme_mode': env.brightness == Brightness.dark ? 'dark' : 'light',
     'acknowledged_tester_notice_version': kTesterNoticeVersion,
-    if (signedIn) 'dev_session_token': 'test-token',
+    if (signedIn) ...{
+      'dev_session_token': 'test-token',
+      'has_completed_onboarding': true,
+    },
   });
   final prefs = await SharedPreferences.getInstance();
   final settings = KarmiSettings(prefs);

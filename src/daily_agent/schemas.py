@@ -159,3 +159,12 @@ class AccessCodeView(BaseModel):
     plan_id: str
     plan_label: str
     changed: bool
+
+
+class UserProfileView(BaseModel):
+    id: str
+    display_name: str
+
+
+class UserProfileUpdate(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
