@@ -8,6 +8,35 @@ import '../../../theme/karmi_colors.dart';
 import '../../../theme/karmi_theme.dart';
 import 'long_output_fold.dart';
 
+/// Unescapes HTML entities in code blocks (&quot;, &lt;, &gt;, &amp;, &#39;, &#x...;, etc.).
+String unescapeHtmlEntities(String text) {
+  var result = text.replaceAllMapped(
+    RegExp(r'&#(?:x([0-9a-fA-F]+)|([0-9]+));'),
+    (match) {
+      final hex = match[1];
+      final dec = match[2];
+      try {
+        final codePoint = hex != null
+            ? int.parse(hex, radix: 16)
+            : int.parse(dec!);
+        return String.fromCharCode(codePoint);
+      } catch (_) {
+        return match[0]!;
+      }
+    },
+  );
+
+  result = result
+      .replaceAll('&quot;', '"')
+      .replaceAll('&apos;', "'")
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&');
+
+  return result;
+}
+
 /// Renders a code block with language indicator, copy-to-clipboard,
 /// wrap toggle, and folding for outputs over 40 lines.
 class CodeBlock extends StatefulWidget {
@@ -32,8 +61,8 @@ class _CodeBlockState extends State<CodeBlock> {
   }
 
   Future<void> _handleCopy() async {
-    await Clipboard.setData(ClipboardData(text: widget.code));
-    _copyTimer?.cancel();
+    final unescaped = unescapeHtmlEntities(widget.code);
+    await Clipboard.setData(ClipboardData(text: unescaped));
     if (mounted) {
       setState(() {
         _copied = true;
@@ -70,16 +99,22 @@ class _CodeBlockState extends State<CodeBlock> {
 
     final langStyle = (textTheme.labelSmall ?? KarmiTypography.toolbarCaption())
         .copyWith(color: mutedFg, fontWeight: FontWeight.w600);
-    final lineCount = const LineSplitter().convert(widget.code).length;
+    final displayCode = unescapeHtmlEntities(widget.code);
+    final lineCount = const LineSplitter().convert(displayCode).length;
     final isLong = lineCount > 40;
 
     final monoStyle = (textTheme.bodySmall ?? const TextStyle()).copyWith(
       fontFamily: 'JetBrains Mono',
-      fontFamilyFallback: const ['monospace'],
+      fontFamilyFallback: const [
+        'Noto Sans Math',
+        'Noto Sans Symbols 2',
+        'Noto Sans',
+        'monospace',
+      ],
       color: fgColor,
     );
 
-    Widget codeDisplay = SelectableText(widget.code, style: monoStyle);
+    Widget codeDisplay = SelectableText(displayCode, style: monoStyle);
 
     if (!_isWrapped) {
       codeDisplay = SingleChildScrollView(

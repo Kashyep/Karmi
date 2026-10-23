@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/features/chat/rendering/citation_chip.dart';
 import 'package:karmi_app/features/chat/rendering/file_chip.dart';
@@ -23,6 +24,77 @@ void main() {
       expect(isSafeLinkUri(Uri.parse('file:///etc/passwd')), isFalse);
       expect(isSafeLinkUri(Uri.parse('data:text/html,hi')), isFalse);
     });
+  });
+  testWidgets('renders soft line break after bold text', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        const MarkdownMessage(
+          text: '**Bold**\nText',
+          streaming: false,
+        ),
+      ),
+    );
+    final richText = tester.widget<RichText>(
+      find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText().contains('Bold')),
+    );
+    expect(richText.text.toPlainText(), 'Bold\nText');
+  });
+
+  testWidgets('renders soft line break after quoted text', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        const MarkdownMessage(
+          text: '"quoted"\nText',
+          streaming: false,
+        ),
+      ),
+    );
+    final richText = tester.widget<RichText>(
+      find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText().contains('"quoted"')),
+    );
+    expect(richText.text.toPlainText(), '"quoted"\nText');
+  });
+
+  testWidgets('fenced code block unescapes entities and copies unescaped payload', (tester) async {
+    const code = '" < & 2³² → x';
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          clipboardText = (methodCall.arguments as Map<dynamic, dynamic>)['text'] as String?;
+          return null;
+        } else if (methodCall.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': clipboardText};
+        }
+        return null;
+      },
+    );
+
+    await tester.pumpWidget(
+      _host(
+        const MarkdownMessage(
+          text: '```\n$code\n```',
+          streaming: false,
+        ),
+      ),
+    );
+
+    // Assert visible text
+    expect(find.text(code), findsOneWidget);
+    expect(find.textContaining('&quot;'), findsNothing);
+    expect(find.textContaining('&lt;'), findsNothing);
+    expect(find.textContaining('&amp;'), findsNothing);
+
+    // Assert Copy payload
+    final copyButton = find.byTooltip('Copy code');
+    expect(copyButton, findsOneWidget);
+    await tester.tap(copyButton);
+    await tester.pump(const Duration(seconds: 3));
+
+    expect(clipboardText, code);
+    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+    expect(clipboardData?.text, code);
   });
 
   testWidgets('raw HTML is shown as literal text', (tester) async {
