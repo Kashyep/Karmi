@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../../theme/karmi_colors.dart';
 import '../../widgets/feedback.dart';
 import '../../widgets/karmi_card.dart';
@@ -65,8 +66,12 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     required String title,
     required String confirmLabel,
     required String success,
-    required Future<void> Function(AdminApi api, String token, AdminActionInput input)
-        call,
+    required Future<void> Function(
+      AdminApi api,
+      String token,
+      AdminActionInput input,
+    )
+    call,
     String? description,
     List<AdminDialogField> fields = const [],
     String? requireTyped,
@@ -96,12 +101,14 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
       if (!mounted) return;
       _changed = true;
       if (deletesUser) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(success)));
         Navigator.of(context).pop(true);
         return;
       }
       setState(() => _notice = success);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(success)));
       await _load();
     } on AdminException catch (e) {
       if (mounted) setState(() => _noticeError = e);
@@ -126,7 +133,8 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     try {
       final json = await runAdminCall(
         widget.controller,
-        (api, token) => api.exportUser(token, widget.userId, reason: input.reason),
+        (api, token) =>
+            api.exportUser(token, widget.userId, reason: input.reason),
       );
       if (!mounted) return;
       await showDialog<void>(
@@ -150,9 +158,11 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(detail?.user.displayName.isNotEmpty == true
-              ? detail!.user.displayName
-              : 'User'),
+          title: Text(
+            detail?.user.displayName.isNotEmpty == true
+                ? detail!.user.displayName
+                : 'User',
+          ),
         ),
         body: detail == null
             ? _loadingOrError()
@@ -165,8 +175,9 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                   ],
                   _profile(detail),
                   const SizedBox(height: 12),
-                  _usage(detail.usage),
+                  _planCard(detail.user),
                   const SizedBox(height: 12),
+                  _usage(detail.usage),
                   _actions(detail.user),
                   if (_notice != null) ...[
                     const SizedBox(height: 12),
@@ -211,10 +222,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
           Icon(Icons.check_circle_outline, color: colors.success, size: 18),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              message,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text(message, style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
       ),
@@ -230,20 +238,139 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         children: [
           Text('Profile', style: text.titleMedium),
           const SizedBox(height: 8),
-          _row('Name', user.displayName.isEmpty ? kAdminUnavailable : user.displayName),
-          _row('Email', user.email),
+          _row(
+            'Name',
+            user.displayName.isEmpty ? kAdminUnavailable : user.displayName,
+          ),
           _row('Tier', user.tier),
           _row('Status', user.disabled ? 'Suspended' : 'Active'),
-          _row('Created', user.createdAt == null
-              ? kAdminUnavailable
-              : formatAdminDateTime(context, user.createdAt)),
-          _row('Last active', user.lastActiveAt == null
-              ? kAdminUnavailable
-              : formatAdminDateTime(context, user.lastActiveAt)),
+          _row('Tester', user.tester ? 'Yes' : 'No'),
+          _row('Tester label', user.testerLabel ?? kAdminUnavailable),
+          _row('Admin notes', user.adminNotes ?? kAdminUnavailable),
+          const SizedBox(height: 8),
+          _actionButton(
+            icon: Icons.edit_outlined,
+            label: 'Edit profile',
+            onPressed: () => _act(
+              title: 'Edit user',
+              confirmLabel: 'Save',
+              success: 'User updated.',
+              fields: [
+                AdminDialogField(
+                  name: 'display_name',
+                  label: 'Display name',
+                  initial: user.displayName,
+                ),
+                AdminDialogField(
+                  name: 'tester',
+                  label: 'Tester (yes/no)',
+                  initial: user.tester ? 'yes' : 'no',
+                ),
+                AdminDialogField(
+                  name: 'tester_label',
+                  label: 'Tester label',
+                  initial: user.testerLabel ?? '',
+                ),
+                AdminDialogField(
+                  name: 'admin_notes',
+                  label: 'Admin notes',
+                  initial: user.adminNotes ?? '',
+                ),
+              ],
+              call: (api, token, input) => api.editUser(
+                token,
+                user.id,
+                displayName: input['display_name'],
+                tester: input['tester']?.toLowerCase() == 'yes',
+                testerLabel: input['tester_label'],
+                adminNotes: input['admin_notes'],
+                reason: input.reason,
+              ),
+            ),
+          ),
+          _row(
+            'Created',
+            user.createdAt == null
+                ? kAdminUnavailable
+                : formatAdminDateTime(context, user.createdAt),
+          ),
+          _row(
+            'Last active',
+            user.lastActiveAt == null
+                ? kAdminUnavailable
+                : formatAdminDateTime(context, user.lastActiveAt),
+          ),
         ],
       ),
     );
   }
+
+  Widget _planCard(AdminUser user) {
+    final index = kAdminTiers.indexOf(user.tier);
+    return KarmiCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Plan', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          _row('Effective plan', user.effectivePlan ?? user.tier),
+          _row(
+            'Expires',
+            user.planExpiresAt == null
+                ? kAdminUnavailable
+                : formatAdminDateTime(context, user.planExpiresAt),
+          ),
+          _row('Reverts to', user.revertPlanId ?? kAdminUnavailable),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              if (index >= 0 && index < kAdminTiers.length - 1)
+                _actionButton(
+                  icon: Icons.arrow_upward,
+                  label: 'Promote',
+                  onPressed: () => _changePlan(user),
+                ),
+              if (index > 0)
+                _actionButton(
+                  icon: Icons.arrow_downward,
+                  label: 'Demote',
+                  onPressed: () => _changePlan(user),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _changePlan(AdminUser user) => _act(
+    title: 'Set plan',
+    confirmLabel: 'Set plan',
+    success: 'Plan updated.',
+    fields: [
+      AdminDialogField(
+        name: 'tier',
+        label: 'Plan',
+        initial: user.tier,
+        options: [
+          for (final tier in kAdminTiers)
+            AdminDialogOption(tier, adminTierLabel(tier)),
+        ],
+      ),
+      const AdminDialogField(
+        name: 'expires_at',
+        label: 'Expiry (ISO date, optional)',
+      ),
+    ],
+    call: (api, token, input) => api.changeTier(
+      token,
+      user.id,
+      tier: input['tier']!,
+      reason: input.reason,
+      expiresAt: DateTime.tryParse(input['expires_at'] ?? ''),
+    ),
+  );
 
   Widget _usage(AdminUsage usage) {
     final text = Theme.of(context).textTheme;
@@ -253,14 +380,26 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         children: [
           Text('Usage', style: text.titleMedium),
           const SizedBox(height: 8),
-          _row('Requests today', usage.todayRequests?.toString() ?? kAdminUnavailable),
-          _row('Spend this month', usage.monthSpendUsd == null
-              ? kAdminUnavailable
-              : formatUsd(usage.monthSpendUsd!)),
-          _row('Credits remaining', usage.creditsRemaining == null
-              ? kAdminUnavailable
-              : formatUsd(usage.creditsRemaining!)),
-          _row('Active sessions', usage.sessions?.toString() ?? kAdminUnavailable),
+          _row(
+            'Requests today',
+            usage.todayRequests?.toString() ?? kAdminUnavailable,
+          ),
+          _row(
+            'Spend this month',
+            usage.monthSpendUsd == null
+                ? kAdminUnavailable
+                : formatUsd(usage.monthSpendUsd!),
+          ),
+          _row(
+            'Credits remaining',
+            usage.creditsRemaining == null
+                ? kAdminUnavailable
+                : formatUsd(usage.creditsRemaining!),
+          ),
+          _row(
+            'Active sessions',
+            usage.sessions?.toString() ?? kAdminUnavailable,
+          ),
         ],
       ),
     );
@@ -276,10 +415,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              flex: 2,
-              child: Text(label, style: text.bodyMedium),
-            ),
+            Expanded(flex: 2, child: Text(label, style: text.bodyMedium)),
             const SizedBox(width: 8),
             Expanded(
               flex: 3,
@@ -363,11 +499,16 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                       ],
                     ),
                   ],
-                  call: (api, token, input) => api.setTier(
+                  call: (api, token, input) => api.changeTier(
                     token,
                     id,
                     tier: input['tier']!,
                     reason: input.reason,
+                    expiresAt:
+                        input['expires_at'] == null ||
+                            input['expires_at']!.isEmpty
+                        ? null
+                        : DateTime.tryParse(input['expires_at']!),
                   ),
                 ),
               ),

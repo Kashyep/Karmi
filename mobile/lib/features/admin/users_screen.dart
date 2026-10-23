@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/focus_ring.dart';
 import '../../widgets/karmi_card.dart';
+import 'admin_action_dialog.dart';
 import 'admin_api.dart';
 import 'admin_controller.dart';
 import 'admin_support.dart';
@@ -27,7 +28,10 @@ class _UsersScreenState extends State<UsersScreen> {
   final _search = TextEditingController();
   String _tier = 'all';
   String _status = 'all';
+  String _testerLabel = '';
+  bool _expiringSoon = false;
   Timer? _debounce;
+  final Set<String> _selected = {};
   late final PagedAdminList<AdminUser> _list = PagedAdminList(
     controller: widget.controller,
     fetch: (api, token, cursor) async {
@@ -37,6 +41,10 @@ class _UsersScreenState extends State<UsersScreen> {
         q: q.isEmpty ? null : q,
         tier: _tier == 'all' ? null : _tier,
         status: _status == 'all' ? null : _status,
+        testerLabel: _testerLabel.trim().isEmpty ? null : _testerLabel.trim(),
+        planExpiringBefore: _expiringSoon
+            ? DateTime.now().add(const Duration(days: 30))
+            : null,
         cursor: cursor,
       );
       return (items: page.items, nextCursor: page.nextCursor);
@@ -65,13 +73,59 @@ class _UsersScreenState extends State<UsersScreen> {
   Future<void> _open(AdminUser user) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => UserDetailScreen(
-          controller: widget.controller,
-          userId: user.id,
-        ),
+        builder: (_) =>
+            UserDetailScreen(controller: widget.controller, userId: user.id),
       ),
     );
     if (changed == true) _list.reload();
+  }
+
+  Future<void> _bulkSetPlan() async {
+    if (_selected.isEmpty) return;
+    final input = await showAdminActionDialog(
+      context,
+      title: 'Set plan for ${_selected.length} users',
+      confirmLabel: 'Set plan',
+      fields: [
+        AdminDialogField(
+          name: 'tier',
+          label: 'Plan',
+          initial: kAdminTiers.first,
+          options: [
+            for (final tier in kAdminTiers)
+              AdminDialogOption(tier, adminTierLabel(tier)),
+          ],
+        ),
+        const AdminDialogField(
+          name: 'expires_at',
+          label: 'Expiry (ISO date, optional)',
+        ),
+      ],
+    );
+    if (input == null || !mounted) return;
+    try {
+      await runAdminCall(
+        widget.controller,
+        (api, token) => api.bulkTier(
+          token,
+          _selected.toList(),
+          tier: input['tier']!,
+          reason: input.reason,
+          expiresAt: DateTime.tryParse(input['expires_at'] ?? ''),
+        ),
+      );
+      if (mounted) {
+        setState(() => _selected.clear());
+        _list.reload();
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Plans updated.')));
+      }
+    } on AdminException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(adminErrorMessage(error))));
+      }
+    }
   }
 
   @override
@@ -97,7 +151,12 @@ class _UsersScreenState extends State<UsersScreen> {
             }
             return _UserRow(
               user: items[index - 1],
+              selected: _selected.contains(items[index - 1].id),
               onTap: () => _open(items[index - 1]),
+              onLongPress: () => setState(() {
+                final id = items[index - 1].id;
+                if (!_selected.add(id)) _selected.remove(id);
+              }),
             );
           },
         );
@@ -109,6 +168,12 @@ class _UsersScreenState extends State<UsersScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_selected.isNotEmpty)
+          FilledButton.icon(
+            onPressed: _bulkSetPlan,
+            icon: const Icon(Icons.workspace_premium),
+            label: Text('Set plan (${_selected.length})'),
+          ),
         TextField(
           controller: _search,
           textInputAction: TextInputAction.search,
@@ -164,10 +229,17 @@ class _UsersScreenState extends State<UsersScreen> {
 }
 
 class _UserRow extends StatelessWidget {
-  const _UserRow({required this.user, required this.onTap});
+  const _UserRow({
+    required this.user,
+    required this.selected,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   final AdminUser user;
+  final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -182,6 +254,8 @@ class _UserRow extends StatelessWidget {
           child: ListTile(
             minTileHeight: 48,
             onTap: onTap,
+            onLongPress: onLongPress,
+            leading: Checkbox(value: selected, onChanged: (_) => onLongPress()),
             title: Text(
               user.displayName.isEmpty ? user.email : user.displayName,
               style: text.titleMedium,
@@ -198,9 +272,7 @@ class _UserRow extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    user.disabled
-                        ? Icons.block
-                        : Icons.check_circle_outline,
+                    user.disabled ? Icons.block : Icons.check_circle_outline,
                     size: 18,
                   ),
                   const SizedBox(width: 4),

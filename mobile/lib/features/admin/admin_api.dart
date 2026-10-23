@@ -44,6 +44,12 @@ class AdminUser {
     required this.displayName,
     required this.tier,
     required this.disabled,
+    this.tester = false,
+    this.testerLabel,
+    this.adminNotes,
+    this.effectivePlan,
+    this.planExpiresAt,
+    this.revertPlanId,
     this.createdAt,
     this.lastActiveAt,
   });
@@ -54,6 +60,12 @@ class AdminUser {
     displayName: j['display_name'] as String? ?? '',
     tier: j['tier']?.toString() ?? '',
     disabled: j['disabled'] as bool? ?? false,
+    tester: j['tester'] as bool? ?? false,
+    testerLabel: j['tester_label'] as String?,
+    adminNotes: j['admin_notes'] as String?,
+    effectivePlan: j['effective_plan'] as String?,
+    planExpiresAt: _date(j['plan_expires_at']),
+    revertPlanId: j['revert_plan_id']?.toString(),
     createdAt: _date(j['created_at']),
     lastActiveAt: _date(j['last_active_at']),
   );
@@ -63,6 +75,12 @@ class AdminUser {
   final String displayName;
   final String tier;
   final bool disabled;
+  final bool tester;
+  final String? testerLabel;
+  final String? adminNotes;
+  final String? effectivePlan;
+  final DateTime? planExpiresAt;
+  final String? revertPlanId;
   final DateTime? createdAt;
   final DateTime? lastActiveAt;
 }
@@ -102,6 +120,7 @@ class AdminUsage {
 
 class AdminUserDetail {
   const AdminUserDetail({required this.user, required this.usage});
+
   /// Detail JSON is the user object plus a nested `usage` object.
   factory AdminUserDetail.fromJson(Map<String, dynamic> j) => AdminUserDetail(
     user: AdminUser.fromJson(j),
@@ -221,18 +240,42 @@ abstract class AdminApi {
     String? q,
     String? tier,
     String? status,
+    String? testerLabel,
+    bool? suspended,
+    DateTime? planExpiringBefore,
     int limit = 25,
     String? cursor,
   });
   Future<AdminUserDetail> getUser(String token, String id);
   Future<void> suspend(String token, String id, {required String reason});
   Future<void> unsuspend(String token, String id, {required String reason});
-  Future<void> revokeSessions(String token, String id, {required String reason});
-  Future<void> setTier(
+  Future<void> revokeSessions(
+    String token,
+    String id, {
+    required String reason,
+  });
+  Future<void> editUser(
+    String token,
+    String id, {
+    String? displayName,
+    bool? tester,
+    String? testerLabel,
+    String? adminNotes,
+    required String reason,
+  });
+  Future<void> changeTier(
     String token,
     String id, {
     required String tier,
     required String reason,
+    DateTime? expiresAt,
+  });
+  Future<void> bulkTier(
+    String token,
+    List<String> userIds, {
+    required String tier,
+    required String reason,
+    DateTime? expiresAt,
   });
 
   /// Exactly one of [deltaUsd] / [budgetUsd] is non-null.

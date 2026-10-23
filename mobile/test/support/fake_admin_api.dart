@@ -125,24 +125,35 @@ class FakeAdminApi implements AdminApi {
     String? q,
     String? tier,
     String? status,
+    String? testerLabel,
+    bool? suspended,
+    DateTime? planExpiringBefore,
     int limit = 25,
     String? cursor,
   }) async {
     _record(
-      'list:${q ?? ''}:${tier ?? ''}:${status ?? ''}:${cursor ?? ''}',
+      'list:${q ?? ''}:${tier ?? ''}:${status ?? ''}:${testerLabel ?? ''}:${cursor ?? ''}',
     );
     _maybeFail();
     final filtered = users.where((u) {
       if (q != null && q.isNotEmpty) {
         final needle = q.toLowerCase();
         if (!u.email.toLowerCase().contains(needle) &&
-            !u.displayName.toLowerCase().contains(needle)) {
+            !u.displayName.toLowerCase().contains(needle))
           return false;
-        }
       }
       if (tier != null && tier.isNotEmpty && u.tier != tier) return false;
+      if (testerLabel != null &&
+          testerLabel.isNotEmpty &&
+          u.testerLabel != testerLabel)
+        return false;
+      if (suspended != null && u.disabled != suspended) return false;
       if (status == 'active' && u.disabled) return false;
       if (status == 'suspended' && !u.disabled) return false;
+      if (planExpiringBefore != null &&
+          (u.planExpiresAt == null ||
+              !u.planExpiresAt!.isBefore(planExpiringBefore)))
+        return false;
       return true;
     }).toList();
     final start = int.tryParse(cursor ?? '') ?? 0;
@@ -172,7 +183,11 @@ class FakeAdminApi implements AdminApi {
   }
 
   @override
-  Future<void> suspend(String token, String id, {required String reason}) async {
+  Future<void> suspend(
+    String token,
+    String id, {
+    required String reason,
+  }) async {
     _record('suspend:$id:$reason');
     _maybeFail();
     final u = _find(id);
@@ -203,16 +218,55 @@ class FakeAdminApi implements AdminApi {
   }
 
   @override
-  Future<void> setTier(
+  Future<void> editUser(
+    String token,
+    String id, {
+    String? displayName,
+    bool? tester,
+    String? testerLabel,
+    String? adminNotes,
+    required String reason,
+  }) async {
+    _record('edit:$id:$reason');
+    _maybeFail();
+    final u = _find(id);
+    _replace(
+      _copy(
+        u,
+        displayName: displayName,
+        tester: tester,
+        testerLabel: testerLabel,
+        adminNotes: adminNotes,
+      ),
+    );
+  }
+
+  @override
+  Future<void> changeTier(
     String token,
     String id, {
     required String tier,
     required String reason,
+    DateTime? expiresAt,
   }) async {
-    _record('tier:$id:$tier:$reason');
+    _record('tier:$id:$tier:${expiresAt?.toIso8601String() ?? ''}:$reason');
     _maybeFail();
-    final u = _find(id);
-    _replace(_copy(u, tier: tier));
+    _replace(_copy(_find(id), tier: tier, planExpiresAt: expiresAt));
+  }
+
+  @override
+  Future<void> bulkTier(
+    String token,
+    List<String> userIds, {
+    required String tier,
+    required String reason,
+    DateTime? expiresAt,
+  }) async {
+    _record('bulk-tier:${userIds.join(',')}:$tier:$reason');
+    _maybeFail();
+    for (final id in userIds) {
+      _replace(_copy(_find(id), tier: tier, planExpiresAt: expiresAt));
+    }
   }
 
   @override
@@ -282,12 +336,23 @@ class FakeAdminApi implements AdminApi {
     AdminUser u, {
     bool? disabled,
     String? tier,
+    String? displayName,
+    bool? tester,
+    String? testerLabel,
+    String? adminNotes,
+    DateTime? planExpiresAt,
   }) => AdminUser(
     id: u.id,
     email: u.email,
-    displayName: u.displayName,
+    displayName: displayName ?? u.displayName,
     tier: tier ?? u.tier,
     disabled: disabled ?? u.disabled,
+    tester: tester ?? u.tester,
+    testerLabel: testerLabel ?? u.testerLabel,
+    adminNotes: adminNotes ?? u.adminNotes,
+    effectivePlan: tier ?? u.effectivePlan,
+    planExpiresAt: planExpiresAt ?? u.planExpiresAt,
+    revertPlanId: u.revertPlanId,
     createdAt: u.createdAt,
     lastActiveAt: u.lastActiveAt,
   );

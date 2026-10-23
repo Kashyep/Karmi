@@ -55,6 +55,9 @@ class HttpAdminApi implements AdminApi {
     String? q,
     String? tier,
     String? status,
+    String? testerLabel,
+    bool? suspended,
+    DateTime? planExpiringBefore,
     int limit = 25,
     String? cursor,
   }) async {
@@ -67,6 +70,11 @@ class HttpAdminApi implements AdminApi {
         if (q != null && q.isNotEmpty) 'q': q,
         if (tier != null && tier.isNotEmpty) 'tier': tier,
         if (status != null && status.isNotEmpty) 'status': status,
+        if (testerLabel != null && testerLabel.isNotEmpty)
+          'tester_label': testerLabel,
+        if (suspended != null) 'suspended': '$suspended',
+        if (planExpiringBefore != null)
+          'plan_expiring_before': planExpiringBefore.toUtc().toIso8601String(),
         if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
       },
     );
@@ -80,18 +88,12 @@ class HttpAdminApi implements AdminApi {
   }
 
   @override
-  Future<void> suspend(
-    String token,
-    String id, {
-    required String reason,
-  }) => _mutate(token, id, 'suspend', {'reason': reason});
+  Future<void> suspend(String token, String id, {required String reason}) =>
+      _mutate(token, id, 'suspend', {'reason': reason});
 
   @override
-  Future<void> unsuspend(
-    String token,
-    String id, {
-    required String reason,
-  }) => _mutate(token, id, 'unsuspend', {'reason': reason});
+  Future<void> unsuspend(String token, String id, {required String reason}) =>
+      _mutate(token, id, 'unsuspend', {'reason': reason});
 
   @override
   Future<void> revokeSessions(
@@ -101,12 +103,62 @@ class HttpAdminApi implements AdminApi {
   }) => _mutate(token, id, 'revoke-sessions', {'reason': reason});
 
   @override
-  Future<void> setTier(
+  Future<void> editUser(
+    String token,
+    String id, {
+    String? displayName,
+    bool? tester,
+    String? testerLabel,
+    String? adminNotes,
+    required String reason,
+  }) => _send(
+    'PATCH',
+    '$_users/${_id(id)}',
+    adminToken: token,
+    body: {
+      if (displayName != null) 'display_name': displayName,
+      if (tester != null) 'tester': tester,
+      if (testerLabel != null) 'tester_label': testerLabel,
+      if (adminNotes != null) 'admin_notes': adminNotes,
+      'reason': reason,
+    },
+  ).then((_) {});
+
+  @override
+  Future<void> changeTier(
     String token,
     String id, {
     required String tier,
     required String reason,
-  }) => _mutate(token, id, 'tier', {'tier': tier, 'reason': reason});
+    DateTime? expiresAt,
+  }) => _mutate(token, id, 'tier', {
+    'tier': tier,
+    if (expiresAt != null) 'expires_at': expiresAt.toUtc().toIso8601String(),
+    'reason': reason,
+  });
+
+  @override
+  Future<void> bulkTier(
+    String token,
+    List<String> userIds, {
+    required String tier,
+    required String reason,
+    DateTime? expiresAt,
+  }) async {
+    assert(userIds.isNotEmpty && userIds.length <= 100);
+    await _send(
+      'POST',
+      '$_users/bulk-tier',
+      adminToken: token,
+      body: {
+        'user_ids': userIds,
+        'tier': tier,
+        if (expiresAt != null)
+          'expires_at': expiresAt.toUtc().toIso8601String(),
+        'reason': reason,
+      },
+    );
+  }
 
   @override
   Future<void> adjustCredits(
@@ -201,9 +253,9 @@ class HttpAdminApi implements AdminApi {
     final base = baseUrl.endsWith('/')
         ? baseUrl.substring(0, baseUrl.length - 1)
         : baseUrl;
-    return Uri.parse('$base$path').replace(
-      queryParameters: (query == null || query.isEmpty) ? null : query,
-    );
+    return Uri.parse(
+      '$base$path',
+    ).replace(queryParameters: (query == null || query.isEmpty) ? null : query);
   }
 
   /// Sends one request and maps every non-2xx status to an [AdminException].
@@ -261,6 +313,7 @@ class HttpAdminApi implements AdminApi {
         throw AdminFailure(status);
     }
   }
+
   /// `detail.code` of an error body, or null.
   static String? _errorCode(http.Response resp) {
     try {
@@ -291,7 +344,8 @@ class HttpAdminApi implements AdminApi {
       final decoded = jsonDecode(_bodyText(resp));
       if (decoded is Map) {
         final detail = decoded['detail'];
-        final raw = decoded['retry_after'] ??
+        final raw =
+            decoded['retry_after'] ??
             (detail is Map ? detail['retry_after'] : null);
         if (raw is num) seconds = raw;
       }
