@@ -171,6 +171,7 @@ class _KarmiAppState extends State<KarmiApp> {
                             builder: (_, activeId, __) => ConversationList(
                               controller: _ensureConversationController(),
                               activeConversationId: activeId,
+                              clock: widget.clock,
                               onOpen: (id) {
                                 _historyCommands.openConversation?.call(id);
                                 HistoryPanelScope.maybeOf(
