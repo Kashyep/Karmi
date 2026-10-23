@@ -9,7 +9,7 @@
 (() => {
   'use strict';
 
-  const TIERS = ['ananta', 'yanta', 'trika', 'parth'];
+  const TIERS = ['ananta', 'yanta', 'trika', 'part'];
   const USER_STATUSES = ['active', 'suspended'];
   const API_BASE = '/v1/admin';
   const PAGE_SIZE = 25;
@@ -71,16 +71,18 @@
     return text ? `?${text}` : '';
   }
 
-  /** Query string for GET /users. Unknown tier/status values are dropped. */
+  /** Query string for GET /users. Unknown values are dropped. */
   function buildUsersQuery(filters = {}) {
     const params = new URLSearchParams();
     const q = String(filters.q ?? '').trim();
     if (q) params.set('q', q);
     if (TIERS.includes(filters.tier)) params.set('tier', filters.tier);
     if (USER_STATUSES.includes(filters.status)) params.set('status', filters.status);
+    if (filters.testerLabel) params.set('tester_label', String(filters.testerLabel).trim());
+    if (filters.suspended !== undefined && filters.suspended !== '') params.set('suspended', String(filters.suspended));
+    if (filters.expiringSoon) params.set('plan_expiring_before', new Date(Date.now() + 30 * 86400000).toISOString());
     const page = buildPageQuery({ limit: filters.limit, cursor: filters.cursor });
-    const pageParams = new URLSearchParams(page.slice(1));
-    for (const [key, value] of pageParams) params.set(key, value);
+    for (const [key, value] of new URLSearchParams(page.slice(1))) params.set(key, value);
     const text = params.toString();
     return text ? `?${text}` : '';
   }
@@ -664,6 +666,8 @@
       q: $('user-q').value,
       tier: $('user-tier').value,
       status: $('user-status').value,
+      testerLabel: $('user-tester-label').value,
+      expiringSoon: $('user-expiring').checked,
       limit: PAGE_SIZE,
       cursor: reset ? undefined : state.usersCursor,
     });
