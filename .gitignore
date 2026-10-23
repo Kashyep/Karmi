@@ -30,3 +30,4 @@ gh_2.55.0_linux_amd64.tar.gz
 # flutter golden failures
 mobile/test/**/failures/
 **/failures/*_testImage.png
+.env.testauth
