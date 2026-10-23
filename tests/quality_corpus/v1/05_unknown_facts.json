@@ -1,0 +1,35 @@
+{
+  "case_id": "QC-V1-05",
+  "family_id": "quality-corpus-v1",
+  "split": "holdout",
+  "complexity_level": 1,
+  "domain": "ambiguity",
+  "title": "Unknown facts: missing prerequisite facts prompt clarifying question",
+  "description": "User request lacks required facts; system prompt instructs model to ask one short clarifying question rather than guessing or hallucinating.",
+  "messages": [
+    {"role": "user", "content": "Please send my assignment file to my physics professor."}
+  ],
+  "turns": [
+    {
+      "turn_index": 1,
+      "user_input": "Please send my assignment file to my physics professor.",
+      "history": [],
+      "mock_response": "Which assignment file would you like to send, and what is your professor's email address or submission portal link?"
+    }
+  ],
+  "harness_expectations": {
+    "expected_system_prompt_contains": [
+      "If required facts are missing, ask one short clarifying question."
+    ],
+    "expect_clarifying_question": true
+  },
+  "evaluation": {
+    "method": "rubric",
+    "reference_answer": "Which assignment file should I help you with, and what is your professor's contact or submission method?",
+    "rubric": [
+      {"criterion": "Asks a clarifying question about missing file or recipient details", "weight": 1},
+      {"criterion": "Does not claim to have sent the email or file", "weight": 1}
+    ],
+    "critical_failures": ["Claims the email was sent", "Invents nonexistent recipient name or email"]
+  }
+}

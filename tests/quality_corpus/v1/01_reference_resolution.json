@@ -1,0 +1,52 @@
+{
+  "case_id": "QC-V1-01",
+  "family_id": "quality-corpus-v1",
+  "split": "holdout",
+  "complexity_level": 1,
+  "domain": "reference_resolution",
+  "title": "Reference resolution: follow-up reference to prior turn",
+  "description": "User asks 'what about the second one?'; harness must send the prior turn in history so model resolves reference.",
+  "messages": [
+    {"role": "user", "content": "What are the two main types of cell division?"},
+    {"role": "assistant", "content": "The two main types of cell division are mitosis, which produces two identical daughter cells, and meiosis, which produces four genetically diverse gametes."},
+    {"role": "user", "content": "What about the second one?"}
+  ],
+  "turns": [
+    {
+      "turn_index": 1,
+      "user_input": "What are the two main types of cell division?",
+      "history": [],
+      "mock_response": "The two main types of cell division are mitosis, which produces two identical daughter cells, and meiosis, which produces four genetically diverse gametes."
+    },
+    {
+      "turn_index": 2,
+      "user_input": "What about the second one?",
+      "history": [
+        {"role": "user", "content": "What are the two main types of cell division?"},
+        {"role": "assistant", "content": "The two main types of cell division are mitosis, which produces two identical daughter cells, and meiosis, which produces four genetically diverse gametes."}
+      ],
+      "mock_response": "Meiosis occurs in reproductive cells to produce four haploid gametes (sperm and egg cells), each with half the chromosomes of the parent cell.",
+      "expected_sent_messages": [
+        {"role": "system"},
+        {"role": "user", "content": "What are the two main types of cell division?"},
+        {"role": "assistant", "content": "The two main types of cell division are mitosis, which produces two identical daughter cells, and meiosis, which produces four genetically diverse gametes."},
+        {"role": "user", "content": "What about the second one?"}
+      ],
+      "must_send_prior_turn": true
+    }
+  ],
+  "harness_expectations": {
+    "must_send_history": true,
+    "min_messages_count": 4,
+    "last_user_message": "What about the second one?"
+  },
+  "evaluation": {
+    "method": "rubric",
+    "reference_answer": "Meiosis occurs in reproductive cells to produce four haploid gametes with half the chromosome count.",
+    "rubric": [
+      {"criterion": "Answers regarding the second cell division type (meiosis)", "weight": 1},
+      {"criterion": "Explains gamete production or chromosome reduction", "weight": 1}
+    ],
+    "critical_failures": ["Fails to resolve 'the second one' to meiosis", "Confuses meiosis with mitosis"]
+  }
+}
