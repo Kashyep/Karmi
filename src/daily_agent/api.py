@@ -182,7 +182,7 @@ def create_app() -> FastAPI:
         _admin: Principal = Depends(require_admin),
         session: Session = Depends(get_session),
     ) -> list[dict[str, object]]:
-        runs = session.scalars(select(Run).order_by(Run.id.desc()).limit(100)).all()
+        runs = session.scalars(select(Run).order_by(Run.created_at.desc(), Run.id.desc()).limit(100)).all()
         return [
             {
                 "run_id": run.id,
