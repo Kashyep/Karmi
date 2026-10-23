@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     func,
     text,
 )
@@ -522,3 +523,11 @@ class AdminAuditLog(Base):
     target_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     detail: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+
+
+def _refuse_audit_mutation(*_args: object) -> None:
+    raise RuntimeError("admin_audit_log is append-only")
+
+
+event.listen(AdminAuditLog, "before_update", _refuse_audit_mutation)
+event.listen(AdminAuditLog, "before_delete", _refuse_audit_mutation)

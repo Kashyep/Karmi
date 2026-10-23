@@ -2,13 +2,14 @@ import base64
 import binascii
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlparse
 
 import certifi
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from pydantic import AliasChoices, Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 _PLACEHOLDER_MARKERS = (
@@ -98,8 +99,23 @@ class Settings(BaseSettings):
     production_period_budget_micro: int | None = Field(default=None, ge=1)
     global_daily_budget_micro: int = Field(default=100_000, ge=1)
     data_dir: Path = Path("data")
+    # Clerk subjects (user_...) allowed to open an admin session; comma-separated in the env.
+    # Empty: nobody is an admin, whatever their role column says.
+    admin_clerk_user_ids: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("ADMIN_CLERK_USER_IDS", "DAILY_AGENT_ADMIN_CLERK_USER_IDS"),
+    )
+    # Budget-unit micros per displayed "USD" in the admin API (1:1 keeps the stored unit visible).
+    admin_micro_per_usd: int = Field(default=1_000_000, ge=1)
     # Hex Ed25519 public keys whose PolicyBundleV1 signatures Karmi accepts. Empty: none.
     parakh_trusted_public_keys: list[str] = Field(default_factory=list)
+
+    @field_validator("admin_clerk_user_ids", mode="before")
+    @classmethod
+    def split_admin_ids(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
 
     @field_validator("database_url", "migration_database_url", mode="before")
     @classmethod

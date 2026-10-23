@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_for_code
+from daily_agent.admin_metrics import MetricsMiddleware
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_engine, get_session
 from daily_agent.deps import gateway_dependency, limited_principal, own_run
@@ -36,6 +37,7 @@ from daily_agent.models import (
 from daily_agent.parakh.routing import RunTiming, record_routing_evidence, route_for_action
 from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.ratelimit import SlidingWindowLimiter, install_log_redaction
+from daily_agent.routes.admin import router as admin_router
 from daily_agent.routes.conversations import router as conversations_router
 from daily_agent.routes.stream import router as stream_router
 from daily_agent.schemas import (
@@ -123,6 +125,8 @@ def create_app() -> FastAPI:
 
     app.include_router(stream_router)
     app.include_router(conversations_router)
+    app.include_router(admin_router)
+    app.add_middleware(MetricsMiddleware)
 
     @app.get("/health")
     def health() -> dict[str, str]:
