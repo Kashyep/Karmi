@@ -10,13 +10,12 @@ class KarmiChatHeader extends StatelessWidget {
     required this.title,
     this.onOpenHistory,
     this.onNewChat,
-    this.trailing,
   });
 
   final String title;
   final VoidCallback? onOpenHistory;
   final VoidCallback? onNewChat;
-  final Widget? trailing;
+
   @override
   Widget build(BuildContext context) {
     final colors = KarmiColors.of(context);
@@ -39,7 +38,10 @@ class KarmiChatHeader extends StatelessWidget {
                   icon: const Icon(Icons.history),
                   tooltip: 'Conversation history',
                   color: colors.actionIcon,
-                  constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
                   padding: const EdgeInsets.all(10),
                   onPressed: onOpenHistory,
                 ),
@@ -74,7 +76,6 @@ class KarmiChatHeader extends StatelessWidget {
                 onPressed: onNewChat,
               ),
             ),
-            if (trailing != null) trailing!,
           ],
         ),
       ),

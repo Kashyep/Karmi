@@ -38,7 +38,6 @@ class ChatScreen extends StatefulWidget {
     this.draftStore,
     this.clock,
     this.historyCommands,
-    this.trailing,
   });
   final KarmiApi api;
   final VoidCallback? onOpenPlans;
@@ -51,7 +50,6 @@ class ChatScreen extends StatefulWidget {
   final DraftStore? draftStore;
   final DateTime Function()? clock;
   final ChatHistoryCommands? historyCommands;
-  final Widget? trailing;
 
   /// Builds a history rail widget for wide layouts.
   static Widget historyRailBuilder({
@@ -554,7 +552,6 @@ class _ChatScreenState extends State<ChatScreen> {
               title: _activeConversationTitle,
               onOpenHistory: _resolveOpenHistory(context),
               onNewChat: _isBusy ? null : _startNewChat,
-              trailing: widget.trailing,
             ),
             if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),
             Expanded(

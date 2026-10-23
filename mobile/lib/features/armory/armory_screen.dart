@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -6,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../api/karmi_api.dart';
 import '../../armory/armory_controller.dart';
 import '../../armory/preview_banner.dart';
-export '../../armory/preview_banner.dart';
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_theme.dart';
 import '../../theme/karmi_tier.dart';
@@ -357,4 +355,3 @@ class TierPreviewArt extends StatelessWidget {
     );
   }
 }
-
