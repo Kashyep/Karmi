@@ -11,7 +11,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -24,9 +24,7 @@ from daily_agent.gateway import Gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
 from daily_agent.gzip_middleware import SSEAwareGZip
 from daily_agent.models import (
-    Account,
     BillingEvent,
-    BudgetReservation,
     MessageFeedback,
     Reminder,
     RoutingRecord,
@@ -63,7 +61,6 @@ from daily_agent.schemas import (
 from daily_agent.security import (
     Principal,
     issue_development_token,
-    require_admin,
     require_principal,
     verify_event_signature,
     verify_hmac,

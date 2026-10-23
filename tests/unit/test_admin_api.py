@@ -1,26 +1,36 @@
 from __future__ import annotations
 
+import base64
 import json
 import sqlite3
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
+import httpx
+import jwt
 import pytest
 from alembic import command
 from alembic.config import Config
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, sessionmaker
 
 from daily_agent.admin_auth import enroll_code, hash_code, validate_code, verify_code
+from daily_agent.clerk_backend import ClerkBackend, get_clerk_backend
 from daily_agent.config import Settings
 from daily_agent.models import (
     AdminAuditLog,
     AdminCredential,
     AdminSession,
     Conversation,
+    ErasedClerkSubject,
     Run,
     Subscription,
     UsagePeriod,
@@ -165,6 +175,12 @@ def test_lockout_after_five_failures_persists(env: Env) -> None:
         cred = session.scalars(select(AdminCredential)).first()
         assert cred is not None and cred.failed_attempts == 0 and cred.locked_until is None
     assert len(env.audit("admin.lockout")) == 1
+
+
+def test_lockout_check_takes_a_row_lock_before_counting() -> None:
+    # SQLite ignores FOR UPDATE, so the row lock is asserted on the Postgres compilation.
+    stmt = select(AdminCredential).where(AdminCredential.user_id == "u").with_for_update()
+    assert "FOR UPDATE" in str(stmt.compile(dialect=postgresql.dialect()))
 
 
 def test_session_required_expired_and_logout(env: Env) -> None:
@@ -436,6 +452,31 @@ def test_runs_are_ordered_by_created_at_desc(env: Env) -> None:
     assert [r["run_id"] for r in rest["items"]] == ["run-1"]
 
 
+def test_run_cursor_round_trips_through_identical_timestamps(env: Env) -> None:
+    uid, acc, _b = env.customer()
+    stamp = datetime(2026, 1, 1, tzinfo=UTC)
+    with env.factory() as session:
+        for name in ("run-a", "run-b", "run-c"):
+            session.add(
+                Run(account_id=acc, user_id=uid, logical_request_id=name, id=name, created_at=stamp)
+            )
+        session.commit()
+    headers = env.headers()
+    seen: list[str] = []
+    cursor: str | None = None
+    for _ in range(5):
+        url = "/v1/admin/runs?limit=1"
+        if cursor:
+            url += f"&cursor={quote(cursor, safe='')}"
+        body = env.client.get(url, headers=headers).json()
+        seen.extend(item["run_id"] for item in body["items"])
+        cursor = body["next_cursor"]
+        if cursor is None:
+            break
+    assert sorted(seen) == ["run-a", "run-b", "run-c"]
+    assert env.client.get("/v1/admin/runs?cursor=garbage", headers=headers).status_code == 400
+
+
 # ---- append-only audit ---------------------------------------------------------------------
 
 
@@ -479,36 +520,181 @@ def test_admin_routes_have_no_unauthenticated_access(env: Env) -> None:
         assert env.client.get(path, headers=env.admin_bearer).status_code == 401  # no admin session
 
 
-def test_revoke_sessions_rejects_earlier_clerk_tokens(env: Env) -> None:
-    import base64
-    import time
+# ---- Clerk session revocation and erasure tombstones ---------------------------------------
 
-    import jwt
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
+CLERK_ISSUER = "https://clerk.example.test"
+ClerkHandler = Callable[[httpx.Request], httpx.Response]
 
+
+@pytest.fixture
+def clerk_token(env: Env) -> Callable[[str, int], dict[str, str]]:
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_pem = key.public_key().public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
     )
-    env.settings.clerk_issuer = "https://clerk.example.test"
+    env.settings.clerk_issuer = CLERK_ISSUER
     env.settings.clerk_jwt_public_key_b64 = base64.b64encode(public_pem).decode()
 
-    def clerk_token(issued_at: int) -> dict[str, str]:
+    def make(subject: str, issued_at: int) -> dict[str, str]:
         claims = {
-            "sub": "user_clerk_victim", "sid": "sess_1", "iss": env.settings.clerk_issuer,
+            "sub": subject, "sid": "sess_1", "iss": CLERK_ISSUER,
             "iat": issued_at, "exp": issued_at + 3600,
         }
         return {"Authorization": "Bearer " + jwt.encode(claims, key, algorithm="RS256")}
 
-    now = int(time.time())
-    old = clerk_token(now - 60)
-    assert env.client.get("/v1/usage", headers=old).status_code == 200
+    return make
+
+
+def clerk_victim(env: Env, subject: str = "user_clerk_victim") -> str:
+    user_id, _acc, _bearer = env.customer("victim")
     with env.factory() as session:
-        victim = session.scalar(select(User).where(User.clerk_subject == "user_clerk_victim"))
-        assert victim is not None
-        victim_id = victim.id
+        user = session.get(User, user_id)
+        assert user is not None
+        user.clerk_subject = subject
+        session.commit()
+    return user_id
+
+
+def use_clerk(env: Env, handler: ClerkHandler) -> list[httpx.Request]:
+    """Route the admin API's Clerk calls through a mock transport; returns the recorded requests."""
+    seen: list[httpx.Request] = []
+
+    def record(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return handler(request)
+
+    backend = ClerkBackend("sk_test_secret", transport=httpx.MockTransport(record))
+    env.client.app.dependency_overrides[get_clerk_backend] = lambda: backend
+    return seen
+
+
+def clerk_ok(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/v1/sessions":
+        return httpx.Response(200, json={"data": [{"id": "sess_a"}, {"id": "sess_b"}]})
+    return httpx.Response(200, json={"status": "revoked"})
+
+
+def test_revoke_ends_clerk_sessions_then_rejects_local_tokens(env: Env, clerk_token) -> None:
+    uid = clerk_victim(env)
     headers = env.headers()
-    env.client.post(f"/v1/admin/users/{victim_id}/revoke-sessions", json={"reason": "compromised"}, headers=headers)
+    old = clerk_token("user_clerk_victim", int(time.time()) - 60)
+    assert env.client.get("/v1/usage", headers=old).status_code == 200
+    seen = use_clerk(env, clerk_ok)
+    r = env.client.post(
+        f"/v1/admin/users/{uid}/revoke-sessions", json={"reason": "lost phone"}, headers=headers
+    )
+    assert r.status_code == 200 and r.json()["clerk_sessions_revoked"] == 2
+    lookups = [q for q in seen if q.method == "GET"]
+    assert lookups[0].url.params["user_id"] == "user_clerk_victim"
+    assert lookups[0].url.params["status"] == "active"
+    assert [q.url.path for q in seen if q.method == "POST"] == [
+        "/v1/sessions/sess_a/revoke",
+        "/v1/sessions/sess_b/revoke",
+    ]
+    assert {q.headers["Authorization"] for q in seen} == {"Bearer sk_test_secret"}
     assert env.client.get("/v1/usage", headers=old).status_code == 401
-    assert env.client.get("/v1/usage", headers=clerk_token(now + 5)).status_code == 200
+    assert json.loads(env.audit("user.revoke_sessions")[0].detail)["clerk_sessions_revoked"] == 2
+
+
+def test_revoke_for_clerk_user_without_secret_is_409_and_changes_nothing(
+    env: Env, clerk_token
+) -> None:
+    uid = clerk_victim(env)
+    headers = env.headers()
+    old = clerk_token("user_clerk_victim", int(time.time()) - 60)
+    assert env.client.get("/v1/usage", headers=old).status_code == 200
+    r = env.client.post(
+        f"/v1/admin/users/{uid}/revoke-sessions", json={"reason": "lost phone"}, headers=headers
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "CLERK_SECRET_NOT_CONFIGURED"
+    assert env.client.get("/v1/usage", headers=old).status_code == 200
+    assert env.audit("user.revoke_sessions") == []
+    with env.factory() as session:
+        user = session.get(User, uid)
+        assert user is not None and user.sessions_revoked_at is None
+
+
+def test_revoke_for_customer_without_clerk_subject_needs_no_clerk(env: Env) -> None:
+    uid, _acc, _bearer = env.customer("local")
+    headers = env.headers()
+    r = env.client.post(
+        f"/v1/admin/users/{uid}/revoke-sessions", json={"reason": "local only"}, headers=headers
+    )
+    assert r.status_code == 200 and r.json()["clerk_sessions_revoked"] == 0
+
+
+@pytest.mark.parametrize("failure", ["lookup", "revoke"])
+def test_clerk_failure_is_502_and_marks_nothing_done(env: Env, clerk_token, failure: str) -> None:
+    uid = clerk_victim(env)
+    headers = env.headers()
+    old = clerk_token("user_clerk_victim", int(time.time()) - 60)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/sessions":
+            if failure == "lookup":
+                return httpx.Response(500)
+            return httpx.Response(200, json={"data": [{"id": "sess_a"}]})
+        return httpx.Response(403, json={})
+
+    use_clerk(env, handler)
+    r = env.client.post(
+        f"/v1/admin/users/{uid}/revoke-sessions", json={"reason": "lost phone"}, headers=headers
+    )
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "CLERK_REVOKE_FAILED"
+    assert env.client.get("/v1/usage", headers=old).status_code == 200
+    assert env.audit("user.revoke_sessions") == []
+
+
+def test_admin_cannot_act_on_a_peer_admin_and_the_attempt_is_audited(env: Env) -> None:
+    env.make_admin("peer")
+    peer_id = env.last_admin_id
+    headers = env.headers()
+    base = f"/v1/admin/users/{peer_id}"
+    suspend = env.client.post(f"{base}/suspend", json={"reason": "rivalry"}, headers=headers)
+    tier = env.client.post(f"{base}/tier", json={"tier": "trika", "reason": "rivalry"}, headers=headers)
+    erase = env.client.request(
+        "DELETE", base, json={"reason": "rivalry", "confirm": "DELETE"}, headers=headers
+    )
+    for r in (suspend, tier, erase):
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "ADMIN_TARGET_PROTECTED"
+    with env.factory() as session:
+        peer = session.get(User, peer_id)
+        assert peer is not None and peer.disabled is False and peer.role == "admin"
+    for action in ("user.suspend.denied", "user.tier.denied", "user.erase.denied"):
+        rows = env.audit(action)
+        assert len(rows) == 1
+        assert rows[0].admin_user_id == env.root_id and rows[0].target_user_id == peer_id
+        assert json.loads(rows[0].detail) == {"refused": "target_is_admin"}
+
+
+def test_erased_clerk_subject_cannot_reprovision(env: Env, clerk_token) -> None:
+    uid = clerk_victim(env, "user_clerk_erased")
+    headers = env.headers()
+    token = clerk_token("user_clerk_erased", int(time.time()) - 60)
+    assert env.client.get("/v1/usage", headers=token).status_code == 200
+    r = env.client.request(
+        "DELETE",
+        f"/v1/admin/users/{uid}",
+        json={"reason": "gdpr request #7", "confirm": "DELETE"},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    blocked = env.client.get("/v1/usage", headers=token)
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"]["code"] == "ACCOUNT_ERASED"
+    with env.factory() as session:
+        tombstones = list(session.scalars(select(ErasedClerkSubject)))
+        assert len(tombstones) == 1
+        assert tombstones[0].subject_hash != "user_clerk_erased"
+        assert session.get(User, uid) is None
+
+
+def test_legacy_admin_routes_are_gone(env: Env) -> None:
+    headers = env.headers()
+    for path in ("/admin/overview", "/admin/runs", "/v1/admin/overview"):
+        assert env.client.get(path, headers=headers).status_code == 404
+
+

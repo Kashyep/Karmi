@@ -169,12 +169,6 @@ def require_principal(
     return verify_token(authorization[7:], settings, session)
 
 
-def require_admin(principal: Principal = Depends(require_principal)) -> Principal:
-    if principal.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin role required")
-    return principal
-
-
 def verify_hmac(raw_body: bytes, supplied: str | None, secret: str) -> None:
     expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
     if supplied is None or not hmac.compare_digest(expected, supplied):
