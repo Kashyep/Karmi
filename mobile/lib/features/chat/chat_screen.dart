@@ -365,16 +365,26 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _retryLast() {
-    // A terminal provider/deferred failure is retried through the server's
-    // continuation endpoint. It creates a new run without replaying the
-    // idempotent start request or duplicating the user message.
-    if (_chatController.phase == ChatRunPhase.error) {
-      final failedAssistant = _chatController.messages
-          .where((message) => message.role == 'assistant')
-          .lastOrNull;
-      if (failedAssistant != null) {
-        _chatController.continueMessage(failedAssistant.id);
-      }
+    // A terminal server-side failure (deferred/provider) has a persisted
+    // assistant message and is retried through the continuation endpoint. It
+    // creates a new run without replaying the idempotent start request or
+    // duplicating the user message.
+    //
+    // Transport failures (offline/timeout) never reached a terminal server
+    // state, so the assistant bubble still has a temporary id and no run id.
+    // Those must re-send the start request with the same client_message_id so
+    // the server can deduplicate, instead of calling continue for a message the
+    // server never stored.
+    final failedAssistant = _chatController.messages
+        .where((message) => message.role == 'assistant')
+        .lastOrNull;
+    final serverBackedFailure =
+        _chatController.phase == ChatRunPhase.error &&
+        failedAssistant != null &&
+        !failedAssistant.id.startsWith('temp_') &&
+        failedAssistant.runId != null;
+    if (serverBackedFailure) {
+      _chatController.continueMessage(failedAssistant.id);
       return;
     }
     if (_chatController.currentClientMessageId != null ||

@@ -112,14 +112,18 @@ void main() {
       SystemChannels.platform,
       (MethodCall methodCall) async {
         if (methodCall.method == 'Clipboard.setData') {
-          clipboardText = (methodCall.arguments as Map<dynamic, dynamic>)['text'] as String?;
+          clipboardText =
+              (methodCall.arguments as Map<dynamic, dynamic>)['text']
+                  as String?;
         }
         return null;
       },
     );
 
     await tester.pumpWidget(
-      _host(const MarkdownMessage(text: '```\n$literal\n```', streaming: false)),
+      _host(
+        const MarkdownMessage(text: '```\n$literal\n```', streaming: false),
+      ),
     );
 
     expect(find.text(literal), findsOneWidget);
@@ -128,37 +132,34 @@ void main() {
     expect(clipboardText, literal);
   });
 
-  testWidgets(
-    'fenced code decodes parser escaping for display and copy',
-    (tester) async {
-      const source = '" < & \' \' 2³ → x';
-      const shown = '" < & \' \' 2³ → x';
-      String? clipboardText;
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (MethodCall methodCall) async {
-          if (methodCall.method == 'Clipboard.setData') {
-            clipboardText =
-                (methodCall.arguments as Map<dynamic, dynamic>)['text']
-                    as String?;
-          }
-          return null;
-        },
-      );
+  testWidgets('fenced code decodes parser escaping for display and copy', (
+    tester,
+  ) async {
+    const source = '" < & \' \' 2³ → x';
+    const shown = '" < & \' \' 2³ → x';
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          clipboardText =
+              (methodCall.arguments as Map<dynamic, dynamic>)['text']
+                  as String?;
+        }
+        return null;
+      },
+    );
 
-      await tester.pumpWidget(
-        _host(
-          const MarkdownMessage(text: '```\n$source\n```', streaming: false),
-        ),
-      );
+    await tester.pumpWidget(
+      _host(const MarkdownMessage(text: '```\n$source\n```', streaming: false)),
+    );
 
-      expect(find.text(shown), findsOneWidget);
+    expect(find.text(shown), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Copy code'));
-      await tester.pump(const Duration(seconds: 3));
-      expect(clipboardText, shown);
-    },
-  );
+    await tester.tap(find.byTooltip('Copy code'));
+    await tester.pump(const Duration(seconds: 3));
+    expect(clipboardText, shown);
+  });
 
   testWidgets(
     'superscripts and arrows in prose and inline code use the glyph fallback',
