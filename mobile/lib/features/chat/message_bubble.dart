@@ -25,7 +25,8 @@ class MessageBubble extends StatelessWidget {
       onResume = null,
       feedbackRating = null,
       feedbackReason = null,
-      isFeedbackInFlight = false;
+      isFeedbackInFlight = false,
+      pendingNotice = null;
 
   const MessageBubble.reply({
     super.key,
@@ -41,7 +42,8 @@ class MessageBubble extends StatelessWidget {
        onResume = null,
        feedbackRating = null,
        feedbackReason = null,
-       isFeedbackInFlight = false;
+       isFeedbackInFlight = false,
+       pendingNotice = null;
 
   const MessageBubble.chatMessage({
     super.key,

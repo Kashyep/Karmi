@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../api/conversations/conversations_api.dart';
 import '../../api/karmi_api.dart';
 import '../../api/stream/run_stream_client.dart';
+import '../../shell/bottom_chrome.dart';
 import '../../shell/breakpoints.dart';
 import '../../theme/karmi_motion.dart';
 import '../../shell/chat_header.dart';
@@ -18,7 +19,6 @@ import 'composer.dart';
 import 'composer/draft_store.dart';
 import 'error_card.dart';
 import 'message_bubble.dart';
-import 'processing_panel.dart';
 import 'scroll/end_anchored_scroll.dart';
 import 'scroll/jump_to_latest_button.dart';
 import 'state/chat_controller.dart';
@@ -94,6 +94,9 @@ class _ChatScreenState extends State<ChatScreen> {
   late final ValueChanged<ComposerSubmit> _composerSubmit = _submitComposer;
   late final VoidCallback _composerStop = _stopComposer;
   Widget? _composerWidget;
+  final ValueNotifier<int> _composerRefocus = ValueNotifier<int>(0);
+  ChatRunPhase _lastPhase = ChatRunPhase.idle;
+  final GlobalKey _dockKey = GlobalKey();
   String? _composerDraftKey;
   bool? _composerBusy;
   DraftStore? _composerDraftStore;
@@ -202,6 +205,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_ownsConversationListController) {
       _conversationListController.dispose();
     }
+    _composerRefocus.dispose();
+    BottomChrome.composerHeight = 0;
     _scrollController.dispose();
     if (widget.conversationsApi == null) {
       _conversationsApi.close();
@@ -223,6 +228,11 @@ class _ChatScreenState extends State<ChatScreen> {
       widget.onConversationChanged?.call(_activeConversationId);
       _conversationListController.refresh();
     }
+    final phase = _chatController.phase;
+    if (phase == ChatRunPhase.error && _lastPhase != ChatRunPhase.error) {
+      _composerRefocus.value++;
+    }
+    _lastPhase = phase;
     setState(() {});
   }
 
@@ -457,6 +467,7 @@ class _ChatScreenState extends State<ChatScreen> {
         busy: busy,
         onSubmit: _composerSubmit,
         onStop: _composerStop,
+        refocus: _composerRefocus,
       );
     }
     return _composerWidget!;
@@ -530,6 +541,9 @@ class _ChatScreenState extends State<ChatScreen> {
       feedbackRating: _feedbackRatings[msg.id],
       feedbackReason: _feedbackReasons[msg.id],
       isFeedbackInFlight: _feedbackInFlight.contains(msg.id),
+      pendingNotice: msg.status == MessageStatus.streaming
+          ? _pendingLabel
+          : null,
     );
   }
 
@@ -547,6 +561,21 @@ class _ChatScreenState extends State<ChatScreen> {
         final lastAssistantIndex = messages.lastIndexWhere(
           (m) => m.role == 'assistant',
         );
+        final error = _chatController.error;
+        final bannerError = _isAccountError(error) ? error : null;
+        final failedReplyIndex =
+            error != null &&
+                bannerError == null &&
+                messages.isNotEmpty &&
+                messages.last.role == 'assistant' &&
+                messages.last.status == MessageStatus.failed
+            ? messages.length - 1
+            : -1;
+        final chatBottomError =
+            error != null && bannerError == null && failedReplyIndex < 0
+            ? error
+            : null;
+        _publishComposerHeight();
 
         return Column(
           children: [
@@ -558,6 +587,15 @@ class _ChatScreenState extends State<ChatScreen> {
               trailing: widget.trailing,
             ),
             if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),
+            if (bannerError != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: ErrorCard(
+                  category: bannerError,
+                  onRetry: _retryLast,
+                  onUpgrade: widget.onOpenPlans,
+                ),
+              ),
             Expanded(
               child: messages.isEmpty
                   ? LayoutBuilder(
@@ -595,11 +633,34 @@ class _ChatScreenState extends State<ChatScreen> {
                               itemBuilder: (context, index) {
                                 final msg = messages[index];
                                 if (msg.status != MessageStatus.streaming) {
-                                  return _memoBubble(
+                                  final bubble = _memoBubble(
                                     msg,
                                     index,
                                     messages.length,
                                     lastAssistantIndex,
+                                  );
+                                  if (index != failedReplyIndex) return bubble;
+                                  // The failed reply owns its error: Retry sits right under it.
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      bubble,
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          16,
+                                          0,
+                                          16,
+                                          8,
+                                        ),
+                                        child: ErrorCard(
+                                          category: error!,
+                                          onRetry: _retryLast,
+                                          onContinue: _continueLast,
+                                          onUpgrade: widget.onOpenPlans,
+                                        ),
+                                      ),
+                                    ],
                                   );
                                 }
                                 // Only the streaming bubble rebuilds on each delta flush.
@@ -646,30 +707,29 @@ class _ChatScreenState extends State<ChatScreen> {
                       ],
                     ),
             ),
-            ProcessingPanel(phase: _chatController.phase),
-            if (_chatController.error != null || _feedbackError != null)
+            if (chatBottomError != null || _feedbackError != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                 child: ErrorCard(
-                  category: _chatController.error ?? _feedbackError!,
-                  onRetry: _chatController.error != null
+                  category: chatBottomError ?? _feedbackError!,
+                  onRetry: chatBottomError != null
                       ? _retryLast
                       : _feedbackRetry,
                   onContinue: _continueLast,
                   onUpgrade: widget.onOpenPlans,
                 ),
               ),
-            AnimatedPadding(
-              key: const ValueKey('chat-composer-dock'),
-              duration: KarmiMotion.composerDurationOf(context),
-              curve: KarmiMotion.composerCurve,
-              padding: EdgeInsets.only(
-                bottom: _composerDockBottomPadding(
-                  context,
-                  messages.isNotEmpty || _isLoadingMessages,
+            KeyedSubtree(
+              key: _dockKey,
+              child: AnimatedPadding(
+                key: const ValueKey('chat-composer-dock'),
+                duration: KarmiMotion.composerDurationOf(context),
+                curve: KarmiMotion.composerCurve,
+                padding: EdgeInsets.only(
+                  bottom: _composerDockBottomPadding(context),
                 ),
+                child: _readingColumn(context, _buildComposer(), paneWidth),
               ),
-              child: _readingColumn(context, _buildComposer(), paneWidth),
             ),
           ],
         );
@@ -710,20 +770,35 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  double _composerDockBottomPadding(BuildContext context, bool isDocked) {
-    final bottomInset =
-        MediaQuery.paddingOf(context).bottom +
-        MediaQuery.viewInsetsOf(context).bottom;
-    if (isDocked) {
-      return bottomInset;
+  /// The composer always docks above the keyboard / home indicator. Its position
+  /// must not depend on transcript state: the empty state's suggestions scroll
+  /// above it rather than pushing it to mid-screen.
+  double _composerDockBottomPadding(BuildContext context) =>
+      MediaQuery.paddingOf(context).bottom +
+      MediaQuery.viewInsetsOf(context).bottom;
+
+  /// Account-level failures (plan allowance, server capacity) apply to the whole chat.
+  static bool _isAccountError(ErrorCategory? category) =>
+      category == ErrorCategory.quotaExhausted ||
+      category == ErrorCategory.capacityFull;
+
+  /// Label for an empty streaming reply, so the reply space says what is happening.
+  String get _pendingLabel {
+    if (_chatController.phase == ChatRunPhase.stalled) {
+      return 'Connection slow, still trying…';
     }
-    final height = MediaQuery.sizeOf(context).height;
-    final isDesktop = WorkspaceSize.of(context) == WorkspaceSize.expanded;
-    // On desktop, composer is centered slightly above midpoint (~42-45% from top).
-    // On mobile, centered vertically (~48-50%).
-    final factor = isDesktop ? 0.55 : 0.36;
-    final computed = (height * factor - 35).clamp(bottomInset, height * 0.55);
-    return computed;
+    if (_chatController.isSlow) return 'Still working, free models can be slow';
+    return 'Working…';
+  }
+
+  /// Keeps [BottomChrome] in step with the measured composer dock so floating
+  /// snackbars clear it.
+  void _publishComposerHeight() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final box = _dockKey.currentContext?.findRenderObject() as RenderBox?;
+      BottomChrome.composerHeight = box?.size.height ?? 0;
+    });
   }
 }
 

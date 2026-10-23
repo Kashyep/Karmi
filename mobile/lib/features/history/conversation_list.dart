@@ -1,3 +1,5 @@
+import '../../shell/bottom_chrome.dart';
+
 import 'package:flutter/material.dart';
 
 import '../../api/chat/chat_models.dart';
@@ -141,6 +143,8 @@ class _ConversationListState extends State<ConversationList> {
     messenger.hideCurrentSnackBar();
     final controller = messenger.showSnackBar(
       SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: BottomChrome.snackBarMargin(),
         content: const Text('Chat deleted'),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
