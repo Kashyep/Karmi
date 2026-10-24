@@ -32,7 +32,12 @@ class AccountAuthStep extends StatefulWidget {
     required this.onBack,
     required this.onSignedIn,
     required this.onDevSignIn,
+    this.startInSignIn = false,
   });
+
+  /// Opens the Sign in form instead of Create account (Welcome's
+  /// "Already have an account?" link).
+  final bool startInSignIn;
 
   /// Null when Clerk is not configured for this build.
   final ClerkEmailCodeActions? actions;
@@ -59,7 +64,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
   final _password = TextEditingController();
   final _code = TextEditingController();
 
-  _Mode _mode = _Mode.create;
+  late _Mode _mode = widget.startInSignIn ? _Mode.signIn : _Mode.create;
   bool _awaitingCode = false;
   bool _busy = false;
   bool _showPassword = false;

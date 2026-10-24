@@ -36,7 +36,8 @@ class OnboardingFlow extends StatefulWidget {
 class _OnboardingFlowState extends State<OnboardingFlow> {
   static const int _totalSteps = 7;
   late int _currentStep;
-
+  // True when Welcome's "Already have an account?" opened the account step.
+  bool _authStartsInSignIn = false;
 
   // Step 2: Profile state
   final _firstNameController = TextEditingController();
@@ -247,12 +248,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           PillCta(
             key: const ValueKey('onboarding_get_started'),
             label: 'Get Started',
-            onPressed: () => _goToStep(1),
+            onPressed: () {
+              _authStartsInSignIn = false;
+              _goToStep(1);
+            },
           ),
           const SizedBox(height: 8),
           TextButton(
             key: const ValueKey('onboarding_already_have_account'),
-            onPressed: () => _goToStep(1),
+            onPressed: () {
+              _authStartsInSignIn = true;
+              _goToStep(1);
+            },
             child: const Text('Already have an account? Sign in'),
           ),
         ],
@@ -262,6 +269,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Widget _buildAuthStep() {
     return AccountAuthStep(
+      // Rebuild state when the entry point changes so the mode is re-read.
+      key: ValueKey('auth-${_authStartsInSignIn ? 'signin' : 'create'}'),
+      startInSignIn: _authStartsInSignIn,
       actions: _actions(context),
       devAuthEnabled: widget.devAuthEnabled,
       totalSteps: _totalSteps,

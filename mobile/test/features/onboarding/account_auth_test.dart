@@ -145,6 +145,24 @@ void main() {
     expect(find.byKey(const ValueKey('onboarding_otp_field')), findsNothing);
   });
 
+  testWidgets('Welcome "Already have an account?" opens Sign in, Get Started opens Create', (tester) async {
+    final fake = FakeClerkEmailCodeActions();
+    await _pumpFlow(tester, fake: fake, step: 0);
+
+    await tester.tap(find.byKey(const ValueKey('onboarding_already_have_account')));
+    await settle(tester);
+    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Create your account'), findsNothing);
+    expect(find.byKey(const ValueKey('onboarding_username_field')), findsNothing);
+
+    // Back to Welcome, then Get Started must open Create account.
+    await tester.pageBack();
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('onboarding_get_started')));
+    await settle(tester);
+    expect(find.text('Create your account'), findsOneWidget);
+  });
+
   testWidgets('sign-in with password completes and advances to the profile step', (tester) async {
     final fake = FakeClerkEmailCodeActions();
     await _pumpFlow(tester, fake: fake);
