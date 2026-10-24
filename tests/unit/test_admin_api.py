@@ -36,6 +36,7 @@ from daily_agent.models import (
     UsagePeriod,
     User,
 )
+from daily_agent.services import BudgetDenied, reserve_budget
 from tests.conftest import create_identity
 
 CODE = "correcthorse42"
@@ -361,6 +362,45 @@ def test_credit_adjustments(env: Env) -> None:
     assert low.status_code == 400
     rows = env.audit("user.credits")
     assert len(rows) == 2 and {r.reason for r in rows} == {"goodwill", "cap"}
+
+def test_credit_adjustment_survives_normal_reservation(env: Env) -> None:
+    uid, account_id, _bearer = env.customer()
+    env.settings.global_daily_budget_micro = 10_000_000
+    with env.factory() as session:
+        subscription = session.scalar(select(Subscription).where(Subscription.account_id == account_id))
+        assert subscription is not None
+        subscription.plan_id = "parth"
+        session.commit()
+    response = env.client.post(
+        f"/v1/admin/users/{uid}/credits",
+        json={"delta_usd": 5, "reason": "durability"},
+        headers=env.headers(),
+    )
+    assert response.status_code == 200
+    period_cap = 5_500_000
+    with env.factory() as session:
+        reservation = reserve_budget(
+            session,
+            settings=env.settings,
+            account_id=account_id,
+            logical_request_id="credit-durable",
+            stage="execution",
+            amount_micro=period_cap,
+        )
+        session.commit()
+        period = session.get(UsagePeriod, reservation.usage_period_id)
+        assert period is not None
+        assert period.spend_limit_micro == period_cap
+        with pytest.raises(BudgetDenied, match="period"):
+            reserve_budget(
+                session,
+                settings=env.settings,
+                account_id=account_id,
+                logical_request_id="credit-beyond",
+                stage="execution",
+                amount_micro=1,
+            )
+
 
 
 def test_export_returns_json_and_is_audited(env: Env) -> None:
