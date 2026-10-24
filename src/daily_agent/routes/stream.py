@@ -472,6 +472,13 @@ def chat_stream(
             .order_by(ChatMessage.created_at.desc())
         ).first()
 
+    if existing_user_msg is not None and existing_user_msg.content != body.text:
+        # Same clientMessageId with different text: refuse instead of replaying the old reply.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="client message id was reused with a different payload",
+        )
+
     if existing_user_msg is not None:
         # Replay the existing run
         assistant_msg = _assistant_for_user_turn(session, principal, existing_user_msg)
