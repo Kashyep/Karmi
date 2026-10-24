@@ -203,7 +203,7 @@ class KarmiApi {
     } on http.ClientException {
       throw const NetworkException();
     } on TimeoutException {
-      throw const NetworkException();
+      throw const ApiTimeoutException();
     }
 
     final status = response.statusCode;

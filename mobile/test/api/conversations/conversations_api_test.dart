@@ -569,13 +569,13 @@ void main() {
       expect(() => api.list(), throwsA(isA<NetworkException>()));
     });
 
-    test('TimeoutException maps to NetworkException', () async {
+    test('TimeoutException maps to ApiTimeoutException', () async {
       final client = MockClient((request) async {
         throw TimeoutException('request timed out');
       });
       final api = ConversationsApi(baseUrl: baseUrl, client: client);
 
-      expect(() => api.list(), throwsA(isA<NetworkException>()));
+      expect(() => api.list(), throwsA(isA<ApiTimeoutException>()));
     });
   });
 

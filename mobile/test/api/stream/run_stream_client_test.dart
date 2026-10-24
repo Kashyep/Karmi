@@ -336,6 +336,31 @@ void main() {
     );
 
     test(
+      'pre-stream timeout maps to timeout category, not network (offline)',
+      () async {
+        final mockClient = MockClient.streaming((request, bodyStream) async {
+          throw TimeoutException('no response');
+        });
+
+        final client = RunStreamClient(
+          baseUrl: 'http://test.karmi.ai',
+          client: mockClient,
+        );
+
+        await expectLater(
+          client.startRun(text: 'hi', clientMessageId: 'c1').toList(),
+          throwsA(
+            isA<RunStreamException>().having(
+              (e) => e.category,
+              'category',
+              ErrorCategory.timeout,
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
       'network drop: stream closes before terminal event throws network error',
       () async {
         final mockClient = MockClient.streaming((request, bodyStream) async {

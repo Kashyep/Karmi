@@ -152,7 +152,7 @@ class RunStreamClient {
       );
     } on TimeoutException catch (e) {
       throw RunStreamException(
-        category: ErrorCategory.network,
+        category: ErrorCategory.timeout,
         message: e.toString(),
       );
     }
@@ -221,7 +221,7 @@ class RunStreamClient {
       );
     } on TimeoutException catch (e) {
       throw RunStreamException(
-        category: ErrorCategory.network,
+        category: ErrorCategory.timeout,
         message: e.toString(),
         lastSeq: initialSeq ?? _lastSeq,
       );

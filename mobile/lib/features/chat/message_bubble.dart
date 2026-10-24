@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../api/chat/chat_models.dart';
 import '../../api/models.dart';
 import '../../theme/karmi_colors.dart';
+import '../../theme/karmi_motion.dart';
 import '../../theme/karmi_theme.dart';
 import 'chat_entry.dart';
 import 'rendering/markdown_message.dart';
@@ -25,7 +26,8 @@ class MessageBubble extends StatelessWidget {
       onResume = null,
       feedbackRating = null,
       feedbackReason = null,
-      isFeedbackInFlight = false;
+      isFeedbackInFlight = false,
+      pendingNotice = null;
 
   const MessageBubble.reply({
     super.key,
@@ -41,7 +43,8 @@ class MessageBubble extends StatelessWidget {
        onResume = null,
        feedbackRating = null,
        feedbackReason = null,
-       isFeedbackInFlight = false;
+       isFeedbackInFlight = false,
+       pendingNotice = null;
 
   const MessageBubble.chatMessage({
     super.key,
@@ -56,6 +59,7 @@ class MessageBubble extends StatelessWidget {
     this.feedbackRating,
     this.feedbackReason,
     this.isFeedbackInFlight = false,
+    this.pendingNotice,
   }) : entry = null,
        reply = null;
 
@@ -77,6 +81,9 @@ class MessageBubble extends StatelessWidget {
   final FeedbackRating? feedbackRating;
   final String? feedbackReason;
   final bool isFeedbackInFlight;
+
+  /// Label shown in place of an empty streaming reply (the pending placeholder).
+  final String? pendingNotice;
 
   @override
   Widget build(BuildContext context) {
@@ -167,11 +174,16 @@ class MessageBubble extends StatelessWidget {
                       StatusChip.outcome(chatMessage!.outcome!),
                       const SizedBox(height: 8),
                     ],
-                    MarkdownMessage(
-                      text: chatMessage!.content,
-                      streaming: chatMessage!.status == MessageStatus.streaming,
-                      allowCollapse: true,
-                    ),
+                    if (chatMessage!.content.isEmpty &&
+                        chatMessage!.status == MessageStatus.streaming)
+                      _PendingNotice(label: pendingNotice ?? 'Working…')
+                    else
+                      MarkdownMessage(
+                        text: chatMessage!.content,
+                        streaming:
+                            chatMessage!.status == MessageStatus.streaming,
+                        allowCollapse: true,
+                      ),
                     if (chatMessage!.outcome == Outcome.askUser) ...[
                       const SizedBox(height: 8),
                       _ConfirmationCard(onReviewDetails: onReviewDetails),
@@ -303,6 +315,44 @@ class _ReplyActions extends StatelessWidget {
       feedbackReason: reply.feedbackReason,
       isFeedbackInFlight: reply.isFeedbackInFlight,
       isRegenerating: reply.isRegenerating,
+    );
+  }
+}
+
+/// Placeholder for an assistant reply that has not produced text yet.
+class _PendingNotice extends StatelessWidget {
+  const _PendingNotice({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = KarmiColors.of(context);
+    final text = Theme.of(context).textTheme;
+    return Semantics(
+      liveRegion: true,
+      label: label,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox.square(
+            dimension: 14,
+            child: KarmiAccessibility.reduceMotionOf(context)
+                ? Icon(Icons.more_horiz, size: 14, color: colors.foreground)
+                : CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.foreground,
+                  ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              label,
+              style: text.bodyMedium?.copyWith(color: colors.mutedForeground),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

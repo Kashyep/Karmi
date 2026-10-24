@@ -15,6 +15,7 @@ import '../theme/karmi_colors.dart';
 import '../theme/karmi_motion.dart';
 import '../theme/karmi_theme.dart';
 import '../widgets/focus_ring.dart';
+import 'bottom_chrome.dart';
 import 'history_panel.dart';
 import 'chat_history_commands.dart';
 
@@ -348,6 +349,9 @@ class _KarmiShellState extends State<KarmiShell> {
           ),
       ],
     );
+    BottomChrome.tabBarHeight = isCompactNav
+        ? MediaQuery.paddingOf(context).bottom + tabBar.preferredSize.height
+        : 0;
 
     // The glass bars float over the body; report their extent as padding so
     // content can scroll behind them without being hidden at rest.

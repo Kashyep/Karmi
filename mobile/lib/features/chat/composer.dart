@@ -52,6 +52,7 @@ class Composer extends StatefulWidget {
     this.draftStore,
     this.onPickAttachments,
     this.fill,
+    this.refocus,
   });
 
   final String draftKey;
@@ -61,6 +62,10 @@ class Composer extends StatefulWidget {
   final DraftStore? draftStore;
   final FutureOr<List<TextAttachment>?> Function()? onPickAttachments;
   final ComposerFill? fill;
+
+  /// Requests keyboard focus again each time this notifier changes. The chat
+  /// screen bumps it when a send fails so the user can edit and resend.
+  final ValueListenable<int>? refocus;
 
   @override
   State<Composer> createState() => _ComposerState();
@@ -89,9 +94,14 @@ class _ComposerState extends State<Composer> {
       onKeyEvent: _handleKeyEvent,
     );
     _focusNode.addListener(_onFocusChanged);
+    widget.refocus?.addListener(_onRefocus);
     _controller.addListener(_onTextChanged);
     widget.fill?.addListener(_onFillChanged);
     _loadDraft(widget.draftKey);
+  }
+
+  void _onRefocus() {
+    if (mounted) _focusNode.requestFocus();
   }
 
   void _onFocusChanged() {
@@ -132,6 +142,10 @@ class _ComposerState extends State<Composer> {
   @override
   void didUpdateWidget(Composer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.refocus != widget.refocus) {
+      oldWidget.refocus?.removeListener(_onRefocus);
+      widget.refocus?.addListener(_onRefocus);
+    }
     if (oldWidget.fill != widget.fill) {
       oldWidget.fill?.removeListener(_onFillChanged);
       widget.fill?.addListener(_onFillChanged);
@@ -154,6 +168,7 @@ class _ComposerState extends State<Composer> {
     _saveDraft(widget.draftKey, _controller.text);
     _controller.dispose();
     _focusNode.removeListener(_onFocusChanged);
+    widget.refocus?.removeListener(_onRefocus);
     _focusNode.dispose();
     widget.fill?.removeListener(_onFillChanged);
     super.dispose();
@@ -290,6 +305,8 @@ class _ComposerState extends State<Composer> {
     _draftStore.clear(widget.draftKey);
     setState(() {});
 
+    // Sending dismisses the keyboard; a failed send brings focus back via [refocus].
+    _focusNode.unfocus();
     widget.onSubmit(submission);
   }
 
