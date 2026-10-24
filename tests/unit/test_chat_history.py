@@ -16,6 +16,7 @@ from daily_agent.gateway.service import (
     build_system_prompt,
 )
 from daily_agent.gateway.types import ChatRequest, ChatResult, TaskType
+from daily_agent.models import ChatMessage
 from daily_agent.plans import SYNTHETIC_POLICIES
 from daily_agent.providers import ProviderCall
 from daily_agent.schemas import (
@@ -24,7 +25,9 @@ from daily_agent.schemas import (
     RegenerateCreate,
 )
 from daily_agent.services import (
+    DEFERRED_TEXT,
     HISTORY_REQUEST_CAP_BYTES,
+    history_from_messages,
     history_tokens,
     message_request_hash,
     trim_history,
@@ -144,7 +147,8 @@ def test_prompt_tokens_includes_history_routes_or_fails_context_check() -> None:
     # With len(text)=10, len(system)=675, max_output_tokens=100:
     # Text alone: (10 + 675) // 4 = 171 prompt tokens -> needed = 171 + 100 = 271.
     # Text + 4000-byte history: (10 + 675 + 4000) // 4 = 1171 prompt tokens -> needed = 1271.
-    # A model with context_length=500 accommodates text alone (271 <= 500) but rejects text + history (1271 > 500).
+    # A model with context_length=500 accommodates text alone (271 <= 500) but rejects
+    # text + history (1271 > 500).
     provider = FakeChatProvider()
     reg = make_registry(entry("vendor/tiny-context:free", "economy", context_length=500))
     gateway = Gateway(
@@ -236,7 +240,121 @@ def test_trim_history_exact_budget_boundary() -> None:
     fits = HistoryTurn(role="user", content="f" * 100)
     over = HistoryTurn(role="user", content="o" * 101)
     assert trim_history([fits], text=text, plan=plan) == (fits,)
-    assert trim_history([over], text=text, plan=plan) == ()
+    # Single turn over budget is kept truncated (with […trimmed…]) instead of returning ()
+    over_trimmed = trim_history([over], text=text, plan=plan)
+    assert len(over_trimmed) == 1
+    assert "[…trimmed…]" in over_trimmed[0].content
+    assert len(over_trimmed[0].content.encode("utf-8")) <= 100
+
+
+def test_trim_history_truncation_cases() -> None:
+    plan = SYNTHETIC_POLICIES["ananta"]
+
+    # 1. Long Hindi newest turn alone exceeding remaining budget:
+    # Budget leaves 120 bytes
+    text = "q" * (plan.input_tokens * 4 - SYSTEM_PROMPT_MAX_CHARS - 120)
+    hindi_long = HistoryTurn(
+        role="assistant", content="नमस्ते भारत! यह एक बहुत लंबा हिंदी उत्तर है। " * 20
+    )
+    res_hi = trim_history([hindi_long], text=text, plan=plan)
+    assert len(res_hi) == 1
+    assert "[…trimmed…]" in res_hi[0].content
+    assert res_hi[0].role == "assistant"
+    hi_bytes = len(res_hi[0].content.encode("utf-8"))
+    assert hi_bytes <= 120
+    # Verify it doesn't crash on multi-byte boundaries and decodes cleanly
+    res_hi[0].content.encode("utf-8").decode("utf-8")
+
+    # 2. Long English newest turn alone exceeding remaining budget:
+    english_long = HistoryTurn(role="user", content="A" * 5000)
+    res_en = trim_history([english_long], text=text, plan=plan)
+    assert len(res_en) == 1
+    assert "[…trimmed…]" in res_en[0].content
+    assert res_en[0].role == "user"
+    assert len(res_en[0].content.encode("utf-8")) <= 120
+    assert res_en[0].content.startswith("A")
+    assert res_en[0].content.endswith("A")
+
+    # 3. Several short turns over budget:
+    # If turns are t1 (oldest), t2, t3, t4 (newest), and t4 fits, but t3+t4 exceeds budget:
+    # Only t4 is kept (since t4 was whole and fit); older turns are dropped.
+    # If even t4 alone exceeds budget, t4 is truncated.
+    # Let's test both aspects:
+    # 3a. Several short turns where newest fits but adding earlier ones exceeds budget:
+    short_t1 = HistoryTurn(role="user", content="msg 1" * 10)  # 50 bytes
+    short_t2 = HistoryTurn(role="assistant", content="msg 2" * 10)  # 50 bytes
+    short_t3 = HistoryTurn(role="user", content="msg 3" * 10)  # 50 bytes
+    # Budget leaves 60 bytes:
+    text_60 = "q" * (plan.input_tokens * 4 - SYSTEM_PROMPT_MAX_CHARS - 60)
+    res_multi = trim_history([short_t1, short_t2, short_t3], text=text_60, plan=plan)
+    assert res_multi == (short_t3,)
+
+    # 3b. Several short turns where newest alone exceeds budget:
+    text_30 = "q" * (plan.input_tokens * 4 - SYSTEM_PROMPT_MAX_CHARS - 30)
+    res_multi_trunc = trim_history([short_t1, short_t2, short_t3], text=text_30, plan=plan)
+    assert len(res_multi_trunc) == 1
+    assert "[…trimmed…]" in res_multi_trunc[0].content
+    assert len(res_multi_trunc[0].content.encode("utf-8")) <= 30
+
+    # 4. Empty history:
+    res_empty = trim_history([], text="hello", plan=plan)
+    assert res_empty == ()
+
+
+def _stored(
+    mid: str,
+    role: str,
+    content: str,
+    *,
+    status: str = "complete",
+    parent: str | None = None,
+    variant: int = 0,
+) -> ChatMessage:
+    return ChatMessage(
+        id=mid,
+        conversation_id="conv",
+        account_id="acct",
+        role=role,
+        status=status,
+        content=content,
+        parent_message_id=parent,
+        variant_index=variant,
+    )
+
+
+def test_history_from_messages_sends_one_usable_reply_per_turn() -> None:
+    msgs = [
+        _stored("u1", "user", "q1"),
+        _stored("a1", "assistant", "old answer", parent="u1"),
+        _stored("a1b", "assistant", "regenerated answer", parent="u1", variant=1),
+        _stored("a1c", "assistant", DEFERRED_TEXT, status="failed", parent="u1", variant=2),
+        _stored("u2", "user", "q2"),
+        _stored("a2", "assistant", "half", status="streaming", parent="u2"),
+        _stored("a2b", "assistant", "", status="stopped", parent="u2", variant=1),
+        _stored("a2c", "assistant", "stopped with text", status="stopped", parent="u2", variant=2),
+        _stored("u3", "user", "q3"),
+        _stored("a3", "assistant", DEFERRED_TEXT, parent="u3"),
+    ]
+    assert history_from_messages(msgs) == [
+        HistoryTurn(role="user", content="q1"),
+        HistoryTurn(role="assistant", content="regenerated answer"),
+        HistoryTurn(role="user", content="q2"),
+        HistoryTurn(role="assistant", content="stopped with text"),
+        HistoryTurn(role="user", content="q3"),
+    ]
+
+
+def test_history_from_messages_keeps_orphan_reply_once() -> None:
+    # Parent turn outside the window: only the chosen variant is kept, at its own position.
+    msgs = [
+        _stored("x0", "assistant", "first try", parent="gone"),
+        _stored("x1", "assistant", "second try", parent="gone", variant=1),
+        _stored("u9", "user", "q9"),
+    ]
+    assert history_from_messages(msgs) == [
+        HistoryTurn(role="assistant", content="second try"),
+        HistoryTurn(role="user", content="q9"),
+    ]
 
 
 def test_message_request_hash() -> None:
@@ -269,9 +387,7 @@ def test_message_request_hash() -> None:
     assert h_with_t1 != h_with_t1_t2
 
     # Same history -> same hash
-    h_identical = message_request_hash(
-        text, [HistoryTurn(role="user", content="What is biology?")]
-    )
+    h_identical = message_request_hash(text, [HistoryTurn(role="user", content="What is biology?")])
     assert h_with_t1 == h_identical
 
 
@@ -286,9 +402,7 @@ def test_schema_history_validation() -> None:
             cls(
                 text="test query",
                 idempotency_key="key-12345678",
-                history=[
-                    HistoryTurn(role="user", content=f"msg {i}") for i in range(21)
-                ],
+                history=[HistoryTurn(role="user", content=f"msg {i}") for i in range(21)],
             )
 
         # 8001-char turn -> ValidationError

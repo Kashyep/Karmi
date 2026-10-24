@@ -15,7 +15,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from daily_agent.config import Settings, get_settings
-from daily_agent.conversations.service import ensure_conversation_for_message, touch_conversation
+from daily_agent.conversations.service import (
+    ensure_conversation_for_message,
+    list_messages,
+    touch_conversation,
+)
 from daily_agent.db import get_session
 from daily_agent.deps import gateway_dependency, limited_principal, own_run
 from daily_agent.gateway.router import classify_task
@@ -44,8 +48,11 @@ from daily_agent.services import (
     ReservationInFlight,
     admit_gateway_requests,
     estimate_request_cost_micro,
+    history_from_messages,
+    history_tokens,
     policy_for,
     reserve_budget,
+    trim_history,
 )
 from daily_agent.streaming.registry import RunState, StreamEvent, get_stream_registry
 from daily_agent.streaming.runner import start_stream_run
@@ -61,9 +68,7 @@ IST = timedelta(hours=5, minutes=30)
 def _capacity_full_message(reset_at: datetime) -> str:
     ist = (reset_at.astimezone(UTC) + IST).strftime("%H:%M")
     utc = reset_at.astimezone(UTC).strftime("%H:%M")
-    return (
-        f"Beta capacity full; resets at {ist} IST ({utc} UTC). Upgrade to Parth or try later."
-    )
+    return f"Beta capacity full; resets at {ist} IST ({utc} UTC). Upgrade to Parth or try later."
 
 
 async def stream_run_events(run_state: RunState, after_seq: int = -1) -> AsyncIterator[str]:
@@ -94,7 +99,8 @@ async def stream_run_events(run_state: RunState, after_seq: int = -1) -> AsyncIt
             if is_terminal and cursor >= len(run_state.events):
                 break
     except asyncio.CancelledError:
-        # Client disconnected: generator cancels, but background task in StreamRegistry keeps running
+        # Client disconnected: generator cancels, but the background task in StreamRegistry
+        # keeps running
         return
 
 
@@ -240,9 +246,15 @@ async def chat_stream(
 
     # 3. Budget reservation & admission pre-stream
     _subscription, policy = policy_for(session, principal.account_id)
+    # Load prior conversation messages and trim history
+    prior_msgs, _ = list_messages(session, principal, conv.id, limit=50)
+    raw_turns = history_from_messages(prior_msgs)
+    trimmed_turns = trim_history(raw_turns, text=body.text, plan=policy)
+    history_payload = tuple({"role": t.role, "content": t.content} for t in trimmed_turns)
     amount = estimate_request_cost_micro(policy, settings)
     token_hold = (
-        max(1, len(body.text.encode("utf-8")) // 4) + policy.output_tokens
+        max(1, len(body.text.encode("utf-8")) // 4 + history_tokens(trimmed_turns))
+        + policy.output_tokens
         if gateway.live
         else 0
     )
@@ -277,7 +289,11 @@ async def chat_stream(
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": exc.reset_at.isoformat()},
+            detail={
+                "code": "ALLOWANCE_EXHAUSTED",
+                "message": str(exc),
+                "reset_at": exc.reset_at.isoformat(),
+            },
         ) from exc
     except ReservationInFlight as exc:
         session.rollback()
@@ -343,6 +359,7 @@ async def chat_stream(
         "settings": settings,
         "session_factory": session_factory,
         "reservation_id": reservation.id,
+        "history": history_payload,
     }
     if "admission" in inspect.signature(start_stream_run).parameters:
         start_kwargs["admission"] = admission
@@ -379,7 +396,11 @@ async def run_events(
                 Conversation.deleted_at.is_(None),
             )
         )
-        assistant_id = assistant_msg.id if assistant_msg else (run_state.assistant_message_id if run_state else None)
+        assistant_id = (
+            assistant_msg.id
+            if assistant_msg
+            else (run_state.assistant_message_id if run_state else None)
+        )
 
         async def _resume_unavailable() -> AsyncIterator[str]:
             yield encode_sse_event(
@@ -463,9 +484,14 @@ async def continue_message(
     if msg is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="message not found")
     if msg.role != "assistant":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="only assistant messages can be continued")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="only assistant messages can be continued",
+        )
     if msg.status == MessageStatus.STREAMING.value:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot continue streaming message")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="cannot continue streaming message"
+        )
     if msg.finish_reason not in (
         FinishReason.LENGTH.value,
         FinishReason.CANCELLED.value,
@@ -488,12 +514,22 @@ async def continue_message(
         )
     )
     if user_msg is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="parent user message not found")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="parent user message not found"
+        )
 
     _subscription, policy = policy_for(session, principal.account_id)
+    # Load prior conversation messages strictly before the turn being continued (user_msg)
+    prior_msgs, _ = list_messages(
+        session, principal, msg.conversation_id, before=user_msg.id, limit=50
+    )
+    raw_turns = history_from_messages(prior_msgs)
+    trimmed_turns = trim_history(raw_turns, text=user_msg.content, plan=policy)
+    history_payload = tuple({"role": t.role, "content": t.content} for t in trimmed_turns)
     amount = estimate_request_cost_micro(policy, settings)
     token_hold = (
-        max(1, len(user_msg.content.encode("utf-8")) // 4) + policy.output_tokens
+        max(1, len(user_msg.content.encode("utf-8")) // 4 + history_tokens(trimmed_turns))
+        + policy.output_tokens
         if gateway.live
         else 0
     )
@@ -528,7 +564,11 @@ async def continue_message(
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": exc.reset_at.isoformat()},
+            detail={
+                "code": "ALLOWANCE_EXHAUSTED",
+                "message": str(exc),
+                "reset_at": exc.reset_at.isoformat(),
+            },
         ) from exc
 
     msg.status = MessageStatus.STREAMING.value
@@ -568,6 +608,7 @@ async def continue_message(
         "session_factory": session_factory,
         "reservation_id": reservation.id,
         "prior_content": msg.content,
+        "history": history_payload,
     }
     if "admission" in inspect.signature(start_stream_run).parameters:
         start_kwargs["admission"] = admission
@@ -601,9 +642,14 @@ async def regenerate_message(
     if msg is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="message not found")
     if msg.role != "assistant":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="only assistant messages can be regenerated")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="only assistant messages can be regenerated",
+        )
     if msg.status == MessageStatus.STREAMING.value:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot regenerate streaming message")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="cannot regenerate streaming message"
+        )
 
     user_msg = session.scalar(
         select(ChatMessage)
@@ -616,7 +662,9 @@ async def regenerate_message(
         )
     )
     if user_msg is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="parent user message not found")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="parent user message not found"
+        )
 
     max_variant = session.scalar(
         select(func.max(ChatMessage.variant_index)).where(
@@ -626,9 +674,17 @@ async def regenerate_message(
     variant_index = (max_variant if max_variant is not None else msg.variant_index) + 1
 
     _subscription, policy = policy_for(session, principal.account_id)
+    # Load prior conversation messages strictly before the turn being regenerated (user_msg)
+    prior_msgs, _ = list_messages(
+        session, principal, msg.conversation_id, before=user_msg.id, limit=50
+    )
+    raw_turns = history_from_messages(prior_msgs)
+    trimmed_turns = trim_history(raw_turns, text=user_msg.content, plan=policy)
+    history_payload = tuple({"role": t.role, "content": t.content} for t in trimmed_turns)
     amount = estimate_request_cost_micro(policy, settings)
     token_hold = (
-        max(1, len(user_msg.content.encode("utf-8")) // 4) + policy.output_tokens
+        max(1, len(user_msg.content.encode("utf-8")) // 4 + history_tokens(trimmed_turns))
+        + policy.output_tokens
         if gateway.live
         else 0
     )
@@ -663,7 +719,11 @@ async def regenerate_message(
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": exc.reset_at.isoformat()},
+            detail={
+                "code": "ALLOWANCE_EXHAUSTED",
+                "message": str(exc),
+                "reset_at": exc.reset_at.isoformat(),
+            },
         ) from exc
 
     sibling_msg = ChatMessage(
@@ -712,6 +772,7 @@ async def regenerate_message(
         "session_factory": session_factory,
         "reservation_id": reservation.id,
         "prior_content": None,
+        "history": history_payload,
     }
     if "admission" in inspect.signature(start_stream_run).parameters:
         start_kwargs["admission"] = admission

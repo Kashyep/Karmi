@@ -48,7 +48,7 @@ BASE_SYSTEM_PROMPT = (
     "You are Karmi, a patient study and productivity assistant for students in India. Give "
     "correct, concise answers. Reply in the language the user wrote in (Hindi, English, or a "
     "Hindi-English mix). Show working for maths and keep code runnable. Use the earlier "
-    "conversation: a short reply such as a place name or \"yes\" usually answers your previous "
+    'conversation: a short reply such as a place name or "yes" usually answers your previous '
     "question. The current date and time are given below; when the user names another place or "
     "timezone, convert from IST. Use simple Markdown (bold, lists, code blocks) only when it "
     "helps; no tables. Never claim that a task, reminder or message was saved, sent or changed; "
@@ -72,10 +72,7 @@ def build_system_prompt(now: datetime) -> str:
     """Base prompt plus the current IST date/time (``now`` must be timezone-aware)."""
     local = now.astimezone(HOME_ZONE)
     stamp = f"{local:%A}, {local.day} {local:%B %Y, %H:%M}"
-    return (
-        f"{BASE_SYSTEM_PROMPT}\nCurrent date and time: {stamp} IST "
-        "(Asia/Kolkata, UTC+05:30)."
-    )
+    return f"{BASE_SYSTEM_PROMPT}\nCurrent date and time: {stamp} IST (Asia/Kolkata, UTC+05:30)."
 
 
 # Upper bound for the built prompt: Wednesday + September are the longest names.
@@ -248,14 +245,18 @@ class Gateway:
         task_type: TaskType,
         max_output_tokens: int,
         messages: tuple[dict[str, str], ...] | None = None,
+        history: Sequence[Mapping[str, str]] = (),
     ) -> AsyncIterator[StreamChunk]:
         if not self.live:
             raise ProviderUnavailableError("gateway is disabled or no configured models")
         system_prompt = build_system_prompt(self._clock())
+        history_bytes = sum(len(turn["content"].encode("utf-8")) for turn in history)
         request = RouteRequest(
             plan=plan,
             task_type=task_type,
-            prompt_tokens=max(1, (len(text.encode("utf-8")) + len(system_prompt)) // 4),
+            prompt_tokens=max(
+                1, (len(text.encode("utf-8")) + len(system_prompt) + history_bytes) // 4
+            ),
             max_output_tokens=max_output_tokens,
         )
         pool = eligible_models(self.registry, request, is_available=self._available)
@@ -267,6 +268,7 @@ class Gateway:
         if messages is None:
             chat_messages: tuple[dict[str, str], ...] = (
                 {"role": "system", "content": system_prompt},
+                *({"role": turn["role"], "content": turn["content"]} for turn in history),
                 {"role": "user", "content": text},
             )
         else:
@@ -289,7 +291,9 @@ class Gateway:
                 raise CapacityFullError(str(exc), retry_after_s=retry_s) from exc
             raise ProviderUnavailableError(str(exc)) from exc
         except Exception as exc:
-            self.health.record_failure(model.provider, model.model_id, ProviderError(ProviderError.SERVER, str(exc)))
+            self.health.record_failure(
+                model.provider, model.model_id, ProviderError(ProviderError.SERVER, str(exc))
+            )
             raise ProviderUnavailableError(str(exc)) from exc
 
         full_text = ""
@@ -297,7 +301,9 @@ class Gateway:
         final_call: ProviderCall | None = None
 
         try:
-            async for chunk in _stream_with_timeouts(stream_gen, first_timeout=20.0, gap_timeout=30.0):
+            async for chunk in _stream_with_timeouts(
+                stream_gen, first_timeout=20.0, gap_timeout=30.0
+            ):
                 if chunk.text:
                     full_text += chunk.text
                     yield chunk
