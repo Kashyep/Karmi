@@ -21,7 +21,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Protocol
 
 import redis
@@ -178,7 +178,12 @@ _installed = False
 
 
 def install_log_redaction() -> None:
-    """Redact credentials from every log record at creation time (idempotent)."""
+    """Redact credentials from every log record at creation time (idempotent).
+
+    Records with arguments keep their ``msg`` template untouched (redacting it would eat ``%s``
+    placeholders such as ``token=%s``) and only their string arguments are redacted. ``args``
+    keeps its shape so %-style formatters that unpack it (e.g. uvicorn's access formatter) work.
+    """
     global _installed  # noqa: PLW0603
     if _installed:
         return
@@ -186,8 +191,12 @@ def install_log_redaction() -> None:
 
     def factory(*args: object, **kwargs: object) -> logging.LogRecord:
         record = previous(*args, **kwargs)
-        record.msg = redact(record.getMessage())
-        record.args = ()
+        if not record.args and isinstance(record.msg, str):
+            record.msg = redact(record.msg)
+        elif isinstance(record.args, Mapping):
+            record.args = {k: redact(v) if isinstance(v, str) else v for k, v in record.args.items()}
+        elif isinstance(record.args, tuple):
+            record.args = tuple(redact(a) if isinstance(a, str) else a for a in record.args)
         return record
 
     logging.setLogRecordFactory(factory)
