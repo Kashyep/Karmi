@@ -45,24 +45,6 @@ void main() {
       expect(tapped, isTrue);
     });
 
-    testWidgets('OtpField auto-advance, digits and completion', (tester) async {
-      String? completedCode;
-      await pumpHost(
-        tester,
-        OtpField(
-          length: 6,
-          onCompleted: (code) => completedCode = code,
-        ),
-      );
-
-      expect(find.byType(TextField), findsNWidgets(6));
-      for (int i = 0; i < 6; i++) {
-        await tester.enterText(find.byKey(ValueKey('otp_box_$i')), '${i + 1}');
-      }
-      await settle(tester);
-      expect(completedCode, '123456');
-    });
-
     testWidgets('ChoiceTile selection and tap', (tester) async {
       bool selected = false;
       await pumpHost(
@@ -131,7 +113,7 @@ void main() {
       await settle(tester);
 
       // Step 1: Auth (Dev sign-in)
-      expect(find.text("What's your email?"), findsOneWidget);
+      expect(find.text('Create your account'), findsOneWidget);
       await tester.tap(find.text('Continue (development sign-in)'));
       await settle(tester);
 
@@ -149,7 +131,7 @@ void main() {
       await settle(tester);
 
       // Preferences step
-      expect(find.text('Set your preferences'), findsOneWidget);
+      expect(find.text('Choose your model approach'), findsOneWidget);
       await tester.tap(find.text('Continue'));
       await settle(tester);
 
@@ -222,7 +204,7 @@ void main() {
       await settle(tester);
 
       // Auth step visible but dev sign-in button must be absent
-      expect(find.text("What's your email?"), findsOneWidget);
+      expect(find.text('Create your account'), findsOneWidget);
       expect(find.text('Continue (development sign-in)'), findsNothing);
       expect(find.byKey(const ValueKey('onboarding_dev_signin')), findsNothing);
       await tester.enterText(

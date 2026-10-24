@@ -204,6 +204,11 @@ class FakeBackend {
       )
       ..on('POST', '/v1/messages', (_) => jsonResponse(messageJson('ACCEPT')))
       ..on(
+        'PATCH',
+        '/v1/user/profile',
+        (_) => jsonResponse({'id': 'u', 'display_name': 'Alice'}),
+      )
+      ..on(
         'GET',
         '/v1/conversations',
         (_) => jsonResponse({
