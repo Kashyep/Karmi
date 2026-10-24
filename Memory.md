@@ -349,3 +349,14 @@
 - Admin web UI: commit `c9e87d2`; browser verification is in progress.
 - Admin app UI: commit `153a7fb`; tests are in progress.
 - Remaining release gates are pending: Azure redeploy, release APK/AAB, Pixel smoke, user admin-code enrollment, and release approval.
+
+## Release 1 status update (2026-10-24, later)
+
+- Integration tip `f375410` on `release1/integration` (local only; not pushed).
+- Azure `karmi-beta` runs `f8865ac` (Healthy, 1 replica). Neon migrated to head `f4a5b6c7d8e9`. Regression 12/12 (`docs/release-evidence/r1-azure-regression-3.md`).
+- Fixes since the last entry: admin edit/tier expiry backend (audited, reworked); credit adjustments durable (`credit_adjust_micro`, `0b2f80d`); daily quota regression from `0ed052f` fixed (`13f9821`, audited RELEASE-OK); app Promote/Demote preset adjacent tier; web admin audit fixes (`7287565`); onboarding text-slot fix + goldens.
+- Gates at tip: ruff and mypy clean; pytest unit+web and e2e 0 failures (run separately: duplicate `test_quality_corpus.py` basename); flutter analyze clean; flutter test 855 passed.
+- Release artifacts v0.1.0+4: `~/Projects/Karmi-release/v0.1.0+4/` (APK sha256 c479c99e…7b606, AAB 9c34c66f…171af). Signed with `~/.karmi-keys/karmi-release.jks` (cert SHA-256 14a65fff…8ba1); release build fails loudly without `mobile/android/key.properties`.
+- Pixel 9a: old debug-signed app uninstalled (user approved); v0.1.0 code 4 installed; launch screenshot `docs/release-evidence/device-r1/01-release-launch.png`.
+- Ops notes: this host's IPv6 route to Neon hangs, so deploy/migrate use `PGHOSTADDR=<neon-proxy-ip>`; use `TMPDIR=~/.cache/karmi-tmp` for tests (`/tmp` is a 7.7G tmpfs); `karmi-ui` (`~/.local/bin`) opens the live admin, `karmi-ui code` enrolls the admin code.
+- PENDING (user): rossoadmin sign-in + admin code enrollment, device smoke of onboarding and admin, release approval. Not pushed, not published.
