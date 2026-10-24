@@ -251,3 +251,29 @@ def test_regenerate_message(tmp_path: Path) -> None:
         assert orig is not None and sibling is not None
         assert sibling.parent_message_id == orig.parent_message_id
         assert sibling.variant_index == orig.variant_index + 1
+
+
+def test_chat_stream_rejects_client_message_id_reused_with_different_text(tmp_path: Path) -> None:
+    get_stream_registry().clear()
+    client, factory, token, _, _ = _setup_app(tmp_path)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post(
+        "/v1/chat/stream",
+        json={"text": "What is Python?", "clientMessageId": "client-msg-conflict"},
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    conflict = client.post(
+        "/v1/chat/stream",
+        json={"text": "TOTALLY DIFFERENT", "clientMessageId": "client-msg-conflict"},
+        headers=headers,
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "client message id was reused with a different payload"
+
+    with factory() as session:
+        msgs = session.scalars(select(ChatMessage).where(ChatMessage.role == "user")).all()
+        assert len(msgs) == 1
+        assert msgs[0].content == "What is Python?"
