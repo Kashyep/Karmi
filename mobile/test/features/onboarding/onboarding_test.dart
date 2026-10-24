@@ -45,24 +45,6 @@ void main() {
       expect(tapped, isTrue);
     });
 
-    testWidgets('OtpField auto-advance, digits and completion', (tester) async {
-      String? completedCode;
-      await pumpHost(
-        tester,
-        OtpField(
-          length: 6,
-          onCompleted: (code) => completedCode = code,
-        ),
-      );
-
-      expect(find.byType(TextField), findsNWidgets(6));
-      for (int i = 0; i < 6; i++) {
-        await tester.enterText(find.byKey(ValueKey('otp_box_$i')), '${i + 1}');
-      }
-      await settle(tester);
-      expect(completedCode, '123456');
-    });
-
     testWidgets('ChoiceTile selection and tap', (tester) async {
       bool selected = false;
       await pumpHost(

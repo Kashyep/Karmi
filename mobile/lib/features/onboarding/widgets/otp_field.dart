@@ -3,7 +3,12 @@ import 'package:flutter/services.dart';
 
 import '../../../theme/karmi_colors.dart';
 
-/// 6-box segmented pin field with auto-advance, backspace handling, clipboard paste, and error styling.
+/// Six-digit verification code.
+///
+/// One hidden text input owns the code, so paste (long-press menu, keyboard
+/// clipboard, SMS/email one-time-code autofill) and backspace behave like a
+/// normal text field. Non-digits are dropped, so "123 456" and "12-34-56"
+/// fill all boxes. The six boxes only display the input's text.
 class OtpField extends StatefulWidget {
   const OtpField({
     super.key,
@@ -25,9 +30,8 @@ class OtpField extends StatefulWidget {
 }
 
 class _OtpFieldState extends State<OtpField> {
-  late final List<TextEditingController> _boxControllers;
-  late final List<FocusNode> _focusNodes;
   late final TextEditingController _internalController;
+  final _focusNode = FocusNode();
 
   TextEditingController get _effectiveController =>
       widget.controller ?? _internalController;
@@ -36,31 +40,24 @@ class _OtpFieldState extends State<OtpField> {
   void initState() {
     super.initState();
     _internalController = TextEditingController();
-    _boxControllers = List.generate(
-      widget.length,
-      (index) => TextEditingController(),
-    );
-    _focusNodes = List.generate(widget.length, (index) => FocusNode());
-
-    _effectiveController.addListener(_syncFromMainController);
-    _syncFromMainController();
+    _effectiveController.addListener(_onTextChanged);
+    _focusNode.addListener(_onFocusChanged);
   }
 
-  void _syncFromMainController() {
-    final text = _effectiveController.text;
-    for (int i = 0; i < widget.length; i++) {
-      final char = i < text.length ? text[i] : '';
-      if (_boxControllers[i].text != char) {
-        _boxControllers[i].text = char;
-      }
-    }
+  @override
+  void dispose() {
+    _effectiveController.removeListener(_onTextChanged);
+    _focusNode.removeListener(_onFocusChanged);
+    _internalController.dispose();
+    _focusNode.dispose();
+    super.dispose();
   }
 
-  void _updateMainController() {
-    final code = _boxControllers.map((c) => c.text).join();
-    if (_effectiveController.text != code) {
-      _effectiveController.text = code;
-    }
+  void _onFocusChanged() => setState(() {});
+
+  void _onTextChanged() {
+    final code = _effectiveController.text;
+    setState(() {});
     widget.onChanged?.call(code);
     if (code.length == widget.length) {
       widget.onCompleted?.call(code);
@@ -68,115 +65,74 @@ class _OtpFieldState extends State<OtpField> {
   }
 
   @override
-  void dispose() {
-    _effectiveController.removeListener(_syncFromMainController);
-    _internalController.dispose();
-    for (final c in _boxControllers) {
-      c.dispose();
-    }
-    for (final f in _focusNodes) {
-      f.dispose();
-    }
-    super.dispose();
-  }
-
-  void _onDigitChanged(int index, String value) {
-    if (value.length > 1) {
-      // Handles pasting or typing multiple characters
-      final digits = value.replaceAll(RegExp(r'\D'), '');
-      if (digits.isNotEmpty) {
-        for (int i = 0; i < digits.length && (index + i) < widget.length; i++) {
-          _boxControllers[index + i].text = digits[i];
-        }
-        final nextIndex = (index + digits.length).clamp(0, widget.length - 1);
-        _focusNodes[nextIndex].requestFocus();
-        _updateMainController();
-        return;
-      }
-    }
-
-    if (value.isNotEmpty) {
-      if (index < widget.length - 1) {
-        _focusNodes[index + 1].requestFocus();
-      } else {
-        _focusNodes[index].unfocus();
-      }
-    }
-    _updateMainController();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final colors = KarmiColors.of(context);
     final textTheme = Theme.of(context).textTheme;
-    final currentCode = _boxControllers.map((c) => c.text).join();
+    final code = _effectiveController.text;
+    final focused = _focusNode.hasFocus;
+    final activeIndex = code.length.clamp(0, widget.length - 1);
 
     return Semantics(
       label:
-          'Verification code input, ${widget.length} digits. Current code entered: $currentCode',
+          'Verification code input, ${widget.length} digits. Current code entered: $code',
       textField: true,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: List.generate(widget.length, (index) {
-          return SizedBox(
-            width: 48,
-            height: 56,
-            child: KeyboardListener(
-              focusNode: FocusNode(skipTraversal: true),
-              onKeyEvent: (event) {
-                if (event is KeyDownEvent &&
-                    event.logicalKey == LogicalKeyboardKey.backspace) {
-                  if (_boxControllers[index].text.isEmpty && index > 0) {
-                    _boxControllers[index - 1].clear();
-                    _focusNodes[index - 1].requestFocus();
-                    _updateMainController();
-                  }
-                }
-              },
-              child: TextField(
+      child: Stack(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(widget.length, (index) {
+              final char = index < code.length ? code[index] : '';
+              final isActive = focused && index == activeIndex;
+              final borderColor = widget.hasError
+                  ? colors.destructive
+                  : isActive
+                  ? colors.primary
+                  : colors.borderSubtle;
+              return Container(
                 key: ValueKey('otp_box_$index'),
-                controller: _boxControllers[index],
-                focusNode: _focusNodes[index],
-                textAlign: TextAlign.center,
+                width: 48,
+                height: 56,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: colors.card,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: borderColor,
+                    width: isActive ? 2.0 : 1.5,
+                  ),
+                ),
+                child: Text(
+                  char,
+                  style: textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: colors.foreground,
+                  ),
+                ),
+              );
+            }),
+          ),
+          // Covers the boxes so taps and long-press paste reach the input.
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0,
+              child: TextField(
+                key: const ValueKey('otp_input'),
+                controller: _effectiveController,
+                focusNode: _focusNode,
                 keyboardType: TextInputType.number,
-                maxLength: 1,
-                style: textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  color: colors.foreground,
-                ),
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                ],
-                decoration: InputDecoration(
+                autofillHints: const [AutofillHints.oneTimeCode],
+                showCursor: false,
+                maxLength: widget.length,
+                decoration: const InputDecoration(
                   counterText: '',
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                  filled: true,
-                  fillColor: colors.card,
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(
-                      color: widget.hasError
-                          ? colors.destructive
-                          : colors.borderSubtle,
-                      width: 1.5,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(
-                      color: widget.hasError
-                          ? colors.destructive
-                          : colors.primary,
-                      width: 2.0,
-                    ),
-                  ),
+                  border: InputBorder.none,
                 ),
-                onChanged: (val) => _onDigitChanged(index, val),
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
             ),
-          );
-        }),
+          ),
+        ],
       ),
     );
   }
