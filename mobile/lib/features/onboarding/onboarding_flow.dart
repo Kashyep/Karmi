@@ -45,7 +45,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   String? _profileError;
 
   // Step 3: Preferences state
-  String _selectedLanguage = 'en';
   String _selectedMode = 'concise';
 
   ClerkEmailCodeActions? _actions(BuildContext context) =>
@@ -65,7 +64,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       _currentStep = savedStep.clamp(0, _totalSteps - 1);
     }
 
-    _selectedLanguage = widget.settings?.preferredLanguage ?? 'en';
     _selectedMode = widget.settings?.promptMode ?? 'concise';
   }
 
@@ -130,21 +128,24 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       if (widget.session.isSignedIn) {
         await widget.session.api.updateProfile(displayName);
       }
+    } catch (_) {
       if (mounted) {
-        setState(() => _profileLoading = false);
-        _goToStep(3);
+        setState(() {
+          _profileLoading = false;
+          _profileError = 'Could not save your name. Check your connection and try again.';
+        });
       }
-    } catch (e) {
-      // Backend may be unavailable in offline test mode; gracefully continue
-      if (mounted) {
-        setState(() => _profileLoading = false);
-        _goToStep(3);
-      }
+      return;
+    }
+    if (mounted) {
+      setState(() => _profileLoading = false);
+      _goToStep(3);
     }
   }
 
   Future<void> _submitPreferences() async {
-    await widget.settings?.setPreferredLanguage(_selectedLanguage);
+    // Language selection is not offered in this release; English only.
+    await widget.settings?.setPreferredLanguage('en');
     await widget.settings?.setPromptMode(_selectedMode);
     _goToStep(4);
   }
@@ -342,37 +343,15 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       currentStep: 3,
       totalSteps: _totalSteps,
       onBack: _onBack,
-      title: 'Set your preferences',
-      subtitle: 'Choose how Karmi communicates and presents information.',
+      title: 'Choose your model approach',
+      subtitle: 'Pick how Karmi answers.',
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Semantics(
             header: true,
             child: const Text(
-              'Language',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ChoiceTile(
-            title: 'English',
-            description: 'Default interaction and model responses',
-            isSelected: _selectedLanguage == 'en',
-            onTap: () => setState(() => _selectedLanguage = 'en'),
-          ),
-          const SizedBox(height: 8),
-          ChoiceTile(
-            title: 'Indonesian',
-            description: 'Bahasa Indonesia untuk percakapan',
-            isSelected: _selectedLanguage == 'id',
-            onTap: () => setState(() => _selectedLanguage = 'id'),
-          ),
-          const SizedBox(height: 24),
-          Semantics(
-            header: true,
-            child: const Text(
-              'Interaction Tone',
+              'Model approach',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ),

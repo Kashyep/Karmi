@@ -131,7 +131,7 @@ void main() {
       await settle(tester);
 
       // Preferences step
-      expect(find.text('Set your preferences'), findsOneWidget);
+      expect(find.text('Choose your model approach'), findsOneWidget);
       await tester.tap(find.text('Continue'));
       await settle(tester);
 

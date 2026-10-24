@@ -141,7 +141,7 @@ void main() {
       final (_, _, widget) = await _setup(3);
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
-      expect(find.text('Set your preferences'), findsOneWidget);
+      expect(find.text('Choose your model approach'), findsOneWidget);
       await expectLater(
         find.byType(MaterialApp),
         matchesGoldenFile(goldenPath('onboarding_preferences_${b}_x1.0_glass')),

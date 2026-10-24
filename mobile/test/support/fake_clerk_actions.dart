@@ -1,4 +1,5 @@
 import 'package:clerk_auth/clerk_auth.dart' as clerk;
+import 'package:clerk_auth/src/models/api/external_error.dart';
 import 'package:karmi_app/auth/clerk_email_code_actions.dart';
 
 /// In-memory Clerk stand-in. Set [nextError] to make the next call fail with
@@ -107,3 +108,16 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
     _signInAwaitingCode = false;
   }
 }
+
+/// A Clerk error carrying one server [ExternalError] per code, shaped like the
+/// SDK's response for a failed form submission.
+clerk.ClerkError clerkErrorWithCodes(List<String> codes) => clerk.ClerkError(
+      code: clerk.ClerkErrorCode.serverErrorResponse,
+      message: '{arg} (ERROR RECEIVED FROM SERVER)',
+      errors: ExternalErrorCollection(
+        errors: [
+          for (final code in codes)
+            ExternalError(message: 'server said $code', code: code),
+        ],
+      ),
+    );
