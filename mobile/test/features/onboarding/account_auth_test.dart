@@ -191,10 +191,31 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('onboarding_password_field')), 'Sunrise#42');
     await _tapCta(tester);
 
+    // Clerk does not send the second-factor code by itself; the app must ask.
+    expect(fake.calls, ['signIn', 'sendSignInCode']);
     expect(find.text('Enter verification code'), findsOneWidget);
     expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
     expect(find.text('Verify & Continue'), findsOneWidget);
     expect(find.text('What should we call you?'), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('onboarding_otp_field')), '424242');
+    await _tapCta(tester);
+    expect(fake.calls.last, 'verifySignIn');
+    expect(find.text('What should we call you?'), findsOneWidget);
+  });
+
+  testWidgets('sign-in that stalls in an unknown Clerk state shows an error, not a dead button', (tester) async {
+    final fake = FakeClerkEmailCodeActions()..stallAfterPassword = true;
+    await _pumpFlow(tester, fake: fake);
+
+    await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
+    await settle(tester);
+    await tester.enterText(find.byKey(const ValueKey('onboarding_email_field')), 'alice_k');
+    await tester.enterText(find.byKey(const ValueKey('onboarding_password_field')), 'Sunrise#42');
+    await _tapCta(tester);
+
+    expect(find.textContaining('Sign-in could not continue'), findsOneWidget);
+    expect(find.byKey(const ValueKey('onboarding_otp_field')), findsNothing);
   });
 
   testWidgets('resend is disabled during the 30 second cooldown, then re-enabled', (tester) async {

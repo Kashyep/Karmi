@@ -158,10 +158,23 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
             password: password,
             onError: _onClerkError,
           ));
-      if (mounted && !actions.isSignedIn && actions.signInAwaitingCode) {
+      if (!mounted || _errors.isNotEmpty || actions.isSignedIn) return;
+      // Clerk accepted the password but needs an email code (e.g. new device):
+      // ask Clerk to send it, then show the code field.
+      if (actions.signInNeedsSecondFactor) {
+        await _run((a) => a.sendSignInCode(_onClerkError));
+        if (!mounted || _errors.isNotEmpty || actions.isSignedIn) return;
+      }
+      if (actions.signInAwaitingCode) {
         setState(() => _awaitingCode = true);
         _startCooldown();
+        return;
       }
+      // Never leave the user on a button that silently does nothing.
+      setState(() {
+        _errors[AccountField.form] =
+            'Sign-in could not continue (${actions.signInStatus ?? 'unknown state'}). Try again.';
+      });
       return;
     }
 

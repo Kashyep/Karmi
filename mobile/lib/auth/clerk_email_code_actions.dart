@@ -17,8 +17,19 @@ abstract interface class ClerkEmailCodeActions {
   /// True while Clerk waits for the email code of a sign-up.
   bool get signUpAwaitingCode;
 
-  /// True while Clerk waits for an email code second factor after sign-in.
+  /// True while Clerk waits for an email code second factor after sign-in
+  /// (the code has been sent).
   bool get signInAwaitingCode;
+
+  /// True when Clerk accepted the password but still requires a second factor
+  /// (e.g. new-device verification) and no code has been sent yet.
+  bool get signInNeedsSecondFactor;
+
+  /// Raw Clerk sign-in status, for surfacing unexpected states to the user.
+  String? get signInStatus;
+
+  /// Ask Clerk to email the second-factor code for the current sign-in.
+  Future<void> sendSignInCode(ClerkFlowErrorHandler onError);
 
   /// Create the account (password strategy). Clerk then emails a code.
   Future<void> signUp({
@@ -77,6 +88,25 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
   bool get signInAwaitingCode =>
       auth.signIn?.isVerifying(clerk.Stage.second, clerk.Strategy.emailCode) ==
       true;
+
+  @override
+  bool get signInNeedsSecondFactor {
+    final signIn = auth.signIn;
+    if (signIn == null) return false;
+    return (signIn.needsSecondFactor || signIn.needsClientTrust) &&
+        !signInAwaitingCode;
+  }
+
+  @override
+  String? get signInStatus => auth.signIn?.status.toString();
+
+  // With no code, the SDK prepares (sends) the email code for the current
+  // factor stage instead of attempting verification.
+  @override
+  Future<void> sendSignInCode(ClerkFlowErrorHandler onError) => _safely(
+    () => auth.attemptSignIn(strategy: clerk.Strategy.emailCode),
+    onError,
+  );
 
   Future<void> _safely(
     Future<void> Function() operation,

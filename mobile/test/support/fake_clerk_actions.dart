@@ -16,6 +16,9 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
 
   bool _signUpAwaitingCode = false;
   bool _signInAwaitingCode = false;
+  bool _signInNeedsSecondFactor = false;
+  /// Simulates an unknown non-complete Clerk state after password sign-in.
+  bool stallAfterPassword = false;
   Object? nextError;
   bool requireSecondFactor = false;
 
@@ -31,6 +34,23 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   bool get signUpAwaitingCode => _signUpAwaitingCode;
   @override
   bool get signInAwaitingCode => _signInAwaitingCode;
+  @override
+  bool get signInNeedsSecondFactor => _signInNeedsSecondFactor;
+  @override
+  String? get signInStatus => stallAfterPassword
+      ? 'needs_identifier'
+      : _signInNeedsSecondFactor
+      ? 'needs_second_factor'
+      : null;
+
+  @override
+  Future<void> sendSignInCode(ClerkFlowErrorHandler onError) async {
+    calls.add('sendSignInCode');
+    if (nextError != null) return _maybeFail(onError);
+    // Like Clerk: the code is only sent once the second factor is prepared.
+    _signInNeedsSecondFactor = false;
+    _signInAwaitingCode = true;
+  }
 
   void _maybeFail(ClerkFlowErrorHandler onError) {
     final error = nextError;
@@ -68,8 +88,10 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
     lastSignInIdentifier = identifier;
     lastPassword = password;
     if (nextError != null) return _maybeFail(onError);
+    if (stallAfterPassword) return;
     if (requireSecondFactor) {
-      _signInAwaitingCode = true;
+      // Real Clerk: password accepted, second factor required, no code sent yet.
+      _signInNeedsSecondFactor = true;
     } else {
       isSignedIn = true;
     }
@@ -106,6 +128,7 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   Future<void> reset(ClerkFlowErrorHandler onError) async {
     _signUpAwaitingCode = false;
     _signInAwaitingCode = false;
+    _signInNeedsSecondFactor = false;
   }
 }
 
