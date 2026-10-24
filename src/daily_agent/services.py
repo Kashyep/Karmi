@@ -158,7 +158,29 @@ def policy_for(session: Session, account_id: str) -> tuple[Subscription, PlanPol
             user.unlocked_tier = tier_for_plan(policy.plan_id)
             if user.active_theme > user.unlocked_tier:
                 user.active_theme = user.unlocked_tier
+        rebase_usage_window(session, account_id, policy)
     return subscription, policy
+
+
+def rebase_usage_window(
+    session: Session, account_id: str, policy: PlanPolicy, now: datetime | None = None
+) -> None:
+    """Re-base today's live usage counters onto ``policy``.
+
+    Called only where the effective plan actually changes, so per-request usage
+    (including manual adjustments to the live window) is never overwritten.
+    """
+    key, _reset = current_window_key(now)
+    window = session.scalar(
+        select(UsageWindow).where(
+            UsageWindow.account_id == account_id, UsageWindow.window_key == key
+        )
+    )
+    if window is None:
+        return
+    window.everyday_limit = policy.everyday_limit
+    window.token_limit = policy.daily_token_limit
+    window.spend_limit_micro = policy.request_cost_cap_micro * policy.everyday_limit
 
 
 PLAN_TO_TIER: dict[str, int] = {
@@ -244,15 +266,6 @@ def ensure_usage_window(session: Session, account_id: str, settings: Settings) -
             if window is None:
                 raise
     platform = session.get(PlatformBudget, key)
-    desired_daily = policy.everyday_limit
-    desired_tokens = policy.daily_token_limit
-    desired_spend = policy.request_cost_cap_micro * policy.everyday_limit
-    if window.everyday_limit != desired_daily:
-        window.everyday_limit = desired_daily
-    if window.token_limit != desired_tokens:
-        window.token_limit = desired_tokens
-    if window.spend_limit_micro != desired_spend:
-        window.spend_limit_micro = desired_spend
     if platform is None:
         try:
             with session.begin_nested():

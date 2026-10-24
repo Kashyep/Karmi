@@ -55,6 +55,7 @@ from daily_agent.services import (
     ensure_usage_period,
     plan_for_tier,
     plan_policy,
+    rebase_usage_window,
     sync_account_progression,
     tier_for_plan,
 )
@@ -394,16 +395,7 @@ def change_tier(
     new_policy = SYNTHETIC_POLICIES[plan]
     # Entitlements only; billing is never touched. Re-base the live counters on the new plan.
     now = datetime.now(UTC)
-    day_key, _reset = current_window_key(now)
-    window = session.scalar(
-        select(UsageWindow).where(
-            UsageWindow.account_id == user.account_id, UsageWindow.window_key == day_key
-        )
-    )
-    if window is not None:
-        window.everyday_limit = new_policy.everyday_limit
-        window.token_limit = new_policy.daily_token_limit
-        window.spend_limit_micro = new_policy.request_cost_cap_micro * new_policy.everyday_limit
+    rebase_usage_window(session, user.account_id, new_policy, now)
     period = session.scalars(
         select(UsagePeriod)
         .where(UsagePeriod.account_id == user.account_id, UsagePeriod.reset_at > now)

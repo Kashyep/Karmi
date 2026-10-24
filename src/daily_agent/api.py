@@ -91,6 +91,7 @@ from daily_agent.services import (
     persist_completed_run,
     plan_policy,
     policy_for,
+    rebase_usage_window,
     release_budget,
     reserve_budget,
     return_gateway_requests,
@@ -672,6 +673,7 @@ def create_app() -> FastAPI:
             subscription.tier_expires_at = None
             subscription.revert_plan_id = None
             sync_account_progression(session, principal.account_id)
+            rebase_usage_window(session, principal.account_id, SYNTHETIC_POLICIES[plan_id])
             session.commit()
             logger.info("access code upgraded account %s to %s", principal.account_id, plan_id)
         policy = SYNTHETIC_POLICIES[subscription.plan_id]
@@ -836,6 +838,7 @@ def create_app() -> FastAPI:
                 "cancelled" if payload["type"] == "cancelled" else "active"
             )
             sync_account_progression(session, payload["account_id"])
+            rebase_usage_window(session, payload["account_id"], plan_policy(subscription))
         try:
             session.commit()
         except IntegrityError:
