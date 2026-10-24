@@ -110,6 +110,14 @@ from daily_agent.web import admin_page_headers, build_manifest, render_admin_pag
 logger = logging.getLogger(__name__)
 
 
+def _profile_user(session: Session, principal: Principal) -> User:
+    """Return the authenticated user provisioned by the authentication layer."""
+    user = session.get(User, principal.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+    return user
+
+
 def create_app() -> FastAPI:
     install_log_redaction()
     @asynccontextmanager
@@ -297,9 +305,7 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> UserProfileView:
-        user = session.get(User, principal.user_id)
-        if user is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+        user = _profile_user(session, principal)
         return UserProfileView(id=user.id, display_name=user.display_name)
 
     @app.patch("/v1/user/profile", response_model=UserProfileView)
@@ -308,10 +314,8 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> UserProfileView:
-        user = session.get(User, principal.user_id)
-        if user is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
-        user.display_name = body.display_name.strip()
+        user = _profile_user(session, principal)
+        user.display_name = body.display_name
         session.commit()
         return UserProfileView(id=user.id, display_name=user.display_name)
 
@@ -665,6 +669,8 @@ def create_app() -> FastAPI:
         if changed:
             subscription.plan_id = plan_id
             subscription.policy_version = "beta-access-code-v1"
+            subscription.tier_expires_at = None
+            subscription.revert_plan_id = None
             sync_account_progression(session, principal.account_id)
             session.commit()
             logger.info("access code upgraded account %s to %s", principal.account_id, plan_id)

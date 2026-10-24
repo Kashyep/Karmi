@@ -150,6 +150,10 @@ def render_admin_page(*, publishable_key: str | None) -> str:
               <select id="user-tier" class="input" name="tier">{_tier_options(include_blank=True)}</select>
             </div>
             <div class="field">
+              <label for="user-tester-label">Tester label</label>
+              <input id="user-tester-label" class="input" name="tester_label" autocomplete="off">
+            </div>
+            <div class="field">
               <label for="user-status">Status</label>
               <select id="user-status" class="input" name="status">
                 <option value="">Any status</option>
@@ -157,6 +161,7 @@ def render_admin_page(*, publishable_key: str | None) -> str:
                 <option value="suspended">Suspended</option>
               </select>
             </div>
+            <label class="checkbox"><input id="user-expiring" type="checkbox"> Expiring soon</label>
             <button class="button button-primary" type="submit">Search</button>
           </form>
           <p id="users-message" class="message" role="status"></p>
@@ -167,18 +172,24 @@ def render_admin_page(*, publishable_key: str | None) -> str:
                   <caption class="sr-only">Users matching the current filters</caption>
                   <thead>
                     <tr>
+                      <th scope="col"><label class="sr-only" for="users-select-all">Select all</label><input id="users-select-all" type="checkbox"></th>
                       <th scope="col">Email</th>
                       <th scope="col">Name</th>
                       <th scope="col">Tier</th>
                       <th scope="col">Status</th>
                       <th scope="col">Last active</th>
                       <th scope="col">Created</th>
-                    </tr>
                   </thead>
                   <tbody id="users-body"></tbody>
                 </table>
               </div>
               <button id="users-more" class="button button-secondary" type="button" hidden>Load more</button>
+              <div class="bulk-actions">
+                <label for="bulk-tier">Set plan for selected</label>
+                <select id="bulk-tier" class="input">{_tier_options(include_blank=False)}</select>
+                <input id="bulk-expiry" class="input" type="date" aria-label="Optional bulk expiry date">
+                <button id="btn-bulk-tier" class="button button-secondary" type="button">Set plan</button>
+              </div>
             </div>
             <section id="user-detail" class="card detail" aria-labelledby="detail-heading">
               <h2 id="detail-heading">User details</h2>
@@ -189,18 +200,31 @@ def render_admin_page(*, publishable_key: str | None) -> str:
                 <h3>Usage</h3>
                 <dl id="detail-usage" class="kv"></dl>
                 <div class="action-group">
+                  <h3>Profile</h3>
+                  <div class="inline-field"><label for="edit-display-name">Display name</label><input id="edit-display-name" class="input"></div>
+                  <label class="checkbox"><input id="edit-tester" type="checkbox"> Tester</label>
+                  <div class="inline-field"><label for="edit-tester-label">Tester label</label><input id="edit-tester-label" class="input"></div>
+                  <label for="edit-admin-notes">Admin notes</label>
+                  <textarea id="edit-admin-notes" class="input" rows="3"></textarea>
+                  <button id="btn-edit-user" class="button button-secondary" type="button">Save profile</button>
+                </div>
+                <div class="action-group">
+                  <h3>Plan</h3>
+                  <p id="detail-plan" class="muted"></p>
+                  <div class="inline-field">
+                    <label for="detail-tier">Set tier</label>
+                    <select id="detail-tier" class="input">{_tier_options(include_blank=False)}</select>
+                    <input id="detail-expiry" class="input" type="date" aria-label="Optional expiry date">
+                    <button id="btn-tier" class="button button-secondary" type="button">Set plan</button>
+                  </div>
+                  <button id="btn-promote" class="button button-secondary" type="button">Promote</button>
+                  <button id="btn-demote" class="button button-secondary" type="button">Demote</button>
+                </div>
+                <div class="action-group">
                   <h3>Account actions</h3>
                   <button id="btn-status" class="button button-secondary" type="button">Suspend user</button>
                   <button id="btn-revoke" class="button button-secondary" type="button">Revoke sessions</button>
                   <button id="btn-export" class="button button-secondary" type="button">Export data (JSON)</button>
-                </div>
-                <div class="action-group">
-                  <h3>Tier</h3>
-                  <div class="inline-field">
-                    <label for="detail-tier">New tier</label>
-                    <select id="detail-tier" class="input">{_tier_options(include_blank=False)}</select>
-                    <button id="btn-tier" class="button button-secondary" type="button">Change tier</button>
-                  </div>
                 </div>
                 <div class="action-group">
                   <h3>Credits</h3>

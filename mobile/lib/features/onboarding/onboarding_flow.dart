@@ -110,12 +110,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       setState(() => _authError = 'Enter a valid email address.');
       return;
     }
-
     setState(() {
       _authLoading = true;
       _authError = null;
     });
-
+    if (!widget.session.hasClerk && !widget.devAuthEnabled) {
+      setState(() {
+        _authError = 'Clerk authentication is not configured.';
+        _authLoading = false;
+      });
+      return;
+    }
     try {
       if (widget.session.hasClerk) {
         final actions = _actions(context);
@@ -141,6 +146,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   Future<void> _verifyOtp(String code) async {
     if (code.length < 6) return;
+    if (!widget.session.hasClerk && !widget.devAuthEnabled) {
+      setState(() => _authError = 'Clerk authentication is not configured.');
+      return;
+    }
     setState(() {
       _authLoading = true;
       _authError = null;

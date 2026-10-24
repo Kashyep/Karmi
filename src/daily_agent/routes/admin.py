@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, StrictInt, StringConstraints, model_validator
 from sqlalchemy.orm import Session
 
 from daily_agent import admin_service as svc
@@ -45,7 +45,7 @@ class ReasonBody(BaseModel):
 
 
 class TierBody(ReasonBody):
-    tier: str | int
+    tier: str | StrictInt
     expires_at: datetime | None = None
 
     @model_validator(mode="after")
@@ -59,10 +59,16 @@ class TierBody(ReasonBody):
 
 
 class UserEditBody(ReasonBody):
-    display_name: str | None = Field(default=None, min_length=1, max_length=120)
+    display_name: str | None = Field(default=None, max_length=120)
     tester: bool | None = None
-    tester_label: str | None = Field(default=None, min_length=1, max_length=40)
-    admin_notes: str | None = Field(default=None, min_length=1, max_length=2000)
+    tester_label: str | None = Field(default=None, max_length=40)
+    admin_notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_edit(self) -> UserEditBody:
+        if self.display_name is not None and not self.display_name.strip():
+            raise ValueError("display_name cannot be blank")
+        return self
 
 
 class BulkTierBody(TierBody):
@@ -190,8 +196,9 @@ def unsuspend_user(
     body: ReasonBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    return svc.unsuspend(session, admin.user.id, user_id, body.reason)
+    return svc.unsuspend(session, settings, admin.user.id, user_id, body.reason)
 
 
 @router.post("/users/{user_id}/revoke-sessions")
@@ -200,9 +207,10 @@ def revoke_user_sessions(
     body: ReasonBody,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
     clerk: ClerkBackend | None = Depends(get_clerk_backend),
 ) -> dict[str, Any]:
-    return svc.revoke_sessions(session, admin.user.id, user_id, body.reason, clerk)
+    return svc.revoke_sessions(session, settings, admin.user.id, user_id, body.reason, clerk)
 
 
 @router.post("/users/{user_id}/tier")

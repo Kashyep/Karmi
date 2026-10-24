@@ -71,16 +71,18 @@
     return text ? `?${text}` : '';
   }
 
-  /** Query string for GET /users. Unknown tier/status values are dropped. */
+  /** Query string for GET /users. Unknown values are dropped. */
   function buildUsersQuery(filters = {}) {
     const params = new URLSearchParams();
     const q = String(filters.q ?? '').trim();
     if (q) params.set('q', q);
     if (TIERS.includes(filters.tier)) params.set('tier', filters.tier);
     if (USER_STATUSES.includes(filters.status)) params.set('status', filters.status);
+    if (filters.testerLabel) params.set('tester_label', String(filters.testerLabel).trim());
+    if (filters.suspended !== undefined && filters.suspended !== '') params.set('suspended', String(filters.suspended));
+    if (filters.expiringSoon) params.set('plan_expiring_before', new Date(Date.now() + 30 * 86400000).toISOString());
     const page = buildPageQuery({ limit: filters.limit, cursor: filters.cursor });
-    const pageParams = new URLSearchParams(page.slice(1));
-    for (const [key, value] of pageParams) params.set(key, value);
+    for (const [key, value] of new URLSearchParams(page.slice(1))) params.set(key, value);
     const text = params.toString();
     return text ? `?${text}` : '';
   }
@@ -220,6 +222,7 @@
     activeTab: 'users',
     usersCursor: null,
     usersRequest: 0,
+    selectedUserIds: new Set(),
     selectedUserId: null,
     detailUser: null,
     detailRequest: 0,
@@ -269,9 +272,31 @@
 
   function messageForStatus(status) {
     if (status === 401) return 'Your sign-in was not accepted. Try again.';
-    if (status === 403) return 'Not available for this account.';
+    if (status === 403) return 'Not allowed.';
     if (status === 423) return 'Too many attempts.';
     return `Request failed with status ${status}.`;
+  }
+
+  function detailMessage(payload, fallback) {
+    return payload && typeof payload.detail === 'string' && payload.detail.trim()
+      ? payload.detail
+      : fallback;
+  }
+
+  function sessionInvalid(payload) {
+    if (!payload || typeof payload !== 'object') return false;
+    const detail = typeof payload.detail === 'string' ? payload.detail.toLowerCase() : '';
+    return payload.session_invalid === true || payload.code === 'session_invalid' || detail.includes('session invalid');
+  }
+
+  function futureExpiry(value) {
+    const text = String(value || '').trim();
+    if (!text) return null;
+    const timestamp = Date.parse(`${text}T23:59:59`);
+    if (!Number.isFinite(timestamp) || timestamp <= Date.now()) {
+      throw new Error('Expiry date must be in the future.');
+    }
+    return text;
   }
 
   async function readJson(res) {
@@ -298,6 +323,7 @@
   }
 
   function clearSensitiveUi() {
+    state.selectedUserIds.clear();
     $('users-body').replaceChildren();
     $('audit-body').replaceChildren();
     $('users-more').hidden = true;
@@ -429,9 +455,10 @@
     }
     if (!res.ok) {
       const payload = await readJson(res);
-      const err = new ApiError(res.status, messageForStatus(res.status), payload);
+      const fallback = res.status === 403 ? 'Not allowed.' : messageForStatus(res.status);
+      const err = new ApiError(res.status, res.status === 403 ? fallback : detailMessage(payload, fallback), payload);
       err.retryAfter = res.headers.get('Retry-After');
-      if (state.adminToken && (res.status === 401 || res.status === 403)) {
+      if (state.adminToken && (res.status === 401 || (res.status === 403 && sessionInvalid(payload)))) {
         endAdminSession('Your admin session ended. Enter the code again.');
       }
       throw err;
@@ -659,11 +686,16 @@
   async function loadUsers(reset) {
     if (!reset && !state.usersCursor) return;
     const requestId = ++state.usersRequest;
-    if (reset) state.usersCursor = null;
+    if (reset) {
+      state.usersCursor = null;
+      state.selectedUserIds.clear();
+    }
     const query = buildUsersQuery({
       q: $('user-q').value,
       tier: $('user-tier').value,
       status: $('user-status').value,
+      testerLabel: $('user-tester-label').value,
+      expiringSoon: $('user-expiring').checked,
       limit: PAGE_SIZE,
       cursor: reset ? undefined : state.usersCursor,
     });
@@ -677,7 +709,7 @@
       if (reset) body.replaceChildren();
       body.querySelectorAll('.empty-row').forEach((node) => node.remove());
       if (items.length === 0 && body.children.length === 0) {
-        body.append(el('tr', { class: 'empty-row' }, el('td', { colspan: 6, text: 'No users match these filters.' })));
+        body.append(el('tr', { class: 'empty-row' }, el('td', { colspan: 7, text: 'No users match these filters.' })));
       }
       for (const user of items) body.append(userRow(user));
       state.usersCursor = (data && data.next_cursor) || null;
@@ -691,6 +723,24 @@
     }
   }
 
+  function setUserSelected(id, selected) {
+    const key = String(id);
+    if (!selected) {
+      state.selectedUserIds.delete(key);
+      return;
+    }
+    if (state.selectedUserIds.size >= 100 && !state.selectedUserIds.has(key)) {
+      setMessage('users-message', 'You can select at most 100 users.', 'error');
+      return;
+    }
+    state.selectedUserIds.add(key);
+  }
+
+  function expiryFields(inputId) {
+    const expiresAt = futureExpiry($(inputId).value);
+    return expiresAt ? { expires_at: expiresAt } : {};
+  }
+
   function userRow(user) {
     const suspended = Boolean(user.disabled);
     return el('tr', {
@@ -700,6 +750,9 @@
         if (!event.target.closest('button')) selectUser(user.id).catch(() => {});
       },
     },
+    el('td', { 'data-label': 'Select' },
+      el('input', { type: 'checkbox', 'aria-label': `Select ${userLabel(user)}`, checked: state.selectedUserIds.has(String(user.id)),
+        onclick: (event) => { event.stopPropagation(); const box = event.currentTarget; setUserSelected(user.id, box.checked); box.checked = state.selectedUserIds.has(String(user.id)); } })),
     el('td', { 'data-label': 'Email' },
       el('button', { class: 'link-button', type: 'button', onclick: () => selectUser(user.id).catch(() => {}),
         text: displayValue(user.email) })),
@@ -779,6 +832,12 @@
       ['Credits remaining', formatUsd(usage.credits_remaining)],
       ['Active sessions', formatCount(usage.sessions)],
     ]));
+    $('edit-display-name').value = user.display_name || '';
+    $('edit-tester').checked = Boolean(user.tester);
+    $('edit-tester-label').value = user.tester_label || '';
+    $('edit-admin-notes').value = user.admin_notes || '';
+    $('detail-plan').textContent = `Effective plan: ${tierLabel(user.effective_plan || user.tier)}; expires: ${formatTimestamp(user.plan_expires_at)}; reverts to: ${tierLabel(user.revert_plan_id)}`;
+    $('detail-expiry').value = '';
     $('btn-status').textContent = suspended ? 'Unsuspend user' : 'Suspend user';
     $('detail-tier').value = TIERS.includes(user.tier) ? user.tier : TIERS[0];
     $('detail-empty').hidden = true;
@@ -925,6 +984,29 @@
   // ---------------------------------------------------------------------------
 
   function wireDetailActions() {
+    $('btn-edit-user').addEventListener('click', () => {
+      const user = requireDetailUser(); if (!user) return;
+      openConfirm({ title: 'Save profile', summary: `Update profile for ${userLabel(user)}.`, run: async (reason) => {
+        await api('PATCH', `/users/${encodeId(user.id)}`, { body: {
+          display_name: $('edit-display-name').value.trim() || null, tester: $('edit-tester').checked,
+          tester_label: $('edit-tester-label').value.trim() || null, admin_notes: $('edit-admin-notes').value.trim() || null, reason,
+        }}); await refreshAfterChange(user.id); return 'Profile saved.';
+      }});
+    });
+    const tierMutation = (direction) => {
+      const user = requireDetailUser(); if (!user) return;
+      const index = TIERS.indexOf(user.tier);
+      if (index < 0) { setMessage('detail-message', 'Unknown user tier.', 'error'); return; }
+      const next = index + direction;
+      if (next < 0 || next >= TIERS.length) { setMessage('detail-message', 'No further tier available.', 'error'); return; }
+      let fields;
+      try { fields = { tier: TIERS[next], ...expiryFields('detail-expiry') }; }
+      catch (err) { setMessage('detail-message', err.message, 'error'); return; }
+      openConfirm({ title: 'Change tier', summary: `Change ${userLabel(user)} to ${tierLabel(TIERS[next])}`,
+        run: mutateUser(user.id, 'tier', fields, 'Tier changed.') });
+    };
+    $('btn-promote').addEventListener('click', () => tierMutation(1));
+    $('btn-demote').addEventListener('click', () => tierMutation(-1));
     $('btn-status').addEventListener('click', () => {
       const user = requireDetailUser();
       if (!user) return;
@@ -952,10 +1034,13 @@
         setMessage('detail-message', 'Choose a different tier first.', 'error');
         return;
       }
+      let fields;
+      try { fields = { tier, ...expiryFields('detail-expiry') }; }
+      catch (err) { setMessage('detail-message', err.message, 'error'); return; }
       openConfirm({
         title: 'Change tier',
         summary: `Change ${userLabel(user)} from ${tierLabel(user.tier)} to ${tierLabel(tier)}.`,
-        run: mutateUser(user.id, 'tier', { tier }, `Tier changed to ${tierLabel(tier)}.`),
+        run: mutateUser(user.id, 'tier', fields, `Tier changed to ${tierLabel(tier)}.`),
       });
     });
     $('btn-credits').addEventListener('click', () => {
@@ -969,7 +1054,7 @@
       setMessage('credits-error', '', '');
       openConfirm({
         title: 'Adjust credits',
-        summary: `${result.summary} for ${userLabel(user)}.`,
+        summary: result.summary,
         run: mutateUser(user.id, 'credits', result.payload, 'Credits updated.'),
       });
     });
@@ -1033,13 +1118,39 @@
     });
     $('user-search-form').addEventListener('submit', (event) => {
       event.preventDefault();
+      state.selectedUserIds.clear();
       loadUsers(true).catch(() => {});
     });
+    for (const id of ['user-tier', 'user-status', 'user-tester-label', 'user-expiring']) {
+      $(id).addEventListener('change', () => {
+        state.selectedUserIds.clear();
+        loadUsers(true).catch(() => {});
+      });
+    }
     $('users-more').addEventListener('click', () => {
       loadUsers(false).catch(() => {});
     });
     $('audit-more').addEventListener('click', () => {
       loadAudit(false).catch(() => {});
+    });
+    $('users-select-all').addEventListener('change', (event) => {
+      const checked = event.currentTarget.checked;
+      for (const row of $('users-body').querySelectorAll('tr[data-user-id]')) {
+        const id = String(row.dataset.userId); const box = row.querySelector('input[type="checkbox"]');
+        setUserSelected(id, checked);
+        box.checked = state.selectedUserIds.has(id);
+      }
+    });
+    $('btn-bulk-tier').addEventListener('click', () => {
+      const ids = [...state.selectedUserIds]; const tier = $('bulk-tier').value;
+      if (!ids.length) { setMessage('users-message', 'Select at least one user.', 'error'); return; }
+      let expiry;
+      try { expiry = expiryFields('bulk-expiry'); }
+      catch (err) { setMessage('users-message', err.message, 'error'); return; }
+      openConfirm({ title: 'Set plan', summary: `Set ${ids.length} selected users to ${tierLabel(tier)}.`, run: async (reason) => {
+        await api('POST', '/users/bulk-tier', { body: { user_ids: ids, tier, ...expiry, reason }});
+        state.selectedUserIds.clear(); await loadUsers(true); return 'Plans updated.';
+      }});
     });
     wireTabs();
     wireDetailActions();

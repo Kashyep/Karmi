@@ -2,7 +2,14 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, StrictInt, model_serializer
+from pydantic import (
+    BaseModel,
+    Field,
+    SerializerFunctionWrapHandler,
+    StrictInt,
+    field_validator,
+    model_serializer,
+)
 
 
 class Outcome(StrEnum):
@@ -168,3 +175,11 @@ class UserProfileView(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def name_not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("display_name must not be blank or whitespace-only")
+        return stripped

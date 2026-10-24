@@ -10,6 +10,8 @@ dist/
 build/
 *.egg-info/
 .env
+.env.*
+!.env.example
 data/*.db
 data/policy_bundles/
 reports/
@@ -26,6 +28,8 @@ gh_2.55.0_linux_amd64.tar.gz
 .env.openrouter
 .env.azure
 .env.azure.prod
+.env.testauth
+.env.testusers
 
 # flutter golden failures
 mobile/test/**/failures/

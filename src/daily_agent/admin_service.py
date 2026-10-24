@@ -79,11 +79,15 @@ def _bad(message: str) -> HTTPException:
 
 def parse_tier(tier: str | int) -> str:
     """Accept a plan id (``yanta``) or a tier number 1-4; return the plan id."""
-    if isinstance(tier, int) or (isinstance(tier, str) and tier.isdigit()):
+    if isinstance(tier, bool):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid tier")
+    if isinstance(tier, int) or (isinstance(tier, str) and tier.isascii() and tier.isdigit()):
         number = int(tier)
         if number not in range(1, 5):
             raise _bad("tier must be 1-4 or a plan id")
         return plan_for_tier(number)
+    if isinstance(tier, str) and not tier.isascii():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid tier")
     plan = str(tier).strip().lower()
     if plan not in SYNTHETIC_POLICIES:
         raise _bad("unknown tier")
@@ -152,8 +156,7 @@ def list_users(
             or_(func.lower(User.email).like(needle, escape="\\"), func.lower(User.display_name).like(needle, escape="\\"), User.id == q.strip())
         )
     if tier:
-        plan = parse_tier(tier)
-        stmt = stmt.where(or_(Subscription.plan_id.is_(None), Subscription.plan_id == plan) if plan == "ananta" else Subscription.plan_id == plan)
+        parse_tier(tier)
     if state:
         if state not in {"active", "suspended"}:
             raise _bad("status must be active or suspended")
@@ -167,6 +170,9 @@ def list_users(
     if cursor:
         stmt = stmt.where(User.id > cursor)
     rows = session.execute(stmt.order_by(User.id).limit(limit + 1)).all()
+    if tier:
+        plan = parse_tier(tier)
+        rows = [(user, sub) for user, sub in rows if user_item(user, sub)["effective_plan"] == plan]  # type: ignore[misc]
     page = rows[:limit]
     return {"items": [user_item(user, sub) for user, sub in page], "next_cursor": page[-1][0].id if len(rows) > limit and page else None}
 
@@ -260,8 +266,9 @@ def suspend(
     return user_item(user, _subscription(session, user.account_id))
 
 
-def unsuspend(session: Session, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+def unsuspend(session: Session, settings: Settings, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
     user = _load_user(session, user_id)
+    _refuse_admin_target(session, settings, admin_id, user, "user.unsuspend", reason)
     before = user.disabled
     user.disabled = False
     append_audit(
@@ -278,6 +285,7 @@ def unsuspend(session: Session, admin_id: str, user_id: str, reason: str) -> dic
 
 def revoke_sessions(
     session: Session,
+    settings: Settings,
     admin_id: str,
     user_id: str,
     reason: str,
@@ -336,14 +344,15 @@ def edit_user(
     _refuse_admin_target(session, settings, admin_id, user, "user.edit", reason)
     before = {"display_name": user.display_name, "tester": user.tester, "tester_label": user.tester_label, "admin_notes": user.admin_notes}
     if display_name is not None:
-        user.display_name = display_name
+        user.display_name = display_name.strip()
     if tester is not None:
         user.tester = tester
     if tester_label is not None:
-        user.tester_label = tester_label
+        user.tester_label = tester_label or None
     if admin_notes is not None:
-        user.admin_notes = admin_notes
-    append_audit(session, admin_user_id=admin_id, action="user.edit", target_user_id=user.id, reason=reason, detail={"before": before})
+        user.admin_notes = admin_notes or None
+    after = {"display_name": user.display_name, "tester": user.tester, "tester_label": user.tester_label, "admin_notes": user.admin_notes}
+    append_audit(session, admin_user_id=admin_id, action="user.edit", target_user_id=user.id, reason=reason, detail={"before": before, "after": after})
     session.commit()
     return user_item(user, _subscription(session, user.account_id)) | {"admin_notes": user.admin_notes}
 
@@ -357,6 +366,8 @@ def change_tier(
     tier: str | int,
     reason: str,
     expires_at: datetime | None = None,
+    *,
+    commit: bool = True,
 ) -> dict[str, Any]:
     plan = parse_tier(tier)
     user = _load_user(session, user_id)
@@ -378,7 +389,8 @@ def change_tier(
     subscription.status = "active"
     subscription.policy_version = "admin-override-v1"
     subscription.tier_expires_at = expires_at
-    subscription.revert_plan_id = old_policy.plan_id if expires_at is not None else None
+    base_plan = subscription.revert_plan_id or old_policy.plan_id
+    subscription.revert_plan_id = base_plan if expires_at is not None else None
     new_policy = SYNTHETIC_POLICIES[plan]
     # Entitlements only; billing is never touched. Re-base the live counters on the new plan.
     now = datetime.now(UTC)
@@ -400,7 +412,7 @@ def change_tier(
     if period is not None:
         period.spend_limit_micro = max(
             0,
-            period.spend_limit_micro + new_policy.period_cost_cap_micro - old_policy.period_cost_cap_micro,
+            new_policy.period_cost_cap_micro + (period.credit_adjust_micro or 0),
         )
     session.flush()
     sync_account_progression(session, user.account_id)
@@ -412,7 +424,8 @@ def change_tier(
         reason=reason,
         detail={"before": before, "after": {"plan_id": plan, "tier": tier_for_plan(plan)}},
     )
-    session.commit()
+    if commit:
+        session.commit()
     return user_item(user, subscription)
 
 def bulk_change_tier(
@@ -427,7 +440,7 @@ def bulk_change_tier(
     if len(user_ids) > 100:
         raise _bad("user_ids cannot contain more than 100 users")
     if len(set(user_ids)) != len(user_ids):
-        raise _bad("user_ids must be unique")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="user_ids must be unique")
     plan = parse_tier(tier)
     users = [session.get(User, uid) for uid in user_ids]
     if any(user is None for user in users):
@@ -436,7 +449,8 @@ def bulk_change_tier(
         assert user is not None
         _refuse_admin_target(session, settings, admin_id, user, "user.bulk_tier", reason)
     for uid in user_ids:
-        change_tier(session, settings, admin_id, uid, plan, reason, expires_at)
+        change_tier(session, settings, admin_id, uid, plan, reason, expires_at, commit=False)
+    session.commit()
     return {"updated": len(user_ids), "user_ids": user_ids}
 
 
@@ -451,6 +465,7 @@ def adjust_credits(
     reason: str,
 ) -> dict[str, Any]:
     user = _load_user(session, user_id)
+    _refuse_admin_target(session, settings, admin_id, user, "user.credits", reason)
     subscription = _subscription(session, user.account_id)
     if subscription is None:
         subscription = Subscription(account_id=user.account_id, plan_id="ananta")
@@ -459,9 +474,13 @@ def adjust_credits(
     policy = plan_policy(subscription)
     period = ensure_usage_period(session, user.account_id, policy, subscription.period_anchor)
     before = period.spend_limit_micro
-    after = before + to_micro(settings, delta_usd) if delta_usd is not None else to_micro(
-        settings, budget_usd or 0.0
-    )
+    if delta_usd is not None:
+        adjustment = to_micro(settings, delta_usd)
+        after = before + adjustment
+        period.credit_adjust_micro = (period.credit_adjust_micro or 0) + adjustment
+    else:
+        after = to_micro(settings, budget_usd or 0.0)
+        period.credit_adjust_micro = after - policy.period_cost_cap_micro
     used = period.reserved_micro + period.settled_micro
     if after < used:
         session.rollback()
