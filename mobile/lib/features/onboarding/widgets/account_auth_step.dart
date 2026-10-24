@@ -342,7 +342,10 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
                 helperText: isCreate
                     ? '8+ characters with uppercase, lowercase, a number and a symbol.'
                     : null,
+                helperStyle: _supportStyle(context),
+                helperMaxLines: 2,
                 errorText: _errors[AccountField.password],
+                errorStyle: _supportStyle(context, error: true),
                 errorMaxLines: 3,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -441,9 +444,20 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
         labelText: label,
         hintText: hint,
         errorText: error,
+        errorStyle: _supportStyle(context, error: true),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       onSubmitted: (_) => _submit(),
+    );
+  }
+
+  // Helper/error text must use a text slot the Karmi theme defines (bodyMedium);
+  // the default bodySmall slot is undefined and renders as missing glyphs.
+  TextStyle? _supportStyle(BuildContext context, {bool error = false}) {
+    final colors = KarmiColors.of(context);
+    return Theme.of(context).textTheme.bodyMedium?.copyWith(
+      fontSize: 12,
+      color: error ? colors.destructive : colors.mutedForeground,
     );
   }
 }
