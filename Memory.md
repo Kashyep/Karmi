@@ -360,3 +360,12 @@
 - Pixel 9a: old debug-signed app uninstalled (user approved); v0.1.0 code 4 installed; launch screenshot `docs/release-evidence/device-r1/01-release-launch.png`.
 - Ops notes: this host's IPv6 route to Neon hangs, so deploy/migrate use `PGHOSTADDR=<neon-proxy-ip>`; use `TMPDIR=~/.cache/karmi-tmp` for tests (`/tmp` is a 7.7G tmpfs); `karmi-ui` (`~/.local/bin`) opens the live admin, `karmi-ui code` enrolls the admin code.
 - PENDING (user): rossoadmin sign-in + admin code enrollment, device smoke of onboarding and admin, release approval. Not pushed, not published.
+
+## Release 1 update (2026-10-24, onboarding + admin access fixes)
+
+- User device report: onboarding asked only for an email code; Welcome "Sign in" opened Create; code paste broken; Sign in button dead.
+- Fixed on `r1/onboard-auth` (merged): Create account = names, username, email, password (Clerk requires username+password) then email code; one hidden OTP input (paste/autofill); Welcome sign-in opens Sign in mode; after password Clerk returns `needs_second_factor` (new-device check) and the app now calls `sendSignInCode` then shows the code field; unknown sign-in states show an error. Preferences step asks only the model approach (no language/Indonesian). Test fake now matches real Clerk. Flutter: analyze clean, 884 tests passed.
+- Admin access root causes: (1) `deploy_azure.py deploy` replaced env vars without `DAILY_AGENT_ADMIN_CLERK_USER_IDS` (wiped allowlist) — fixed in script, allowlist now read from `.env.clerk`; (2) `users.role` was `customer` for both allowlisted users — set to `admin` in Neon with `admin.role_granted` audit rows (runbook-sanctioned direct DB step); (3) image `f8865ac` never reached ACR; Azure now on `34f4062`.
+- Azure regression 4 on `34f4062`: 12/12; allowlisted admin gets code-required (200), true non-admin 403.
+- Final artifacts (rebuilt from `b9a4457`): `~/Projects/Karmi-release/v0.1.0+4/` APK sha256 d57138ec…f34b2, AAB 43ae4e1b…37802; installed on Pixel 9a.
+- PENDING (user): `karmi-ui code`, rossoadmin sign-in on device, admin console check, release approval. Nothing pushed or published.
