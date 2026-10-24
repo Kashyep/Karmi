@@ -139,21 +139,24 @@ class FakeAdminApi implements AdminApi {
       if (q != null && q.isNotEmpty) {
         final needle = q.toLowerCase();
         if (!u.email.toLowerCase().contains(needle) &&
-            !u.displayName.toLowerCase().contains(needle))
+            !u.displayName.toLowerCase().contains(needle)) {
           return false;
+        }
       }
       if (tier != null && tier.isNotEmpty && u.tier != tier) return false;
       if (testerLabel != null &&
           testerLabel.isNotEmpty &&
-          u.testerLabel != testerLabel)
+          u.testerLabel != testerLabel) {
         return false;
+      }
       if (suspended != null && u.disabled != suspended) return false;
       if (status == 'active' && u.disabled) return false;
       if (status == 'suspended' && !u.disabled) return false;
       if (planExpiringBefore != null &&
           (u.planExpiresAt == null ||
-              !u.planExpiresAt!.isBefore(planExpiringBefore)))
+              !u.planExpiresAt!.isBefore(planExpiringBefore))) {
         return false;
+      }
       return true;
     }).toList();
     final start = int.tryParse(cursor ?? '') ?? 0;
