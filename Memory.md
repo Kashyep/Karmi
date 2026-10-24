@@ -338,3 +338,14 @@
 - Open owner decisions: P2 free-pool exclusions (reverted at `f5d2794`), composer attachment button (kept), iOS distribution, Android release keystore, public repo for Obtainium, golden review, analytics/admin scope.
 - Handover document: `release_completion.md` (repo root; copy also at `/home/rosso/Projects/Karmi/release_completion.md`).
 - Final gates at the tip of `release1/integration` (2026-10-23): `flutter analyze` clean, `flutter test` 767 passed; `.venv/bin/ruff` clean, `.venv/bin/mypy src` clean (49 files), unit 256 passed, e2e 85 passed. Backend tools live in `.venv/bin` — bare `ruff`/`pytest` are not on PATH.
+
+## Release 1 final evidence (2026-10-24)
+
+- Azure regression 12-case suite: commit `7145bb8`; 11/12 cases passed. The profile 404 was fixed in `ba3198c` and is pending redeploy.
+- Admin edit backend: `r1/admin-edit` commit `a38f8f8`; audited and reworked.
+- Onboarding hardening: commit `ba3198c`.
+- Release signing: commit `f8e0ad4`; signing key is at `~/.karmi-keys` with a backup.
+- Documentation: commit `7baafb9`.
+- Admin web UI: commit `c9e87d2`; browser verification is in progress.
+- Admin app UI: commit `153a7fb`; tests are in progress.
+- Remaining release gates are pending: Azure redeploy, release APK/AAB, Pixel smoke, user admin-code enrollment, and release approval.
