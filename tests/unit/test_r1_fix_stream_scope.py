@@ -478,7 +478,7 @@ def test_idempotency_without_conversation_id_orders_by_created_at_desc(tmp_path:
         "/v1/chat/stream",
         headers={"Authorization": f"Bearer {token_a}"},
         json={
-            "text": "Repeated send",
+            "text": "Msg in thread 2",  # must match the newest message (mismatch is 409)
             "client_message_id": client_msg_id,
         },
     )
