@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import '../../../fonts.dart';
 import '../../../theme/karmi_colors.dart';
 import 'citation_chip.dart';
 import 'code_block.dart';
@@ -11,6 +12,26 @@ import 'file_chip.dart';
 import 'long_output_fold.dart';
 import 'safe_link.dart';
 import 'table_view.dart';
+
+/// Renders a single newline inside a paragraph as a line break (owner default, see PR).
+class SoftLineBreakSyntax extends md.InlineSyntax {
+  SoftLineBreakSyntax() : super(r'\n');
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    parser.addNode(md.Element.empty('br'));
+    return true;
+  }
+}
+
+/// Appends [kGlyphFallbackFamilies] to [style]'s own fallbacks, without duplicates.
+TextStyle withGlyphFallback(TextStyle style) {
+  final fallback = [...?style.fontFamilyFallback];
+  for (final family in kGlyphFallbackFamilies) {
+    if (!fallback.contains(family)) fallback.add(family);
+  }
+  return style.copyWith(fontFamilyFallback: fallback);
+}
 
 /// Inline syntax that detects citation patterns like `[^1]`, `[1]`, or `[citation:1]`.
 class CitationSyntax extends md.InlineSyntax {
@@ -60,7 +81,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     final document = md.Document(
       extensionSet: md.ExtensionSet.gitHubWeb,
       encodeHtml: true,
-      inlineSyntaxes: [CitationSyntax()],
+      inlineSyntaxes: [CitationSyntax(), SoftLineBreakSyntax()],
     );
     final lines = const LineSplitter().convert(widget.text);
     _cachedText = widget.text;
@@ -148,7 +169,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
           final codeBg = colors?.muted ?? colorScheme.surfaceContainerHighest;
           final monoStyle = baseStyle.copyWith(
             fontFamily: 'JetBrains Mono',
-            fontFamilyFallback: const ['monospace'],
+            fontFamilyFallback: [...kGlyphFallbackFamilies, 'monospace'],
             backgroundColor: codeBg,
           );
           return TextSpan(
@@ -202,6 +223,9 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
             child: CitationChip(index: index),
           );
 
+        case 'br':
+          return const TextSpan(text: '\n');
+
         default:
           return TextSpan(
             children: node.children
@@ -218,7 +242,12 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     final textTheme = Theme.of(context).textTheme;
     final colors = Theme.of(context).extension<KarmiColors>();
     final colorScheme = Theme.of(context).colorScheme;
-    final bodyStyle = textTheme.bodyMedium ?? const TextStyle();
+    final bodyStyle = withGlyphFallback(
+      textTheme.bodyMedium ?? const TextStyle(),
+    );
+
+    TextStyle withFallback(TextStyle? style) =>
+        withGlyphFallback(style ?? const TextStyle());
 
     if (node is md.Text) {
       return Padding(
@@ -232,8 +261,11 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     if (node is md.Element) {
       switch (node.tag) {
         case 'h1':
-          final style = (textTheme.headlineMedium ?? const TextStyle())
-              .copyWith(fontWeight: FontWeight.bold);
+          final style = withFallback(
+            (textTheme.headlineMedium ?? const TextStyle()).copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          );
           return Padding(
             padding: const EdgeInsets.only(top: 16, bottom: 8),
             child: Text.rich(
@@ -246,8 +278,10 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
           );
 
         case 'h2':
-          final style = (textTheme.headlineSmall ?? const TextStyle()).copyWith(
-            fontWeight: FontWeight.bold,
+          final style = withFallback(
+            (textTheme.headlineSmall ?? const TextStyle()).copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           );
           return Padding(
             padding: const EdgeInsets.only(top: 14, bottom: 6),
@@ -261,8 +295,10 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
           );
 
         case 'h3':
-          final style = (textTheme.titleLarge ?? const TextStyle()).copyWith(
-            fontWeight: FontWeight.bold,
+          final style = withFallback(
+            (textTheme.titleLarge ?? const TextStyle()).copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           );
           return Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 6),
@@ -276,8 +312,10 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
           );
 
         case 'h4':
-          final style = (textTheme.titleMedium ?? const TextStyle()).copyWith(
-            fontWeight: FontWeight.bold,
+          final style = withFallback(
+            (textTheme.titleMedium ?? const TextStyle()).copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           );
           return Padding(
             padding: const EdgeInsets.only(top: 10, bottom: 4),
@@ -291,8 +329,10 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
           );
 
         case 'h5':
-          final style = (textTheme.titleSmall ?? const TextStyle()).copyWith(
-            fontWeight: FontWeight.bold,
+          final style = withFallback(
+            (textTheme.titleSmall ?? const TextStyle()).copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           );
           return Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 4),
@@ -306,8 +346,10 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
           );
 
         case 'h6':
-          final style = (textTheme.bodyLarge ?? const TextStyle()).copyWith(
-            fontWeight: FontWeight.bold,
+          final style = withFallback(
+            (textTheme.bodyLarge ?? const TextStyle()).copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           );
           return Padding(
             padding: const EdgeInsets.only(top: 6, bottom: 2),
@@ -459,6 +501,7 @@ class _MarkdownMessageState extends State<MarkdownMessage> {
     var codeText = codeElement != null
         ? codeElement.textContent
         : preElement.textContent;
+    codeText = decodeCodeText(codeText);
     if (codeText.endsWith('\n')) {
       codeText = codeText.substring(0, codeText.length - 1);
     }

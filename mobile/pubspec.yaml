@@ -56,3 +56,6 @@ flutter:
         - asset: assets/google_fonts/JetBrainsMono-Regular.ttf
         - asset: assets/google_fonts/JetBrainsMono-Bold.ttf
           weight: 700
+    - family: Noto Sans Math
+      fonts:
+        - asset: assets/google_fonts/NotoSansMath-Regular.ttf

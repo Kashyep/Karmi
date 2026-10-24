@@ -4,9 +4,110 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../fonts.dart';
 import '../../../theme/karmi_colors.dart';
 import '../../../theme/karmi_theme.dart';
 import 'long_output_fold.dart';
+
+/// Common named HTML entities. Models emit these in code; unknown names are left as written.
+const Map<String, String> _namedEntities = {
+  'amp': '&',
+  'lt': '<',
+  'gt': '>',
+  'quot': '"',
+  'apos': "'",
+  'nbsp': '\u00A0',
+  'copy': '©',
+  'reg': '®',
+  'trade': '™',
+  'deg': '°',
+  'plusmn': '±',
+  'times': '×',
+  'divide': '÷',
+  'minus': '−',
+  'micro': 'µ',
+  'middot': '·',
+  'sect': '§',
+  'para': '¶',
+  'laquo': '«',
+  'raquo': '»',
+  'sup1': '¹',
+  'sup2': '²',
+  'sup3': '³',
+  'frac12': '½',
+  'frac14': '¼',
+  'frac34': '¾',
+  'euro': '€',
+  'pound': '£',
+  'yen': '¥',
+  'cent': '¢',
+  'ndash': '–',
+  'mdash': '—',
+  'lsquo': '‘',
+  'rsquo': '’',
+  'ldquo': '“',
+  'rdquo': '”',
+  'bull': '•',
+  'hellip': '…',
+  'larr': '←',
+  'uarr': '↑',
+  'rarr': '→',
+  'darr': '↓',
+  'harr': '↔',
+  'lArr': '⇐',
+  'rArr': '⇒',
+  'hArr': '⇔',
+  'ne': '≠',
+  'le': '≤',
+  'ge': '≥',
+  'asymp': '≈',
+  'infin': '∞',
+  'sum': '∑',
+  'prod': '∏',
+  'radic': '√',
+  'alpha': 'α',
+  'beta': 'β',
+  'gamma': 'γ',
+  'delta': 'δ',
+  'theta': 'θ',
+  'lambda': 'λ',
+  'pi': 'π',
+  'sigma': 'σ',
+  'omega': 'ω',
+  'Delta': 'Δ',
+  'Sigma': 'Σ',
+  'Omega': 'Ω',
+};
+
+final RegExp _entityPattern = RegExp(
+  r'&(?:#[xX]([0-9a-fA-F]{1,8})|#([0-9]{1,10})|([A-Za-z][A-Za-z0-9]{1,31}));',
+);
+
+/// Decodes named (`&quot;`) and numeric (`&#39;`, `&#x27;`) entities in one pass.
+/// Unknown or invalid references are left exactly as written.
+String unescapeHtmlEntities(String text) {
+  if (!text.contains('&')) return text;
+  return text.replaceAllMapped(_entityPattern, (match) {
+    final name = match[3];
+    if (name != null) return _namedEntities[name] ?? match[0]!;
+    final hex = match[1];
+    final codePoint = hex != null
+        ? int.parse(hex, radix: 16)
+        : int.parse(match[2]!);
+    if (codePoint == 0 ||
+        codePoint > 0x10FFFF ||
+        (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
+      return match[0]!;
+    }
+    return String.fromCharCode(codePoint);
+  });
+}
+
+/// Decodes text taken from a fenced block. The markdown parser escapes code once
+/// (`"` becomes `&quot;`), and the model may have escaped it again (`&quot;` in
+/// the source becomes `&amp;quot;`), so two decode levels are applied.
+String decodeCodeText(String markdownEscaped) =>
+    unescapeHtmlEntities(unescapeHtmlEntities(markdownEscaped));
 
 /// Renders a code block with language indicator, copy-to-clipboard,
 /// wrap toggle, and folding for outputs over 40 lines.
@@ -75,7 +176,7 @@ class _CodeBlockState extends State<CodeBlock> {
 
     final monoStyle = (textTheme.bodySmall ?? const TextStyle()).copyWith(
       fontFamily: 'JetBrains Mono',
-      fontFamilyFallback: const ['monospace'],
+      fontFamilyFallback: [...kGlyphFallbackFamilies, 'monospace'],
       color: fgColor,
     );
 
