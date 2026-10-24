@@ -4,6 +4,8 @@
 /// implementation lives in `admin_http_api.dart`.
 library;
 
+import 'dart:convert';
+
 /// Thrown for admin-specific failures. Screens map these to copy.
 sealed class AdminException implements Exception {
   const AdminException();
@@ -195,7 +197,7 @@ class AuditEntry {
     action: j['action'] as String? ?? '',
     targetUserId: j['target_user_id'] as String?,
     reason: j['reason'] as String?,
-    detail: j['detail']?.toString(),
+    detail: _text(j['detail']),
   );
   final String id;
   final DateTime? at;
@@ -220,6 +222,9 @@ class AuditPage {
 }
 
 DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v) : null;
+
+/// Free-form server values (audit `detail` is a JSON object) shown as text.
+String? _text(Object? v) => v == null ? null : (v is String ? v : jsonEncode(v));
 
 /// All calls (except [openSession]/[probe]) send the in-memory admin token as
 /// `X-Admin-Session`. Every mutation requires a non-empty [reason].

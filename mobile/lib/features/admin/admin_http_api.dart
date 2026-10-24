@@ -306,6 +306,11 @@ class HttpAdminApi implements AdminApi {
       case 401:
         throw const AdminUnauthorized();
       case 403:
+        // ADMIN_TARGET_PROTECTED refuses one action (acting on another admin);
+        // the caller is still an admin, so it must not hide the console.
+        if (_errorCode(resp) == 'ADMIN_TARGET_PROTECTED') {
+          throw AdminFailure(status);
+        }
         throw const AdminForbidden();
       case 423:
         throw AdminLockedOut(_retryAfter(resp));
