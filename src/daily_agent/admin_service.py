@@ -412,7 +412,7 @@ def change_tier(
     if period is not None:
         period.spend_limit_micro = max(
             0,
-            period.spend_limit_micro + new_policy.period_cost_cap_micro - old_policy.period_cost_cap_micro,
+            new_policy.period_cost_cap_micro + (period.credit_adjust_micro or 0),
         )
     session.flush()
     sync_account_progression(session, user.account_id)
@@ -474,9 +474,13 @@ def adjust_credits(
     policy = plan_policy(subscription)
     period = ensure_usage_period(session, user.account_id, policy, subscription.period_anchor)
     before = period.spend_limit_micro
-    after = before + to_micro(settings, delta_usd) if delta_usd is not None else to_micro(
-        settings, budget_usd or 0.0
-    )
+    if delta_usd is not None:
+        adjustment = to_micro(settings, delta_usd)
+        after = before + adjustment
+        period.credit_adjust_micro = (period.credit_adjust_micro or 0) + adjustment
+    else:
+        after = to_micro(settings, budget_usd or 0.0)
+        period.credit_adjust_micro = after - policy.period_cost_cap_micro
     used = period.reserved_micro + period.settled_micro
     if after < used:
         session.rollback()

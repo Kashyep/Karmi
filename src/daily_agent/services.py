@@ -290,6 +290,7 @@ def ensure_usage_period(
             account_id=account_id,
             period_key=key,
             spend_limit_micro=policy.period_cost_cap_micro,
+            credit_adjust_micro=0,
             reset_at=reset,
         )
         try:
@@ -307,8 +308,9 @@ def ensure_usage_period(
             ).first()
             if period is None:
                 raise
-    if period.spend_limit_micro != policy.period_cost_cap_micro:
-        period.spend_limit_micro = policy.period_cost_cap_micro
+    effective_limit = policy.period_cost_cap_micro + (period.credit_adjust_micro or 0)
+    if period.spend_limit_micro != effective_limit:
+        period.spend_limit_micro = effective_limit
     return period
 
 

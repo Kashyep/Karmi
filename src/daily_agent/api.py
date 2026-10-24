@@ -669,6 +669,8 @@ def create_app() -> FastAPI:
         if changed:
             subscription.plan_id = plan_id
             subscription.policy_version = "beta-access-code-v1"
+            subscription.tier_expires_at = None
+            subscription.revert_plan_id = None
             sync_account_progression(session, principal.account_id)
             session.commit()
             logger.info("access code upgraded account %s to %s", principal.account_id, plan_id)

@@ -156,6 +156,7 @@ class UsagePeriod(Base):
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     period_key: Mapped[str] = mapped_column(String(40))
     spend_limit_micro: Mapped[int] = mapped_column(BigInteger)
+    credit_adjust_micro: Mapped[int | None] = mapped_column(BigInteger, nullable=True, default=0)
     reserved_micro: Mapped[int] = mapped_column(BigInteger, default=0)
     settled_micro: Mapped[int] = mapped_column(BigInteger, default=0)
     reset_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

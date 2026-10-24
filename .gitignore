@@ -10,6 +10,8 @@ dist/
 build/
 *.egg-info/
 .env
+.env.*
+!.env.example
 data/*.db
 data/policy_bundles/
 reports/

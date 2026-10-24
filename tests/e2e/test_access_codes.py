@@ -1,12 +1,15 @@
 import hashlib
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from daily_agent.access_codes import load_access_code_hashes
 from daily_agent.config import Settings
+from daily_agent.models import Subscription
 from tests.conftest import create_identity
 
 
@@ -37,9 +40,21 @@ def test_code_upgrades_the_plan_and_never_downgrades(
     test_context: dict[str, object], tmp_path: Path
 ) -> None:
     client, headers = _setup(test_context, tmp_path)
+    factory = test_context["factory"]
+    with factory() as session:  # type: ignore[operator]
+        subscription = session.scalar(select(Subscription))
+        assert subscription is not None
+        subscription.tier_expires_at = datetime.now(UTC) + timedelta(days=1)
+        subscription.revert_plan_id = "ananta"
+        session.commit()
 
     up = client.post("/v1/access-code", json={"code": "yanta-test-0001"}, headers=headers)
     assert up.json() == {"plan_id": "yanta", "plan_label": "Yanta", "changed": True}
+    with factory() as session:  # type: ignore[operator]
+        subscription = session.scalar(select(Subscription))
+        assert subscription is not None
+        assert subscription.tier_expires_at is None
+        assert subscription.revert_plan_id is None
     assert client.get("/v1/usage", headers=headers).json()["plan_id"] == "yanta"
 
     top = client.post("/v1/access-code", json={"code": "PARTH TEST 0002"}, headers=headers)

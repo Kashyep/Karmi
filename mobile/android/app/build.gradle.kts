@@ -9,10 +9,18 @@ plugins {
 
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties()
+val allowDebugSigning = System.getenv("KARMI_ALLOW_DEBUG_SIGNING") == "1"
+val releaseBuildRequested = gradle.startParameter.taskNames.any { task ->
+    task.contains("release", ignoreCase = true)
+}
+if (releaseBuildRequested && !keystorePropertiesFile.exists() && !allowDebugSigning) {
+    throw GradleException(
+        "Release signing requires mobile/android/key.properties; set KARMI_ALLOW_DEBUG_SIGNING=1 only for debug signing."
+    )
+}
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
-
 android {
     namespace = "ai.karmi.app"
     compileSdk = flutter.compileSdkVersion
