@@ -209,7 +209,7 @@ class _UsersScreenState extends State<UsersScreen> {
           runSpacing: 8,
           children: [
             FilterChip(
-              key: const ValueKey('admin-filter-suspended'),
+              key: const ValueKey('filter-suspended'),
               label: const Text('Suspended'),
               selected: _status == 'suspended',
               onSelected: (value) {
@@ -218,7 +218,7 @@ class _UsersScreenState extends State<UsersScreen> {
               },
             ),
             FilterChip(
-              key: const ValueKey('admin-filter-expiring'),
+              key: const ValueKey('filter-expiring'),
               label: const Text('Expiring soon'),
               selected: _expiringSoon,
               onSelected: (value) {
