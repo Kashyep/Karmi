@@ -19,7 +19,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from daily_agent import __version__
+from daily_agent import HARNESS_VERSION
 from daily_agent.config import Settings
 from daily_agent.gateway import Gateway
 from daily_agent.gateway.registry import ModelRegistry, load_registry
@@ -38,7 +38,6 @@ logger = logging.getLogger(__name__)
 # different feature schema version is rejected by the receiver.
 FEATURE_SCHEMA_VERSION = "routing-features.v1"
 STATIC_POLICY_VERSION = "karmi-static-v1"
-HARNESS_VERSION = f"karmi-{__version__}"
 # Bump when the provider prompt text in daily_agent/providers.py changes.
 PROMPT_VERSION = "karmi-prompts-v2"
 
