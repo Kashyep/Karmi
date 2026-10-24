@@ -240,7 +240,12 @@ Future<void> openTab(WidgetTester tester, String label) async {
   if (opaque.evaluate().isNotEmpty) {
     await tester.tap(opaque);
   } else {
-    await tester.tap(find.bySemanticsLabel('$label tab').first);
+    final semantic = find.bySemanticsLabel('$label tab');
+    if (semantic.evaluate().isNotEmpty) {
+      await tester.tap(semantic.first);
+    } else {
+      await tester.tap(find.text(label).last);
+    }
   }
   await settle(tester);
 }

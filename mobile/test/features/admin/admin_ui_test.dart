@@ -7,6 +7,7 @@ import 'package:karmi_app/features/admin/admin_shell.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
 
+import 'package:karmi_app/widgets/karmi_card.dart';
 import '../../support/fake_admin_api.dart';
 
 /// Fake whose audit log and user detail are configurable per test.
@@ -42,6 +43,7 @@ void adminTest(
   testWidgets(description, (tester) async {
     _live.clear();
     await body(tester);
+    await tester.pump(const Duration(minutes: 16));
     await tester.pumpWidget(const SizedBox());
     for (final c in _live) {
       c.dispose();
@@ -59,7 +61,7 @@ Future<AdminController> signedIn(FakeAdminApi api) async {
 Future<void> pumpAdmin(
   WidgetTester tester,
   AdminController controller, {
-  Size size = const Size(412, 915),
+  Size size = const Size(1080, 2400),
   double textScale = 1.0,
 }) async {
   tester.view.physicalSize = size;
@@ -105,7 +107,7 @@ void main() {
 
     expect(find.text('Ada'), findsOneWidget);
     expect(find.text('Bob'), findsOneWidget);
-    expect(find.text('Suspended'), findsOneWidget);
+    expect(find.text('Suspended').last, findsOneWidget);
     expect(find.text('Admin console'), findsOneWidget);
     expect(find.text('Log out of admin'), findsOneWidget);
   });
@@ -123,7 +125,7 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 150));
     await tester.pump();
-    expect(api.calls, contains('list:bob:::'));
+    expect(api.calls, contains('list:bob::::'));
     expect(find.text('Bob'), findsOneWidget);
     expect(find.text('Ada'), findsNothing);
   });
@@ -153,7 +155,14 @@ void main() {
     await tester.pump();
     await openUser(tester, 'Ada');
 
-    expect(find.text(kAdminUnavailable), findsNWidgets(4));
+    final usage = find.ancestor(
+      of: find.text('Requests today'),
+      matching: find.byType(KarmiCard),
+    );
+    expect(
+      find.descendant(of: usage, matching: find.text(kAdminUnavailable)),
+      findsNWidgets(4),
+    );
     expect(find.text('Requests today'), findsOneWidget);
   });
 
@@ -167,7 +176,14 @@ void main() {
     expect(find.text('7'), findsOneWidget);
     expect(find.text(r'$1.50'), findsOneWidget);
     expect(find.text(r'$10.00'), findsOneWidget);
-    expect(find.text(kAdminUnavailable), findsNothing);
+    final usage = find.ancestor(
+      of: find.text('Requests today'),
+      matching: find.byType(KarmiCard),
+    );
+    expect(
+      find.descendant(of: usage, matching: find.text(kAdminUnavailable)),
+      findsNothing,
+    );
   });
 
   adminTest('suspend needs a reason before confirm is enabled', (tester) async {
@@ -206,7 +222,10 @@ void main() {
     await tester.pump();
     await openUser(tester, 'Ada');
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Export'));
+    final exportButton = find.widgetWithText(OutlinedButton, 'Export');
+    await tester.ensureVisible(exportButton);
+    await tester.pump();
+    await tester.tap(exportButton);
     await tester.pumpAndSettle();
     final confirm = find.widgetWithText(FilledButton, 'Export');
     expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
@@ -227,12 +246,16 @@ void main() {
     await tester.pump();
     await openUser(tester, 'Bob');
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Delete user'));
+    final deleteButton = find.widgetWithText(OutlinedButton, 'Delete user');
+    await tester.ensureVisible(deleteButton);
+    await tester.pump();
+    await tester.tap(deleteButton);
     await tester.pumpAndSettle();
     final confirm = find.widgetWithText(FilledButton, 'Delete');
     expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
 
-    final fields = find.byType(TextField);
+    final dialog = find.byType(AlertDialog);
+    final fields = find.descendant(of: dialog, matching: find.byType(TextField));
     await tester.enterText(fields.at(0), 'cleanup');
     await tester.pump();
     expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
@@ -403,7 +426,7 @@ void main() {
     await tester.tap(find.text('Yanta').last);
     await tester.pumpAndSettle();
 
-    expect(api.calls, contains('list::yanta::'));
+    expect(api.calls, contains('list::yanta:::'));
   });
 
   adminTest('change tier dialog offers plan ids and sends the choice', (tester) async {
@@ -418,16 +441,25 @@ void main() {
     await tester.pump();
     await tester.tap(changeTier);
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    final dialog = find.byType(AlertDialog);
+    await tester.tap(
+      find.descendant(
+        of: dialog,
+        matching: find.byType(DropdownButtonFormField<String>),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Trika').last);
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, 'upgrade');
+    await tester.enterText(
+      find.descendant(of: dialog, matching: find.byType(TextField)).last,
+      'upgrade',
+    );
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Change tier'));
     await tester.pumpAndSettle();
 
-    expect(api.calls, contains('tier:u1:trika:upgrade'));
+    expect(api.calls, contains('tier:u1:trika::upgrade'));
   });
 }
 

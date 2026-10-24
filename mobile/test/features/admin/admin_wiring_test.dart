@@ -95,6 +95,7 @@ void main() {
     expect(find.text('Settings'), findsNothing);
 
     await admin.logout();
+    await tester.pump(const Duration(minutes: 16));
     await settle(tester);
 
     expect(find.byKey(const ValueKey('admin_shell')), findsNothing);
