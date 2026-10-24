@@ -1,0 +1,243 @@
+{
+  "status": 200,
+  "body": {
+    "exported_at": "2026-10-24T06:17:25.098976+00:00",
+    "user": {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "email": null,
+      "display_name": "Fixture User",
+      "tester": false,
+      "tester_label": null,
+      "tier": "ananta",
+      "effective_plan": "ananta",
+      "plan_expires_at": null,
+      "revert_plan_id": null,
+      "unlocked_tier": 1,
+      "disabled": false,
+      "created_at": "2026-10-24T00:29:04.543523+00:00",
+      "last_active_at": "2026-10-24T06:12:04.812302+00:00",
+      "role": "admin",
+      "clerk_subject": "user_FIXTURE_PLACEHOLDER",
+      "active_theme": 1
+    },
+    "account": {
+      "id": "00000000-0000-4000-8000-000000000007",
+      "name": "Fixture account"
+    },
+    "subscription": {
+      "plan_id": "ananta",
+      "status": "active",
+      "policy_version": "synthetic-dev-v1",
+      "period_anchor": "2026-10-24"
+    },
+    "usage_periods": [
+      {
+        "period_key": "2026-10-24",
+        "spend_limit_micro": 20000,
+        "settled_micro": 0,
+        "reserved_micro": 0
+      }
+    ],
+    "runs": [
+      {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T06:12:05.560842+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 216,
+        "output_tokens": 587
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T03:01:44.878113+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 213,
+        "output_tokens": 767
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "status": "failed",
+        "outcome": "FAILED",
+        "created_at": "2026-10-24T03:01:17.579695+00:00",
+        "served_model": null,
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T03:01:08.324874+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 214,
+        "output_tokens": 569
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T02:20:34.096284+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 776,
+        "output_tokens": 1490
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T02:19:37.551435+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 222,
+        "output_tokens": 1385
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "status": "failed",
+        "outcome": "FAILED",
+        "created_at": "2026-10-24T02:19:13.407775+00:00",
+        "served_model": null,
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T02:13:03.719077+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 213,
+        "output_tokens": 594
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T02:12:46.411982+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 212,
+        "output_tokens": 943
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000017",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T02:12:33.768514+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 214,
+        "output_tokens": 1066
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T00:29:38.206488+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 213,
+        "output_tokens": 803
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T00:29:19.589233+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 212,
+        "output_tokens": 1303
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "status": "completed",
+        "outcome": "COMPLETED",
+        "created_at": "2026-10-24T00:29:13.243719+00:00",
+        "served_model": "nvidia/nemotron-3.5-lightning:free",
+        "input_tokens": 214,
+        "output_tokens": 407
+      }
+    ],
+    "conversations": [
+      {
+        "id": "conv_fixture_01",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T02:13:03.191114+00:00",
+        "deleted_at": "2026-10-24T02:18:52.615379+00:00",
+        "message_count": 2
+      },
+      {
+        "id": "conv_fixture_02",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T03:01:17.015482+00:00",
+        "deleted_at": "2026-10-24T03:01:41.833697+00:00",
+        "message_count": 2
+      },
+      {
+        "id": "conv_fixture_03",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T06:12:05.015905+00:00",
+        "deleted_at": null,
+        "message_count": 2
+      },
+      {
+        "id": "conv_fixture_04",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T02:12:33.229124+00:00",
+        "deleted_at": "2026-10-24T02:18:53.738758+00:00",
+        "message_count": 2
+      },
+      {
+        "id": "conv_fixture_05",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T00:29:19.030066+00:00",
+        "deleted_at": "2026-10-24T00:29:35.042109+00:00",
+        "message_count": 2
+      },
+      {
+        "id": "conv_fixture_06",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T03:01:07.778767+00:00",
+        "deleted_at": null,
+        "message_count": 2
+      },
+      {
+        "id": "conv_fixture_07",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T00:29:12.287921+00:00",
+        "deleted_at": "2026-10-24T02:18:55.594952+00:00",
+        "message_count": 2
+      },
+      {
+        "id": "conv_fixture_08",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T00:29:37.677481+00:00",
+        "deleted_at": "2026-10-24T02:18:54.786646+00:00",
+        "message_count": 2
+      },
+      {
+        "id": "conv_fixture_09",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T02:19:12.870528+00:00",
+        "deleted_at": null,
+        "message_count": 4
+      },
+      {
+        "id": "conv_fixture_10",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T02:12:45.853780+00:00",
+        "deleted_at": "2026-10-24T02:12:59.889602+00:00",
+        "message_count": 2
+      },
+      {
+        "id": "conv_fixture_11",
+        "title": "Fixture conversation",
+        "created_at": "2026-10-24T03:01:44.347777+00:00",
+        "deleted_at": null,
+        "message_count": 2
+      }
+    ],
+    "tasks": [],
+    "reminders": [],
+    "message_bodies_included": false
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "status": 200,
+  "body": {
+    "active_users": 4,
+    "active_streams": 0,
+    "req_per_min": 31.0,
+    "error_rate": 0.0,
+    "p95_latency_ms": 572.1,
+    "spend_today_usd": 0.0,
+    "platform_budget_usd": 1.0,
+    "provider_health": [
+      {
+        "provider": "openrouter",
+        "status": "ok"
+      }
+    ],
+    "generated_at": "2026-10-24T06:16:51.685922+00:00"
+  }
+}
