@@ -113,7 +113,7 @@ void main() {
       await settle(tester);
 
       // Step 1: Auth (Dev sign-in)
-      expect(find.text("What's your email?"), findsOneWidget);
+      expect(find.text('Create your account'), findsOneWidget);
       await tester.tap(find.text('Continue (development sign-in)'));
       await settle(tester);
 
@@ -204,7 +204,7 @@ void main() {
       await settle(tester);
 
       // Auth step visible but dev sign-in button must be absent
-      expect(find.text("What's your email?"), findsOneWidget);
+      expect(find.text('Create your account'), findsOneWidget);
       expect(find.text('Continue (development sign-in)'), findsNothing);
       expect(find.byKey(const ValueKey('onboarding_dev_signin')), findsNothing);
       await tester.enterText(

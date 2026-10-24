@@ -4,42 +4,45 @@ import 'package:flutter/material.dart';
 
 typedef ClerkFlowErrorHandler = void Function(Object error);
 
-/// Small seam between Karmi's auth form and Clerk, allowing the form to be
-/// tested without a live Clerk tenant.
+/// Seam between Karmi's account form and Clerk. Identity, verification and
+/// session state stay with Clerk; the form only asks for what Clerk needs.
 abstract interface class ClerkEmailCodeActions {
   bool get isSignedIn;
   bool get isNotAvailable;
-  bool get supportsEmailCode;
-  bool get legalConsentRequired;
   int get passwordMinLength;
-  bool get firstNameRequired;
-  bool get lastNameRequired;
-  List<clerk.Field> get signUpMissingFields;
-  bool get signInAwaitingCode;
-  bool get signUpAwaitingCode;
-  bool get isMidSignUp;
-  String? get signUpEmail;
 
-  Future<void> signIn(
-    String email,
-    String? code,
-    ClerkFlowErrorHandler onError,
-  );
+  /// Clerk fields still required before the sign-up can proceed.
+  List<clerk.Field> get signUpMissingFields;
+
+  /// True while Clerk waits for the email code of a sign-up.
+  bool get signUpAwaitingCode;
+
+  /// True while Clerk waits for an email code second factor after sign-in.
+  bool get signInAwaitingCode;
+
+  /// Create the account (password strategy). Clerk then emails a code.
+  Future<void> signUp({
+    required String email,
+    required String firstName,
+    String? lastName,
+    required String username,
+    required String password,
+    required ClerkFlowErrorHandler onError,
+  });
+
+  /// Sign in with password. Clerk may then require an email code.
+  Future<void> signIn({
+    required String identifier,
+    required String password,
+    required ClerkFlowErrorHandler onError,
+  });
+
+  Future<void> verifySignUpCode(String code, ClerkFlowErrorHandler onError);
   Future<void> verifySignInCode(
-    String email,
+    String identifier,
     String code,
     ClerkFlowErrorHandler onError,
   );
-  Future<void> signUp(
-    String email,
-    String? firstName,
-    String? lastName,
-    String? code,
-    ClerkFlowErrorHandler onError, {
-    String? password,
-    String? passwordConfirmation,
-  });
-  Future<void> verifySignUpCode(String code, ClerkFlowErrorHandler onError);
   Future<void> resendCode(ClerkFlowErrorHandler onError);
   Future<void> reset(ClerkFlowErrorHandler onError);
 }
@@ -57,83 +60,62 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
   bool get isNotAvailable => auth.isNotAvailable;
 
   @override
-  bool get supportsEmailCode => auth.env.supportsEmailCode;
-
-  @override
-  bool get legalConsentRequired => auth.env.user.signUp.legalConsentEnabled;
-
-  @override
   int get passwordMinLength {
     final min = auth.env.user.passwordSettings.minLength;
-    return min > 0 ? min : 15;
+    return min > 0 ? min : 8;
   }
-
-  @override
-  bool get firstNameRequired =>
-      auth.env.user.attributes[clerk.UserAttribute.firstName]?.isRequired ==
-      true;
-
-  @override
-  bool get lastNameRequired =>
-      auth.env.user.attributes[clerk.UserAttribute.lastName]?.isRequired ==
-      true;
 
   @override
   List<clerk.Field> get signUpMissingFields =>
       auth.signUp?.missingFields ?? const [];
 
   @override
-  bool get signInAwaitingCode =>
-      auth.signIn?.isVerifying(clerk.Stage.first, clerk.Strategy.emailCode) ==
-      true;
-
-  @override
   bool get signUpAwaitingCode =>
       auth.signUp?.unverified(clerk.Field.emailAddress) == true;
 
   @override
-  bool get isMidSignUp =>
-      !auth.isSignedIn &&
-      auth.signUp != null &&
-      auth.signUp!.unverified(clerk.Field.emailAddress) == false &&
-      auth.signUp!.missingFields.contains(clerk.Field.password);
+  bool get signInAwaitingCode =>
+      auth.signIn?.isVerifying(clerk.Stage.second, clerk.Strategy.emailCode) ==
+      true;
 
-  @override
-  String? get signUpEmail => auth.signUp?.emailAddress;
-  Future<void> _safely<T>(
-    Future<T> Function() operation,
+  Future<void> _safely(
+    Future<void> Function() operation,
     ClerkFlowErrorHandler onError,
   ) async {
-    await auth.safelyCall(
-      context,
-      operation,
-      onError: (error) => onError(error),
-    );
+    await auth.safelyCall(context, operation, onError: (error) => onError(error));
   }
 
   @override
-  Future<void> signIn(
-    String email,
-    String? code,
-    ClerkFlowErrorHandler onError,
-  ) => _safely(
-    () => auth.attemptSignIn(
+  Future<void> signUp({
+    required String email,
+    required String firstName,
+    String? lastName,
+    required String username,
+    required String password,
+    required ClerkFlowErrorHandler onError,
+  }) => _safely(
+    () => auth.attemptSignUp(
       strategy: clerk.Strategy.emailCode,
-      identifier: email,
-      code: code,
+      emailAddress: email,
+      firstName: firstName,
+      lastName: lastName,
+      username: username,
+      password: password,
+      passwordConfirmation: password,
     ),
     onError,
   );
+
   @override
-  Future<void> verifySignInCode(
-    String email,
-    String code,
-    ClerkFlowErrorHandler onError,
-  ) => _safely(
+  Future<void> signIn({
+    required String identifier,
+    required String password,
+    required ClerkFlowErrorHandler onError,
+  }) => _safely(
     () => auth.attemptSignIn(
-      strategy: clerk.Strategy.emailCode,
-      identifier: email,
-      code: code,
+      strategy: clerk.Strategy.password,
+      identifier: identifier,
+      password: password,
     ),
     onError,
   );
@@ -141,36 +123,29 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
   @override
   Future<void> verifySignUpCode(String code, ClerkFlowErrorHandler onError) =>
       _safely(
-        () =>
-            auth.attemptSignUp(strategy: clerk.Strategy.emailCode, code: code),
+        () => auth.attemptSignUp(strategy: clerk.Strategy.emailCode, code: code),
         onError,
       );
 
   @override
-  Future<void> signUp(
-    String email,
-    String? firstName,
-    String? lastName,
-    String? code,
-    ClerkFlowErrorHandler onError, {
-    String? password,
-    String? passwordConfirmation,
-  }) => _safely(
-    () => auth.attemptSignUp(
+  Future<void> verifySignInCode(
+    String identifier,
+    String code,
+    ClerkFlowErrorHandler onError,
+  ) => _safely(
+    () => auth.attemptSignIn(
       strategy: clerk.Strategy.emailCode,
-      emailAddress: email.isNotEmpty ? email : null,
-      firstName: firstName,
-      lastName: lastName,
-      password: password,
-      passwordConfirmation: passwordConfirmation,
+      identifier: identifier,
       code: code,
     ),
     onError,
   );
 
   @override
-  Future<void> resendCode(ClerkFlowErrorHandler onError) =>
-      _safely(() => auth.resendCode(clerk.Strategy.emailCode), onError);
+  Future<void> resendCode(ClerkFlowErrorHandler onError) => _safely(
+    () => auth.resendCode(clerk.Strategy.emailCode),
+    onError,
+  );
 
   @override
   Future<void> reset(ClerkFlowErrorHandler onError) =>

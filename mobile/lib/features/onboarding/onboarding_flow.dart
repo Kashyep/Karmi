@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:clerk_auth/clerk_auth.dart' as clerk;
 
 import '../../auth/clerk_email_code_actions.dart';
 import '../../auth/session.dart';
@@ -9,7 +8,7 @@ import '../../settings/karmi_settings.dart';
 import '../../theme/karmi_colors.dart';
 import 'widgets/choice_tile.dart';
 import 'widgets/onboarding_scaffold.dart';
-import 'widgets/otp_field.dart';
+import 'widgets/account_auth_step.dart';
 import 'widgets/pill_cta.dart';
 /// Redesigned Onboarding Flow for Karmi Release 1.
 /// Manages multi-step navigation, state persistence, Clerk auth integration,
@@ -38,12 +37,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   static const int _totalSteps = 7;
   late int _currentStep;
 
-  // Step 1: Auth state
-  final _emailController = TextEditingController();
-  final _otpController = TextEditingController();
-  bool _authAwaitingCode = false;
-  bool _authLoading = false;
-  String? _authError;
 
   // Step 2: Profile state
   final _firstNameController = TextEditingController();
@@ -55,11 +48,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   String _selectedLanguage = 'en';
   String _selectedMode = 'concise';
 
-  ClerkEmailCodeActions _actions(BuildContext context) =>
+  ClerkEmailCodeActions? _actions(BuildContext context) =>
       widget.clerkActions ??
       (widget.session.clerkAuth != null
           ? ClerkSdkEmailCodeActions(widget.session.clerkAuth!, context)
-          : _FallbackDevAuthActions(widget.session));
+          : null);
 
   @override
   void initState() {
@@ -78,8 +71,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _otpController.dispose();
     _firstNameController.dispose();
     _lastNameController.dispose();
     super.dispose();
@@ -92,111 +83,32 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   void _onBack() {
-    if (_currentStep > 0) {
-      if (_currentStep == 1 && _authAwaitingCode) {
-        setState(() {
-          _authAwaitingCode = false;
-          _authError = null;
-        });
-      } else {
-        _goToStep(_currentStep - 1);
-      }
-    }
+    if (_currentStep > 0) _goToStep(_currentStep - 1);
   }
 
-  Future<void> _submitEmail() async {
-    final email = _emailController.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      setState(() => _authError = 'Enter a valid email address.');
+  Future<void> _onSignedIn(AccountDetails? details) async {
+    if (details == null) {
+      _goToStep(2);
       return;
     }
-    setState(() {
-      _authLoading = true;
-      _authError = null;
-    });
-    if (!widget.session.hasClerk && !widget.devAuthEnabled) {
-      setState(() {
-        _authError = 'Clerk authentication is not configured.';
-        _authLoading = false;
-      });
-      return;
-    }
+    // Sign-up already collected the name, so prefill the profile and skip it.
+    _firstNameController.text = details.firstName;
+    _lastNameController.text = details.lastName ?? '';
+    final lastName = details.lastName;
+    final displayName = lastName == null
+        ? details.firstName
+        : '${details.firstName} $lastName';
     try {
-      if (widget.session.hasClerk) {
-        final actions = _actions(context);
-        await actions.signIn(email, null, (err) {
-          if (mounted) setState(() => _authError = err.toString());
-        });
-      }
-      if (mounted) {
-        setState(() {
-          _authAwaitingCode = true;
-          _authLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _authError = e.toString();
-          _authLoading = false;
-        });
-      }
+      await widget.session.api.updateProfile(displayName);
+    } catch (_) {
+      // Sign-up succeeded; the name can be edited later.
     }
-  }
-
-  Future<void> _verifyOtp(String code) async {
-    if (code.length < 6) return;
-    if (!widget.session.hasClerk && !widget.devAuthEnabled) {
-      setState(() => _authError = 'Clerk authentication is not configured.');
-      return;
-    }
-    setState(() {
-      _authLoading = true;
-      _authError = null;
-    });
-
-    try {
-      if (widget.session.hasClerk) {
-        final actions = _actions(context);
-        await actions.verifySignInCode(_emailController.text.trim(), code, (err) {
-          if (mounted) setState(() => _authError = err.toString());
-        });
-      } else if (widget.devAuthEnabled) {
-        await widget.session.signInWithDevToken();
-      }
-      if (mounted) {
-        setState(() => _authLoading = false);
-        _goToStep(2);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _authError = 'Code is incorrect or expired.';
-          _authLoading = false;
-        });
-      }
-    }
+    if (mounted) _goToStep(3);
   }
 
   Future<void> _devSignIn() async {
-    setState(() {
-      _authLoading = true;
-      _authError = null;
-    });
-    try {
-      await widget.session.signInWithDevToken();
-      if (mounted) {
-        setState(() => _authLoading = false);
-        _goToStep(2);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _authError = e.toString();
-          _authLoading = false;
-        });
-      }
-    }
+    await widget.session.signInWithDevToken();
+    if (mounted) _goToStep(2);
   }
 
   Future<void> _submitProfile() async {
@@ -348,87 +260,14 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   Widget _buildAuthStep() {
-    final colors = KarmiColors.of(context);
-    final textTheme = Theme.of(context).textTheme;
-
-    return OnboardingScaffold(
-      currentStep: 1,
+    return AccountAuthStep(
+      actions: _actions(context),
+      devAuthEnabled: widget.devAuthEnabled,
       totalSteps: _totalSteps,
+      currentStep: 1,
       onBack: _onBack,
-      title: _authAwaitingCode ? 'Enter verification code' : "What's your email?",
-      subtitle: _authAwaitingCode
-          ? 'We sent a 6-digit code to ${_emailController.text}. Use the newest email from Clerk.'
-          : "We'll send a 6-digit confirmation code. No password needed.",
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (!_authAwaitingCode) ...[
-            TextField(
-              key: const ValueKey('onboarding_email_field'),
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Email address',
-                hintText: 'name@example.com',
-                prefixIcon: const Icon(Icons.email_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onSubmitted: (_) => _submitEmail(),
-            ),
-          ] else ...[
-            OtpField(
-              key: const ValueKey('onboarding_otp_field'),
-              controller: _otpController,
-              hasError: _authError != null,
-              onCompleted: _verifyOtp,
-            ),
-          ],
-          if (_authError != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.error_outline, size: 16, color: colors.destructive),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _authError!,
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: colors.destructive,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-      bottomBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PillCta(
-            key: const ValueKey('onboarding_auth_continue'),
-            label: _authAwaitingCode ? 'Verify & Continue' : 'Continue',
-            isLoading: _authLoading,
-            onPressed: _authAwaitingCode
-                ? () => _verifyOtp(_otpController.text)
-                : _submitEmail,
-          ),
-          if (widget.devAuthEnabled) ...[
-            const SizedBox(height: 8),
-            TextButton(
-              key: const ValueKey('onboarding_dev_signin'),
-              onPressed: _devSignIn,
-              child: const Text('Continue (development sign-in)'),
-            ),
-          ],
-        ],
-      ),
+      onSignedIn: _onSignedIn,
+      onDevSignIn: _devSignIn,
     );
   }
 
@@ -824,58 +663,3 @@ class _PlanFeatureRow extends StatelessWidget {
   }
 }
 
-class _FallbackDevAuthActions implements ClerkEmailCodeActions {
-  _FallbackDevAuthActions(this.session);
-  final KarmiSession session;
-
-  @override
-  bool get isSignedIn => session.isSignedIn;
-  @override
-  bool get isNotAvailable => false;
-  @override
-  bool get supportsEmailCode => true;
-  @override
-  bool get legalConsentRequired => false;
-  @override
-  int get passwordMinLength => 8;
-  @override
-  bool get firstNameRequired => false;
-  @override
-  bool get lastNameRequired => false;
-  @override
-  List<clerk.Field> get signUpMissingFields => const [];
-  @override
-  bool get signInAwaitingCode => false;
-  @override
-  bool get signUpAwaitingCode => false;
-  @override
-  bool get isMidSignUp => false;
-  @override
-  String? get signUpEmail => null;
-
-  @override
-  Future<void> signIn(String email, String? code, ClerkFlowErrorHandler onError) async {
-    await session.signInWithDevToken();
-  }
-
-  @override
-  Future<void> verifySignInCode(String email, String code, ClerkFlowErrorHandler onError) async {
-    await session.signInWithDevToken();
-  }
-
-  @override
-  Future<void> signUp(String email, String? firstName, String? lastName, String? code, ClerkFlowErrorHandler onError, {String? password, String? passwordConfirmation}) async {
-    await session.signInWithDevToken();
-  }
-
-  @override
-  Future<void> verifySignUpCode(String code, ClerkFlowErrorHandler onError) async {
-    await session.signInWithDevToken();
-  }
-
-  @override
-  Future<void> resendCode(ClerkFlowErrorHandler onError) async {}
-
-  @override
-  Future<void> reset(ClerkFlowErrorHandler onError) async {}
-}

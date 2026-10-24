@@ -74,7 +74,7 @@ void main() {
     for (var i = 1; i <= 6; i++) {
       await tester.enterText(
         find.byKey(const ValueKey('otp_input')),
-        '${List.generate(i, (j) => j + 1).join()}',
+        List.generate(i, (j) => j + 1).join(),
       );
       await settle(tester);
     }
