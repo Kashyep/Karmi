@@ -512,6 +512,7 @@ def deploy() -> int:
         f"DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO={GLOBAL_BUDGET_MICRO}",
         f"DAILY_AGENT_MODEL_REGISTRY_PATH={REGISTRY_IN_IMAGE}",
         f"DAILY_AGENT_ADMIN_CLERK_USER_IDS={admin_ids}",
+        f"DAILY_AGENT_CLERK_PUBLISHABLE_KEY={clerk.get('DAILY_AGENT_CLERK_PUBLISHABLE_KEY') or ''}",
     ]
     secret_env_vars = [
         "DAILY_AGENT_DATABASE_URL=secretref:database-url",
