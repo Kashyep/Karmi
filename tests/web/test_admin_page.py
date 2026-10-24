@@ -138,6 +138,16 @@ def test_reason_field_enforces_length_bounds_in_markup_and_script() -> None:
     assert ".trim().length < REASON_MIN_LENGTH" in source
 
 
+def test_admin_js_clears_and_caps_selection_and_handles_api_details() -> None:
+    source = (STATIC / "admin.js").read_text(encoding="utf-8")
+    assert "state.selectedUserIds.clear()" in source
+    assert "at most 100 users" in source
+    assert "detailMessage(payload" in source
+    assert "sessionInvalid(payload)" in source
+    assert "summary: result.summary" in source
+    assert "function wireDetailActions()" in source
+
+
 def _csp_directives(policy: str) -> dict[str, list[str]]:
     directives: dict[str, list[str]] = {}
     for part in policy.split(";"):
