@@ -413,7 +413,10 @@ void main() {
     await tester.pump();
     await openUser(tester, 'Ada');
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Change tier'));
+    final changeTier = find.widgetWithText(OutlinedButton, 'Change tier');
+    await tester.ensureVisible(changeTier);
+    await tester.pump();
+    await tester.tap(changeTier);
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>).first);
     await tester.pumpAndSettle();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:karmi_app/features/admin/admin_api.dart';
 import 'package:karmi_app/features/admin/admin_controller.dart';
 import 'package:karmi_app/features/admin/admin_shell.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
@@ -74,5 +75,95 @@ void main() {
     await t.enterText(find.byType(TextField).last, 'qa'); await t.tap(find.text('Apply')); await t.pump();
     expect(api.calls.where((x) => x.startsWith('list:')).length, greaterThan(1));
     await t.pump(const Duration(minutes: 16));
+  });
+  testWidgets('demote preset lowers the tier and sends it', (t) async {
+    final api = FakeAdminApi(
+      users: [
+        const AdminUser(
+          id: 'u1',
+          email: 'ada@example.com',
+          displayName: 'Ada',
+          tier: 'yanta',
+          disabled: false,
+        ),
+      ],
+    );
+    final c = AdminController(api: api);
+    await pump(t, api, c);
+    await t.tap(find.text('Ada'));
+    await t.pumpAndSettle();
+    final demote = find.widgetWithText(OutlinedButton, 'Demote');
+    await t.ensureVisible(demote);
+    await t.tap(demote);
+    await t.pumpAndSettle();
+    await t.enterText(reasonField, 'lower tier');
+    await confirm(t, 'Set plan');
+    expect(api.calls.any((x) => x.startsWith('tier:u1:ananta')), isTrue);
+  });
+
+  Future<void> assertHidden(WidgetTester t, String tier, String hidden) async {
+    final api = FakeAdminApi(
+      users: [
+        AdminUser(
+          id: 'u1',
+          email: 'ada@example.com',
+          displayName: 'Ada',
+          tier: tier,
+          disabled: false,
+        ),
+      ],
+    );
+    final c = AdminController(api: api);
+    await pump(t, api, c);
+    await t.tap(find.text('Ada'));
+    await t.pumpAndSettle();
+    expect(find.widgetWithText(OutlinedButton, hidden), findsNothing);
+    await t.pump(const Duration(minutes: 16));
+  }
+
+  testWidgets('promote is hidden at parth', (t) async {
+    await assertHidden(t, 'parth', 'Promote');
+  });
+
+  testWidgets('demote is hidden at ananta', (t) async {
+    await assertHidden(t, 'ananta', 'Demote');
+  });
+
+  testWidgets('bulk set plan sends both selected user ids', (t) async {
+    final api = FakeAdminApi();
+    final c = AdminController(api: api);
+    await pump(t, api, c);
+    for (final name in ['Ada', 'Bob']) {
+      await t.ensureVisible(find.text(name));
+      await t.longPress(find.text(name));
+      await t.pump();
+    }
+    final bulk = find.widgetWithText(FilledButton, 'Set plan (2)');
+    await t.ensureVisible(bulk);
+    await t.tap(bulk);
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField).last, 'bulk update');
+    await confirm(t, 'Set plan');
+    expect(api.calls, contains('bulk-tier:u1,u2:ananta:bulk update'));
+  });
+
+  testWidgets('expiry entered for a plan change is sent', (t) async {
+    final api = FakeAdminApi();
+    final c = AdminController(api: api);
+    await pump(t, api, c);
+    await t.tap(find.text('Ada'));
+    await t.pumpAndSettle();
+    final promote = find.widgetWithText(OutlinedButton, 'Promote');
+    await t.ensureVisible(promote);
+    await t.tap(promote);
+    await t.pumpAndSettle();
+    final fields = find.byType(TextField);
+    await t.enterText(fields.at(0), '2026-12-31T00:00:00Z');
+    await t.enterText(fields.last, 'temporary upgrade');
+    await confirm(t, 'Set plan');
+    expect(
+      api.calls,
+      contains('tier:u1:yanta:2026-12-31T00:00:00.000Z:temporary upgrade'),
+    );
   });
 }
