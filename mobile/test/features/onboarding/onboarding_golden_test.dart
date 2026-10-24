@@ -1,11 +1,13 @@
 /// Comprehensive golden tests for every onboarding screen.
 ///
 /// Screens covered (light + dark, x1.0 glass):
-///   welcome, auth, otp, name, preferences, plan_intro, notifications, completion
+///   welcome, create_account, sign_in, otp, name, preferences, plan_intro,
+///   notifications, completion
 ///
 /// Extra cases:
-///   name_error  — name step with validation error showing
-///   name_x2.0   — name step at text scale 2.0 (overflow gate)
+///   name_error           — name step with validation error showing
+///   name_x2.0            — name step at text scale 2.0 (overflow gate)
+///   create_account_x2.0  — create-account step at text scale 2.0 (overflow gate)
 library;
 
 import 'package:flutter/material.dart';
@@ -17,6 +19,7 @@ import 'package:karmi_app/settings/karmi_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../support/fake_backend.dart';
+import '../../support/fake_clerk_actions.dart';
 import '../../support/harness.dart';
 
 // ---------------------------------------------------------------------------
@@ -24,7 +27,7 @@ import '../../support/harness.dart';
 // ---------------------------------------------------------------------------
 
 /// Builds a session+settings starting at [step] and returns the golden-ready
-/// [OnboardingFlow] widget.
+/// [OnboardingFlow] widget. Clerk is always the in-memory fake.
 Future<(KarmiSettings, KarmiSession, OnboardingFlow)> _setup(
   int step, {
   bool devAuthEnabled = false,
@@ -43,8 +46,35 @@ Future<(KarmiSettings, KarmiSession, OnboardingFlow)> _setup(
     session: session,
     settings: settings,
     devAuthEnabled: devAuthEnabled,
+    clerkActions: FakeClerkEmailCodeActions(),
   );
   return (settings, session, widget);
+}
+
+/// Welcome → Get Started, landing on the create-account step.
+Future<void> _openCreateAccount(WidgetTester tester) async {
+  await tester.tap(find.text('Get Started'));
+  await settle(tester);
+  expect(find.text('Create your account'), findsOneWidget);
+}
+
+Future<void> _fillCreateAccount(WidgetTester tester) async {
+  await tester.enterText(
+    find.byKey(const ValueKey('onboarding_first_name_field')),
+    'Alice',
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey('onboarding_username_field')),
+    'alice_k',
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey('onboarding_email_field')),
+    'alice@example.com',
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey('onboarding_password_field')),
+    'Sunrise#42',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -69,36 +99,42 @@ void main() {
       );
     });
 
-    // ── Auth — email entry (step 1) ─────────────────────────────────────────
-    testWidgets('golden onboarding_auth_${b}_x1.0_glass', (tester) async {
-      final (_, _, widget) = await _setup(0, devAuthEnabled: false);
+    // ── Create account (step 1) ─────────────────────────────────────────────
+    testWidgets('golden onboarding_create_account_${b}_x1.0_glass', (tester) async {
+      final (_, _, widget) = await _setup(0);
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
-      await tester.tap(find.text('Get Started'));
-      await settle(tester);
-      expect(find.text("What's your email?"), findsOneWidget);
+      await _openCreateAccount(tester);
       await expectLater(
         find.byType(MaterialApp),
-        matchesGoldenFile(goldenPath('onboarding_auth_${b}_x1.0_glass')),
+        matchesGoldenFile(goldenPath('onboarding_create_account_${b}_x1.0_glass')),
+      );
+    });
+
+    // ── Sign in (step 1, sign-in mode) ──────────────────────────────────────
+    testWidgets('golden onboarding_sign_in_${b}_x1.0_glass', (tester) async {
+      final (_, _, widget) = await _setup(0);
+      final env = Env(brightness: brightness);
+      await pumpHost(tester, widget, env: env, size: phoneSize);
+      await _openCreateAccount(tester);
+      await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
+      await settle(tester);
+      expect(find.text('Welcome back'), findsOneWidget);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile(goldenPath('onboarding_sign_in_${b}_x1.0_glass')),
       );
     });
 
     // ── OTP (step 1, awaiting code) ──────────────────────────────────────────
     testWidgets('golden onboarding_otp_${b}_x1.0_glass', (tester) async {
-      final (_, _, widget) = await _setup(0, devAuthEnabled: true);
+      final (_, _, widget) = await _setup(0);
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
-      // Navigate to auth step
-      await tester.tap(find.text('Get Started'));
-      await settle(tester);
-      // Enter a valid email and submit to reach OTP screen
-      await tester.enterText(
-        find.byKey(const ValueKey('onboarding_email_field')),
-        'test@example.com',
-      );
+      await _openCreateAccount(tester);
+      await _fillCreateAccount(tester);
       await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
       await settle(tester);
-      // The OTP field should now be visible (auth step transitions to awaiting-code state)
       expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
       await expectLater(
         find.byType(MaterialApp),
@@ -186,6 +222,19 @@ void main() {
       );
     });
   }
+
+  // ── Create account — text scale 2.0 (overflow gate) ───────────────────────
+  testWidgets('golden onboarding_create_account_light_x2.0_glass — no overflow', (tester) async {
+    final (_, _, widget) = await _setup(0);
+    const env = Env(brightness: Brightness.light, textScale: 2.0);
+    await pumpHost(tester, widget, env: env, size: phoneSize);
+    await _openCreateAccount(tester);
+    expectNoOverflow(tester);
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile(goldenPath('onboarding_create_account_light_x2.0_glass')),
+    );
+  });
 
   // ── Name screen — text scale 2.0 (overflow gate) ──────────────────────────
   testWidgets('golden onboarding_name_light_x2.0_glass — no overflow', (tester) async {
