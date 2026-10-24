@@ -329,13 +329,13 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                 _actionButton(
                   icon: Icons.arrow_upward,
                   label: 'Promote',
-                  onPressed: () => _changePlan(user),
+                  onPressed: () => _changePlan(user, kAdminTiers[index + 1]),
                 ),
               if (index > 0)
                 _actionButton(
                   icon: Icons.arrow_downward,
                   label: 'Demote',
-                  onPressed: () => _changePlan(user),
+                  onPressed: () => _changePlan(user, kAdminTiers[index - 1]),
                 ),
             ],
           ),
@@ -344,7 +344,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     );
   }
 
-  Future<void> _changePlan(AdminUser user) => _act(
+  Future<void> _changePlan(AdminUser user, String target) => _act(
     title: 'Set plan',
     confirmLabel: 'Set plan',
     success: 'Plan updated.',
@@ -352,7 +352,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
       AdminDialogField(
         name: 'tier',
         label: 'Plan',
-        initial: user.tier,
+        initial: target,
         options: [
           for (final tier in kAdminTiers)
             AdminDialogOption(tier, adminTierLabel(tier)),
