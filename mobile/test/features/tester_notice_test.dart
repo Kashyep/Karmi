@@ -17,7 +17,10 @@ void main() {
   testWidgets('first launch shows TesterNoticeScreen before app can be used', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues({'dev_session_token': 'token'});
+    SharedPreferences.setMockInitialValues({
+      'dev_session_token': 'token',
+      'has_completed_onboarding': true,
+    });
     final prefs = await SharedPreferences.getInstance();
     final settings = KarmiSettings(prefs);
     final backend = FakeBackend.healthy();

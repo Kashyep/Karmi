@@ -25,6 +25,7 @@ Future<AdminController> _pump(
   SharedPreferences.setMockInitialValues({
     'dev_session_token': 'test-token',
     'acknowledged_tester_notice_version': kTesterNoticeVersion,
+    'has_completed_onboarding': true,
   });
   final prefs = await SharedPreferences.getInstance();
   final backend = FakeBackend.healthy();
