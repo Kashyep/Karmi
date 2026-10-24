@@ -15,10 +15,13 @@ class HttpAdminApi implements AdminApi {
     required http.Client client,
     required this.tokenProvider,
     this.timeout = const Duration(seconds: 20),
-  }) : _client = client;
+    http.Client Function()? retryClientFactory,
+  }) : _client = client,
+       _retryClientFactory = retryClientFactory ?? (() => http.Client());
 
   final String baseUrl;
   final http.Client _client;
+  final http.Client Function() _retryClientFactory;
   final Future<String?> Function() tokenProvider;
   final Duration timeout;
 
@@ -39,7 +42,7 @@ class HttpAdminApi implements AdminApi {
     final expiresAt = DateTime.tryParse(j['expires_at'] as String? ?? '');
     final token = j['admin_session_token'] as String?;
     if (token == null || token.isEmpty || expiresAt == null) {
-      throw AdminFailure(resp.statusCode);
+      throw AdminFailure.badResponse(resp.statusCode);
     }
     return AdminSessionGrant(token: token, expiresAt: expiresAt);
   }
@@ -270,30 +273,18 @@ class HttpAdminApi implements AdminApi {
     bool allowNoAdminSession = false,
   }) async {
     final headers = <String, String>{'Accept': 'application/json'};
-    final bearer = await tokenProvider();
+    final String? bearer;
+    try {
+      bearer = await tokenProvider().timeout(timeout);
+    } on TimeoutException {
+      throw const AdminFailure.timeout();
+    }
     if (bearer != null && bearer.isNotEmpty) {
       headers['Authorization'] = 'Bearer $bearer';
     }
     if (adminToken != null) headers['X-Admin-Session'] = adminToken;
 
-    final request = http.Request(method, _uri(path, query))
-      ..headers.addAll(headers);
-    if (body != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(body);
-    }
-
-    final http.Response resp;
-    try {
-      final streamed = await _client.send(request).timeout(timeout);
-      resp = await http.Response.fromStream(streamed).timeout(timeout);
-    } on TimeoutException {
-      throw const AdminFailure();
-    } on IOException {
-      throw const AdminFailure();
-    } on http.ClientException {
-      throw const AdminFailure();
-    }
+    final resp = await _transport(method, _uri(path, query), headers, body);
 
     final status = resp.statusCode;
     if (status >= 200 && status < 300) return resp;
@@ -306,11 +297,67 @@ class HttpAdminApi implements AdminApi {
       case 401:
         throw const AdminUnauthorized();
       case 403:
+        // ADMIN_TARGET_PROTECTED refuses one action (acting on another admin);
+        // the caller is still an admin, so it must not hide the console.
+        if (_errorCode(resp) == 'ADMIN_TARGET_PROTECTED') {
+          throw AdminFailure(status);
+        }
         throw const AdminForbidden();
       case 423:
         throw AdminLockedOut(_retryAfter(resp));
       default:
         throw AdminFailure(status);
+    }
+  }
+
+  /// Sends with a per-attempt timeout. Only GET is retried, once, and only on
+  /// a transport failure (no response received). The retry uses a fresh
+  /// client: a stale pooled socket fails the first attempt, and reusing the
+  /// same pool would likely hit the same dead connection. Mutations (POST,
+  /// PATCH, DELETE) are never retried.
+  Future<http.Response> _transport(
+    String method,
+    Uri uri,
+    Map<String, String> headers,
+    Object? body,
+  ) async {
+    final attempts = method == 'GET' ? 2 : 1;
+    for (var attempt = 1; ; attempt++) {
+      final client = attempt == 1 ? _client : _retryClientFactory();
+      try {
+        return await _exchange(client, method, uri, headers, body);
+      } on AdminFailure catch (e) {
+        final transport =
+            e.kind == AdminFailureKind.network ||
+            e.kind == AdminFailureKind.timeout;
+        if (attempt >= attempts || !transport) rethrow;
+      } finally {
+        if (attempt > 1) client.close();
+      }
+    }
+  }
+
+  Future<http.Response> _exchange(
+    http.Client client,
+    String method,
+    Uri uri,
+    Map<String, String> headers,
+    Object? body,
+  ) async {
+    final request = http.Request(method, uri)..headers.addAll(headers);
+    if (body != null) {
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode(body);
+    }
+    try {
+      final streamed = await client.send(request).timeout(timeout);
+      return await http.Response.fromStream(streamed).timeout(timeout);
+    } on TimeoutException {
+      throw const AdminFailure.timeout();
+    } on IOException {
+      throw const AdminFailure.network();
+    } on http.ClientException {
+      throw const AdminFailure.network();
     }
   }
 
@@ -362,14 +409,14 @@ class HttpAdminApi implements AdminApi {
     try {
       return jsonDecode(utf8.decode(resp.bodyBytes));
     } on FormatException {
-      throw AdminFailure(resp.statusCode);
+      throw AdminFailure.badResponse(resp.statusCode);
     }
   }
 
   static Map<String, dynamic> _object(http.Response resp) {
     final decoded = _json(resp);
     if (decoded is Map<String, dynamic>) return decoded;
-    throw AdminFailure(resp.statusCode);
+    throw AdminFailure.badResponse(resp.statusCode);
   }
 
   /// Parses a JSON object with [fromJson]; shape errors become [AdminFailure].
@@ -381,9 +428,9 @@ class HttpAdminApi implements AdminApi {
     try {
       return fromJson(j);
     } on TypeError {
-      throw AdminFailure(resp.statusCode);
+      throw AdminFailure.badResponse(resp.statusCode);
     } on FormatException {
-      throw AdminFailure(resp.statusCode);
+      throw AdminFailure.badResponse(resp.statusCode);
     }
   }
 }

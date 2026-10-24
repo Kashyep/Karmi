@@ -153,4 +153,118 @@ void main() {
     await api.deleteUser('tok', 'u1', reason: 'gdpr');
     expect(body, {'reason': 'gdpr', 'confirm': 'DELETE'});
   });
+
+  test('403 ADMIN_TARGET_PROTECTED is a failure, not console-hiding forbidden', () async {
+    final api = _api(
+      MockClient(
+        (_) async => http.Response(
+          '{"detail":{"code":"ADMIN_TARGET_PROTECTED","message":"admins cannot act on another admin"}}',
+          403,
+        ),
+      ),
+    );
+    await expectLater(
+      api.suspend('tok', 'u2', reason: 'abuse report'),
+      throwsA(
+        isA<AdminFailure>().having((e) => e.statusCode, 'statusCode', 403),
+      ),
+    );
+  });
+
+  test('ADMIN_FORBIDDEN object detail still maps to AdminForbidden', () async {
+    final api = _api(
+      MockClient(
+        (_) async => http.Response(
+          '{"detail":{"code":"ADMIN_FORBIDDEN","message":"admin access denied"}}',
+          403,
+        ),
+      ),
+    );
+    await expectLater(api.monitor('tok'), throwsA(isA<AdminForbidden>()));
+  });
+
+  test('audit page parses server shape: int ids and object detail', () async {
+    final api = _api(
+      MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'items': [
+              {
+                'id': 42,
+                'at': '2026-10-24T09:15:00.123456+00:00',
+                'admin_user_id': 'a1',
+                'action': 'tier.change',
+                'target_user_id': 'u1',
+                'reason': 'support ticket',
+                'detail': {
+                  'before': {'plan_id': 'ananta'},
+                  'after': {'plan_id': 'yanta'},
+                },
+              },
+              {
+                'id': 41,
+                'at': '2026-10-24T09:00:00+00:00',
+                'admin_user_id': 'a1',
+                'action': 'admin.logout',
+                'target_user_id': null,
+                'reason': null,
+                'detail': null,
+              },
+            ],
+            'next_cursor': '41',
+          }),
+          200,
+        ),
+      ),
+    );
+    final page = await api.audit('tok');
+    expect(page.nextCursor, '41');
+    expect(page.items.first.id, '42');
+    expect(jsonDecode(page.items.first.detail!), {
+      'before': {'plan_id': 'ananta'},
+      'after': {'plan_id': 'yanta'},
+    });
+    expect(page.items.last.detail, isNull);
+    expect(page.items.last.targetUserId, isNull);
+  });
+
+  test('user detail parses server shape with nullable plan fields', () async {
+    final api = _api(
+      MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'id': 'u1',
+            'email': 'a@example.com',
+            'display_name': 'Ada',
+            'tester': true,
+            'tester_label': 'beta-wave-1',
+            'tier': 'yanta',
+            'effective_plan': 'yanta',
+            'plan_expires_at': '2026-11-24T00:00:00+00:00',
+            'revert_plan_id': 'ananta',
+            'unlocked_tier': 2,
+            'disabled': false,
+            'created_at': '2026-01-02T03:04:05.678901+00:00',
+            'last_active_at': null,
+            'admin_notes': null,
+            'usage': {
+              'today_requests': 3,
+              'month_spend_usd': 0.123456,
+              'credits_remaining': 4.5,
+              'sessions': 7,
+            },
+          }),
+          200,
+        ),
+      ),
+    );
+    final detail = await api.getUser('tok', 'u1');
+    expect(detail.user.effectivePlan, 'yanta');
+    expect(detail.user.planExpiresAt, isNotNull);
+    expect(detail.user.revertPlanId, 'ananta');
+    expect(detail.user.lastActiveAt, isNull);
+    expect(detail.usage.todayRequests, 3);
+    expect(detail.usage.monthSpendUsd, closeTo(0.123456, 1e-9));
+    expect(detail.usage.sessions, 7);
+  });
 }

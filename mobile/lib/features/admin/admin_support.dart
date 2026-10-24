@@ -51,6 +51,14 @@ String adminErrorMessage(Object error) => switch (error) {
   AdminForbidden() => 'Admin access is no longer available.',
   AdminUnauthorized() => 'The admin session ended. Sign in again to continue.',
   AdminLockedOut() => 'Admin is locked after too many attempts.',
+  AdminFailure(kind: AdminFailureKind.network) =>
+    'No connection to Karmi. Check your network and try again.',
+  AdminFailure(kind: AdminFailureKind.timeout) =>
+    'The server took too long to respond.',
+  AdminFailure(kind: AdminFailureKind.server, :final statusCode) =>
+    'Karmi server error (HTTP $statusCode).',
+  AdminFailure(kind: AdminFailureKind.badResponse) =>
+    'Karmi returned an unexpected response.',
   _ => "Karmi couldn't complete that. Try again.",
 };
 

@@ -4,6 +4,8 @@
 /// implementation lives in `admin_http_api.dart`.
 library;
 
+import 'dart:convert';
+
 /// Thrown for admin-specific failures. Screens map these to copy.
 sealed class AdminException implements Exception {
   const AdminException();
@@ -25,10 +27,42 @@ final class AdminLockedOut extends AdminException {
   final Duration retryAfter;
 }
 
+/// Why an [AdminFailure] happened; drives the error copy.
+enum AdminFailureKind {
+  /// Transport failed before any response (no connection, reset, stale socket).
+  network,
+
+  /// No response within the per-attempt timeout.
+  timeout,
+
+  /// Server answered with a non-2xx status; [AdminFailure.statusCode] is set.
+  server,
+
+  /// Server answered 2xx but the body was not the expected shape.
+  badResponse,
+
+  /// Anything else; generic copy.
+  other,
+}
+
 /// Any other failure (network, 5xx, 404, 4xx validation, bad body).
 final class AdminFailure extends AdminException {
-  const AdminFailure([this.statusCode]);
+  /// A [statusCode] means an HTTP status failure ([AdminFailureKind.server]).
+  const AdminFailure([this.statusCode])
+    : kind = statusCode == null
+          ? AdminFailureKind.other
+          : AdminFailureKind.server;
+  const AdminFailure.network()
+    : statusCode = null,
+      kind = AdminFailureKind.network;
+  const AdminFailure.timeout()
+    : statusCode = null,
+      kind = AdminFailureKind.timeout;
+  const AdminFailure.badResponse([this.statusCode])
+    : kind = AdminFailureKind.badResponse;
+
   final int? statusCode;
+  final AdminFailureKind kind;
 }
 
 class AdminSessionGrant {
@@ -195,7 +229,7 @@ class AuditEntry {
     action: j['action'] as String? ?? '',
     targetUserId: j['target_user_id'] as String?,
     reason: j['reason'] as String?,
-    detail: j['detail']?.toString(),
+    detail: _text(j['detail']),
   );
   final String id;
   final DateTime? at;
@@ -220,6 +254,10 @@ class AuditPage {
 }
 
 DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v) : null;
+
+/// Free-form server values (audit `detail` is a JSON object) shown as text.
+String? _text(Object? v) =>
+    v == null ? null : (v is String ? v : jsonEncode(v));
 
 /// All calls (except [openSession]/[probe]) send the in-memory admin token as
 /// `X-Admin-Session`. Every mutation requires a non-empty [reason].
