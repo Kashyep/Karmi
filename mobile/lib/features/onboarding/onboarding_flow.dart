@@ -396,7 +396,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 Expanded(
                   child: Text(
                     _authError!,
-                    style: textTheme.bodySmall?.copyWith(
+                    style: textTheme.bodyMedium?.copyWith(
                       color: colors.destructive,
                       fontWeight: FontWeight.w600,
                     ),
@@ -478,7 +478,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 Expanded(
                   child: Text(
                     _profileError!,
-                    style: textTheme.bodySmall?.copyWith(
+                    style: textTheme.bodyMedium?.copyWith(
                       color: colors.destructive,
                       fontWeight: FontWeight.w600,
                     ),
@@ -634,7 +634,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           Text(
             'No credit card required. Upgrade or change anytime.',
             textAlign: TextAlign.center,
-            style: textTheme.bodySmall?.copyWith(
+            style: textTheme.bodyMedium?.copyWith(
               color: colors.mutedForeground,
             ),
           ),
@@ -779,14 +779,14 @@ class _ValuePropMiniCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             title,
-            style: textTheme.titleSmall?.copyWith(
+            style: textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
               color: colors.foreground,
             ),
           ),
           Text(
             subtitle,
-            style: textTheme.bodySmall?.copyWith(
+            style: textTheme.bodyMedium?.copyWith(
               color: colors.mutedForeground,
             ),
           ),

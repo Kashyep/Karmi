@@ -59,7 +59,7 @@ class OnboardingScaffold extends StatelessWidget {
                     Expanded(
                       child: Text(
                         'Offline. Reconnecting when internet is restored...',
-                        style: textTheme.bodySmall?.copyWith(
+                        style: textTheme.bodyMedium?.copyWith(
                           color: colors.destructiveForeground,
                           fontWeight: FontWeight.w600,
                         ),
@@ -136,7 +136,7 @@ class OnboardingScaffold extends StatelessWidget {
                             header: true,
                             child: Text(
                               title!,
-                              style: textTheme.headlineMedium?.copyWith(
+                              style: textTheme.headlineSmall?.copyWith(
                                 color: colors.foreground,
                                 fontWeight: FontWeight.bold,
                               ),

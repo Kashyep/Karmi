@@ -68,7 +68,7 @@ class ChoiceTile extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           description!,
-                          style: textTheme.bodySmall?.copyWith(
+                          style: textTheme.bodyMedium?.copyWith(
                             color: colors.mutedForeground,
                           ),
                         ),
