@@ -13,17 +13,27 @@ import 'settings/karmi_settings.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureBundledFonts();
-  await LiquidGlassWidgets.initialize();
-
-  final prefs = await SharedPreferences.getInstance();
-  final settings = KarmiSettings(prefs);
-  final api = KarmiApi(baseUrl: settings.apiBaseUrl ?? KarmiApi.defaultBaseUrl);
+  // Startup (R1 §6 G): these three inits are independent and run in parallel.
+  // Clerk is NOT deferred: KarmiSession takes ClerkAuthState at construction
+  // (session.dart owns the token provider wiring), so it must be ready before
+  // KarmiApp is built. No deferred (`deferred as`) imports: every first-frame
+  // screen (Welcome, Shell, TesterNotice) is imported eagerly by app.dart, so
+  // there is no startup-path screen to defer.
   const publishableKey = String.fromEnvironment('CLERK_PUBLISHABLE_KEY');
-  final clerkAuth = publishableKey.isEmpty
-      ? null
-      : await ClerkAuthState.create(
+  final glassInitFuture = LiquidGlassWidgets.initialize();
+  final prefsFuture = SharedPreferences.getInstance();
+  final clerkAuthFuture = publishableKey.isEmpty
+      ? Future<ClerkAuthState?>.value(null)
+      : ClerkAuthState.create(
           config: ClerkAuthConfig(publishableKey: publishableKey),
         );
+
+  await Future.wait<dynamic>([glassInitFuture, prefsFuture, clerkAuthFuture]);
+
+  final prefs = await prefsFuture;
+  final clerkAuth = await clerkAuthFuture;
+  final settings = KarmiSettings(prefs);
+  final api = KarmiApi(baseUrl: settings.apiBaseUrl ?? KarmiApi.defaultBaseUrl);
   final session = KarmiSession(api: api, prefs: prefs, clerkAuth: clerkAuth);
 
   Widget app = KarmiApp(

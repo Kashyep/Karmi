@@ -4,7 +4,7 @@ Read PRD.md, Architecture.md, Rules.md, Phases.md, Design.md, Tier_Entitlements.
 
 The user explicitly requests parallel agents: one Boss/main thread (Sol High), one Supervisor (Terra Medium), and up to three scoped workers (Luna Medium). Verify effective runtime capabilities and model IDs. Use custom roles when supported; never pretend an unavailable model or agent was used. See Agent_Team.md and codex-examples/. No recursive worker spawning.
 
-Boss owns architectural decisions, integration, acceptance/rejection and root Memory.md. Supervisor independently recommends accept/rework/block based on the exact candidate; workers cannot approve their own code. Boss never waives failed security, isolation, financial correctness or data-integrity gates by assertion.
+Boss owns architectural decisions, integration, acceptance/rejection and root Memory.md. Supervisor independently recommends accept/rework/block based on the exact candidate; workers cannot approve their own code. Boss never waives failed security, isolation, financial correctness or data-integrity gates by assertion. Managers NEVER trust worker claims of work done: must inspect and test worker code and output properly, calling worker to rework 3-4 times until everything is verified and right.
 
 Workers require task cards, disjoint ownership and targeted validation. Preserve changes with a recoverable local commit or durable patch before releasing a worktree. Supervisor remains read-only; Boss stores its review. Shared migrations, contracts and lockfiles are integrated serially.
 

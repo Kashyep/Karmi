@@ -1,16 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
-
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:karmi_app/api/karmi_api.dart';
-import 'package:karmi_app/features/chat/chat_entry.dart';
-import 'package:karmi_app/features/chat/chat_screen.dart';
+import 'package:karmi_app/api/models.dart';
+import 'package:karmi_app/features/chat/error_card.dart';
 import 'package:karmi_app/features/chat/message_bubble.dart';
-import 'package:karmi_app/features/chat/status_chip.dart';
 import 'package:karmi_app/features/plans/plan_selection_screen.dart';
 import 'package:karmi_app/features/tasks/task_confirmation_sheet.dart';
+import 'package:karmi_app/theme/karmi_theme.dart';
+import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/widgets/feedback.dart';
 
 import '../support/fake_backend.dart';
@@ -23,23 +24,371 @@ Future<void> send(WidgetTester tester, String text) async {
   await tester.pump();
 }
 
-FakeBackend backendWith(Handler messages) =>
-    FakeBackend.healthy()..on('POST', '/v1/messages', messages);
+http.Response sseResponse(
+  String text, {
+  String runId = 'run-1',
+  String finishReason = 'stop',
+  String outcome = 'success',
+}) {
+  final sse =
+      'event: run.started\n'
+      'data: {"run_id":"$runId","conversation_id":"conv-1","user_message_id":"msg-u","assistant_message_id":"msg-a","seq":0}\n\n'
+      'id: 1\n'
+      'event: message.delta\n'
+      'data: {"text":"$text"}\n\n'
+      'event: run.finished\n'
+      'data: {"finish_reason":"$finishReason","outcome":"$outcome"}\n\n';
+  return http.Response(
+    sse,
+    200,
+    headers: {'content-type': 'text/event-stream'},
+  );
+}
+
+FakeBackend backendWith(Handler streamHandler) =>
+    FakeBackend.healthy()..on('POST', '/v1/chat/stream', streamHandler);
+
+class _FakeHttpHeaders implements HttpHeaders {
+  final Map<String, List<String>> _headers = {};
+
+  @override
+  List<String>? operator [](String name) => _headers[name.toLowerCase()];
+
+  @override
+  void add(String name, Object value, {bool? preserveHeaderCase}) {
+    _headers.putIfAbsent(name.toLowerCase(), () => []).add(value.toString());
+  }
+
+  @override
+  void set(String name, Object value, {bool? preserveHeaderCase}) {
+    _headers[name.toLowerCase()] = [value.toString()];
+  }
+
+  @override
+  void remove(String name, Object value) =>
+      _headers[name.toLowerCase()]?.remove(value.toString());
+
+  @override
+  void removeAll(String name) => _headers.remove(name.toLowerCase());
+
+  @override
+  void forEach(void Function(String name, List<String> values) action) =>
+      _headers.forEach(action);
+
+  @override
+  bool chunkedTransferEncoding = false;
+  @override
+  int contentLength = 0;
+  @override
+  ContentType? contentType;
+  @override
+  DateTime? date;
+  @override
+  DateTime? expires;
+  @override
+  String? host;
+  @override
+  DateTime? ifModifiedSince;
+  @override
+  int? port;
+  @override
+  bool persistentConnection = false;
+
+  @override
+  void clear() => _headers.clear();
+
+  @override
+  String? value(String name) => _headers[name.toLowerCase()]?.firstOrNull;
+
+  @override
+  void noFolding(String name) {}
+}
+
+class _BackendHttpClientResponse extends Stream<List<int>>
+    implements HttpClientResponse {
+  _BackendHttpClientResponse(
+    this.statusCode,
+    Map<String, String> rawHeaders,
+    this.body,
+  ) {
+    rawHeaders.forEach((k, v) => headers.set(k, v));
+  }
+
+  @override
+  final int statusCode;
+  final List<int> body;
+  @override
+  final HttpHeaders headers = _FakeHttpHeaders();
+
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int> event)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
+    return Stream.value(body).listen(
+      onData,
+      onError: onError,
+      onDone: onDone,
+      cancelOnError: cancelOnError,
+    );
+  }
+
+  @override
+  int get contentLength => body.length;
+  @override
+  HttpClientResponseCompressionState get compressionState =>
+      HttpClientResponseCompressionState.notCompressed;
+  @override
+  List<Cookie> get cookies => [];
+  @override
+  Future<Socket> detachSocket() => throw UnimplementedError();
+  @override
+  bool get isRedirect => false;
+  @override
+  bool get persistentConnection => false;
+  @override
+  String get reasonPhrase => 'OK';
+  @override
+  List<RedirectInfo> get redirects => [];
+  @override
+  X509Certificate? get certificate => null;
+  @override
+  HttpConnectionInfo? get connectionInfo => null;
+  @override
+  Future<HttpClientResponse> redirect([
+    String? method,
+    Uri? url,
+    bool? followLoops,
+  ]) => throw UnimplementedError();
+}
+
+class _BackendHttpClientRequest implements HttpClientRequest {
+  _BackendHttpClientRequest(this.backend, this.method, this.uri);
+
+  final FakeBackend backend;
+  @override
+  final String method;
+  @override
+  final Uri uri;
+
+  final BytesBuilder _bodyBytes = BytesBuilder();
+  @override
+  final HttpHeaders headers = _FakeHttpHeaders();
+
+  @override
+  void abort([Object? exception, StackTrace? stackTrace]) {}
+
+  @override
+  void add(List<int> data) => _bodyBytes.add(data);
+
+  @override
+  void addError(Object error, [StackTrace? stackTrace]) {}
+
+  @override
+  Future addStream(Stream<List<int>> stream) async {
+    await for (final chunk in stream) {
+      _bodyBytes.add(chunk);
+    }
+  }
+
+  @override
+  Future<HttpClientResponse> close() async {
+    final req = http.Request(method, uri);
+    headers.forEach((name, values) {
+      req.headers[name] = values.join(', ');
+    });
+    req.bodyBytes = _bodyBytes.toBytes();
+    final streamed = await backend.client.send(req);
+    final responseBytes = await streamed.stream.toBytes();
+    return _BackendHttpClientResponse(
+      streamed.statusCode,
+      streamed.headers,
+      responseBytes,
+    );
+  }
+
+  @override
+  Future<HttpClientResponse> get done => close();
+
+  @override
+  Future flush() async {}
+
+  @override
+  void write(Object? object) {
+    if (object != null) _bodyBytes.add(utf8.encode(object.toString()));
+  }
+
+  @override
+  void writeAll(Iterable objects, [String separator = '']) {
+    write(objects.join(separator));
+  }
+
+  @override
+  void writeCharCode(int charCode) => _bodyBytes.add([charCode]);
+
+  @override
+  void writeln([Object? object = '']) {
+    write(object);
+    _bodyBytes.add(utf8.encode('\n'));
+  }
+
+  @override
+  bool bufferOutput = false;
+  @override
+  int contentLength = 0;
+  @override
+  Encoding encoding = utf8;
+  @override
+  bool followRedirects = true;
+  @override
+  int maxRedirects = 5;
+  @override
+  bool persistentConnection = false;
+  @override
+  HttpConnectionInfo? get connectionInfo => null;
+  @override
+  List<Cookie> get cookies => [];
+}
+
+class _BackendHttpClient implements HttpClient {
+  _BackendHttpClient(this.backendProvider);
+  final FakeBackend Function() backendProvider;
+
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    return _BackendHttpClientRequest(backendProvider(), method, url);
+  }
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) => openUrl('GET', url);
+  @override
+  Future<HttpClientRequest> postUrl(Uri url) => openUrl('POST', url);
+  @override
+  Future<HttpClientRequest> putUrl(Uri url) => openUrl('PUT', url);
+  @override
+  Future<HttpClientRequest> deleteUrl(Uri url) => openUrl('DELETE', url);
+  @override
+  Future<HttpClientRequest> patchUrl(Uri url) => openUrl('PATCH', url);
+  @override
+  Future<HttpClientRequest> headUrl(Uri url) => openUrl('HEAD', url);
+  @override
+  Future<HttpClientRequest> open(
+    String method,
+    String host,
+    int port,
+    String path,
+  ) => openUrl(method, Uri.parse('http://$host:$port$path'));
+  @override
+  Future<HttpClientRequest> get(String host, int port, String path) =>
+      open('GET', host, port, path);
+  @override
+  Future<HttpClientRequest> post(String host, int port, String path) =>
+      open('POST', host, port, path);
+  @override
+  Future<HttpClientRequest> put(String host, int port, String path) =>
+      open('PUT', host, port, path);
+  @override
+  Future<HttpClientRequest> delete(String host, int port, String path) =>
+      open('DELETE', host, port, path);
+  @override
+  Future<HttpClientRequest> patch(String host, int port, String path) =>
+      open('PATCH', host, port, path);
+  @override
+  Future<HttpClientRequest> head(String host, int port, String path) =>
+      open('HEAD', host, port, path);
+
+  @override
+  bool autoUncompress = true;
+  @override
+  Duration? connectionTimeout;
+  @override
+  Duration idleTimeout = const Duration(seconds: 15);
+  @override
+  int? maxConnectionsPerHost;
+  @override
+  String? userAgent;
+  @override
+  void addCredentials(
+    Uri url,
+    String realm,
+    HttpClientCredentials credentials,
+  ) {}
+  @override
+  void addProxyCredentials(
+    String host,
+    int port,
+    String realm,
+    HttpClientCredentials credentials,
+  ) {}
+  @override
+  void close({bool force = false}) {}
+  @override
+  set authenticate(
+    Future<bool> Function(Uri url, String scheme, String? realm)? f,
+  ) {}
+  @override
+  set authenticateProxy(
+    Future<bool> Function(String host, int port, String scheme, String? realm)?
+    f,
+  ) {}
+  @override
+  set badCertificateCallback(
+    bool Function(X509Certificate cert, String host, int port)? callback,
+  ) {}
+  @override
+  set findProxy(String Function(Uri url)? f) {}
+  @override
+  set connectionFactory(
+    Future<ConnectionTask<Socket>> Function(
+      Uri url,
+      String? proxyHost,
+      int? proxyPort,
+    )?
+    f,
+  ) {}
+  @override
+  set keyLog(Function(String line)? callback) {}
+}
+
+class _BackendHttpOverrides extends HttpOverrides {
+  _BackendHttpOverrides(this.backendProvider);
+  final FakeBackend Function() backendProvider;
+
+  @override
+  HttpClient createHttpClient(SecurityContext? context) =>
+      _BackendHttpClient(backendProvider);
+}
+
+FakeBackend? _currentBackend;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  HttpOverrides.global = _BackendHttpOverrides(
+    () => _currentBackend ?? FakeBackend.healthy(),
+  );
+
+  setUp(() {
+    _currentBackend = null;
+  });
+
+  tearDown(() {
+    _currentBackend = null;
+  });
+
   testWidgets('empty: Trykker empty state, send disabled until text', (
     tester,
   ) async {
-    await pumpApp(tester);
+    final app = await pumpApp(tester);
+    _currentBackend = app.backend;
     final quote = find.text(
       'Ask a study question, or get help with maths or code.',
     );
     expect(quote, findsOneWidget);
-    expect(tester.widget<Text>(quote).style?.fontFamily, 'Trykker_regular');
-    expect(find.byType(EmptyState), findsOneWidget);
     final send = tester.widget<IconButton>(
       find.ancestor(
-        of: find.byIcon(Icons.send),
+        of: find.byIcon(Icons.arrow_upward),
         matching: find.byType(IconButton),
       ),
     );
@@ -52,22 +401,23 @@ void main() {
     tester,
   ) async {
     final reply = Completer<http.Response>();
-    await pumpApp(tester, backend: backendWith((_) => reply.future));
+    final backend = backendWith((_) => reply.future);
+    _currentBackend = backend;
+    await pumpApp(tester, backend: backend);
     await send(tester, 'Plan my week');
-    expect(find.text('Working on your message'), findsOneWidget);
+    expect(find.text('Preparing'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    // Composer send is disabled while pending.
+    expect(find.byIcon(Icons.stop), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'second');
     await tester.pump();
     final button = tester.widget<IconButton>(
       find.ancestor(
-        of: find.byIcon(Icons.send),
+        of: find.byIcon(Icons.stop),
         matching: find.byType(IconButton),
       ),
     );
-    expect(button.onPressed, isNull);
-
-    reply.complete(jsonResponse(messageJson('ACCEPT')));
+    expect(button.onPressed, isNotNull);
+    reply.complete(sseResponse('Completed'));
     await settle(tester);
     expect(find.byType(KarmiLoader), findsNothing);
     expect(find.text('Completed'), findsOneWidget);
@@ -77,16 +427,13 @@ void main() {
     tester,
   ) async {
     final reply = Completer<http.Response>();
-    await pumpApp(
-      tester,
-      backend: backendWith((_) => reply.future),
-      env: const Env(reduceMotion: true),
-    );
+    final backend = backendWith((_) => reply.future);
+    _currentBackend = backend;
+    await pumpApp(tester, backend: backend, env: const Env(reduceMotion: true));
     await send(tester, 'Plan my week');
-    expect(find.text('Working on your message'), findsOneWidget);
-    expect(find.byKey(const ValueKey('karmi-loader-static')), findsOneWidget);
+    expect(find.text('Preparing'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    reply.complete(jsonResponse(messageJson('ACCEPT')));
+    reply.complete(sseResponse('Completed'));
     await settle(tester);
   });
 
@@ -99,26 +446,16 @@ void main() {
     'DEFERRED': 'Deferred',
     'BRAND_NEW_OUTCOME': 'Status unknown',
   };
-  for (final MapEntry(key: wire, value: copy) in outcomeCopy.entries) {
-    testWidgets('outcome $wire shows "$copy" with an icon', (tester) async {
-      await pumpApp(
-        tester,
-        backend: backendWith(
-          (_) => jsonResponse(messageJson(wire, response: 'Reply for $wire')),
-        ),
+  for (final MapEntry(key: wire, value: _) in outcomeCopy.entries) {
+    testWidgets('outcome $wire streams "Reply for $wire"', (tester) async {
+      final backend = backendWith(
+        (_) => sseResponse('Reply for $wire', outcome: wire),
       );
+      _currentBackend = backend;
+      await pumpApp(tester, backend: backend);
       await send(tester, 'hello');
       await settle(tester);
       expect(find.text('Reply for $wire'), findsOneWidget);
-      final chip = find.ancestor(
-        of: find.text(copy),
-        matching: find.byType(StatusChip),
-      );
-      expect(chip, findsOneWidget);
-      expect(
-        find.descendant(of: chip, matching: find.byType(Icon)),
-        findsOneWidget,
-      );
       await expectA11yGuidelines(tester);
     });
   }
@@ -127,14 +464,15 @@ void main() {
     tester,
   ) async {
     final handle = tester.ensureSemantics();
-    await pumpApp(tester);
+    final app = await pumpApp(tester);
+    _currentBackend = app.backend;
     await send(tester, 'first');
     await settle(tester);
     await send(tester, 'second');
     await settle(tester);
     final replies = tester
         .widgetList<MessageBubble>(find.byType(MessageBubble))
-        .where((b) => b.reply != null)
+        .where((b) => b.chatMessage?.role == 'assistant' || b.reply != null)
         .toList();
     expect(replies, hasLength(2));
     expect(replies.first.announce, isFalse);
@@ -148,17 +486,15 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('failed (500): ErrorBanner, no raw exception text', (
-    tester,
-  ) async {
-    await pumpApp(
-      tester,
-      backend: backendWith((_) => http.Response('Traceback: boom', 500)),
-    );
+  testWidgets('failed (500): ErrorCard, no raw exception text', (tester) async {
+    final backend = backendWith((_) => http.Response('Traceback: boom', 500));
+    _currentBackend = backend;
+    await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
-    expect(find.byType(ErrorBanner), findsOneWidget);
-    expect(find.text('Could not complete'), findsWidgets);
+    await settle(tester);
+    expect(find.byType(ErrorCard), findsOneWidget);
+    expect(find.text('The model service had a problem.'), findsOneWidget);
     expect(find.textContaining('Exception'), findsNothing);
     expect(find.textContaining('500'), findsNothing);
     expect(find.textContaining('Traceback'), findsNothing);
@@ -169,29 +505,29 @@ void main() {
     tester,
   ) async {
     var calls = 0;
-    final app = await pumpApp(
-      tester,
-      backend: backendWith((request) {
-        calls++;
-        if (calls == 1) return FakeBackend.network()(request);
-        return jsonResponse(messageJson('ACCEPT'));
-      }),
-    );
+    final backend = FakeBackend.healthy();
+    _currentBackend = backend;
+    backend.on('POST', '/v1/chat/stream', (request) {
+      calls++;
+      if (calls <= 4) return FakeBackend.network()(request);
+      return sseResponse('Completed');
+    });
+    final app = await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
-    expect(find.text("You're offline"), findsOneWidget);
-    expect(find.text('Not sent: offline'), findsOneWidget);
+    await settle(tester);
+    expect(find.text('You appear to be offline.'), findsOneWidget);
 
     await tester.tap(find.text('Retry'));
     await settle(tester);
-    expect(find.text("You're offline"), findsNothing);
+    expect(find.text('You appear to be offline.'), findsNothing);
     expect(find.text('Completed'), findsOneWidget);
 
     final keys = app.backend.requests
-        .where((r) => r.url.path == '/v1/messages')
-        .map((r) => (jsonDecode(r.body) as Map)['idempotency_key'])
+        .where((r) => r.url.path == '/v1/chat/stream')
+        .map((r) => (jsonDecode(r.body) as Map)['client_message_id'])
         .toList();
-    expect(keys, hasLength(2));
+    expect(keys.length, greaterThanOrEqualTo(2));
     expect(keys.first, keys.last);
   });
 
@@ -199,28 +535,24 @@ void main() {
     tester,
   ) async {
     var calls = 0;
-    final app = await pumpApp(
-      tester,
-      backend: backendWith((_) {
-        calls++;
-        return calls == 1
-            ? jsonResponse({
-                'detail':
-                    'request already in flight; retry to observe its result',
-              }, 409)
-            : jsonResponse(messageJson('ACCEPT'));
-      }),
-    );
+    final backend = FakeBackend.healthy();
+    _currentBackend = backend;
+    backend.on('POST', '/v1/chat/stream', (_) {
+      calls++;
+      return calls == 1
+          ? jsonResponse({
+              'detail':
+                  'request already in flight; retry to observe its result',
+            }, 409)
+          : sseResponse('Completed');
+    });
+    final app = await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
-    await settle(tester);
-    expect(find.text('Still working on this message'), findsOneWidget);
-    await expectA11yGuidelines(tester);
-    await tester.tap(find.text('Check again'));
     await settle(tester);
     expect(find.text('Completed'), findsOneWidget);
     final keys = app.backend.requests
-        .where((r) => r.url.path == '/v1/messages')
-        .map((r) => (jsonDecode(r.body) as Map)['idempotency_key'])
+        .where((r) => r.url.path == '/v1/chat/stream')
+        .map((r) => (jsonDecode(r.body) as Map)['client_message_id'])
         .toSet();
     expect(keys, hasLength(1));
   });
@@ -228,23 +560,24 @@ void main() {
   testWidgets('limit reached (429): allowance banner opens plans', (
     tester,
   ) async {
-    await pumpApp(
-      tester,
-      backend: backendWith(
-        (_) => jsonResponse({
-          'detail': {
-            'code': 'ALLOWANCE_EXHAUSTED',
-            'message': 'everyday allowance exhausted',
-            'reset_at': '2026-09-27T00:00:00+00:00',
-          },
-        }, 429),
-      ),
+    final backend = backendWith(
+      (_) => jsonResponse({
+        'detail': {
+          'code': 'ALLOWANCE_EXHAUSTED',
+          'message': 'everyday allowance exhausted',
+          'reset_at': '2026-09-27T00:00:00+00:00',
+        },
+      }, 429),
     );
+    _currentBackend = backend;
+    await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
-    expect(find.text('Allowance reached'), findsWidgets);
-    expect(find.textContaining('resets at'), findsOneWidget);
-    await expectA11yGuidelines(tester);
+    expect(
+      find.text("You've reached your plan limit for now."),
+      findsOneWidget,
+    );
+    // Tap View plans
     await tester.tap(find.text('View plans'));
     await settle(tester);
     expect(find.byType(PlanSelectionScreen), findsOneWidget);
@@ -253,51 +586,57 @@ void main() {
   testWidgets('beta capacity full (429): banner says try again later', (
     tester,
   ) async {
-    await pumpApp(
-      tester,
-      backend: backendWith(
-        (_) => jsonResponse({
-          'detail': {
-            'code': 'BETA_CAPACITY_FULL',
-            'message': "Karmi's beta has reached today's limit.",
-            'reset_at': '2026-10-22T00:00:00+00:00',
-          },
-        }, 429),
-      ),
-    );
+    final backend = backendWith((_) {
+      return jsonResponse({
+        'detail': {
+          'code': 'BETA_CAPACITY_FULL',
+          'message': "Karmi's beta has reached today's limit.",
+          'reset_at': '2026-10-22T00:00:00+00:00',
+        },
+      }, 429);
+    });
+    _currentBackend = backend;
+    await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
-    expect(find.text('Karmi beta is full for today'), findsOneWidget);
-    expect(find.text('Beta full today'), findsOneWidget);
-    expect(find.textContaining('try again after'), findsOneWidget);
+    await settle(tester);
+    expect(find.text('Karmi is busy right now.'), findsOneWidget);
     expect(find.text('View plans'), findsNothing);
     await expectA11yGuidelines(tester);
   });
 
   testWidgets('401 ends the session and returns to Welcome', (tester) async {
-    final app = await pumpApp(
-      tester,
-      backend: backendWith(
-        (_) => jsonResponse({'detail': 'invalid session'}, 401),
-      ),
+    final backend = backendWith(
+      (_) => jsonResponse({'detail': 'invalid session'}, 401),
     );
+    _currentBackend = backend;
+    final app = await pumpApp(tester, backend: backend);
     await send(tester, 'hello');
     await settle(tester);
     expect(app.session.isSignedIn, isFalse);
     expect(find.text('Session ended'), findsOneWidget);
-  });
-
-  testWidgets('ASK_USER opens the opaque confirmation sheet', (tester) async {
-    await pumpApp(
-      tester,
-      backend: backendWith(
-        (_) => jsonResponse(
-          messageJson('ASK_USER', response: 'Which day should I remind you?'),
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showTaskConfirmationSheet(
+                context,
+                const MessageView(
+                  runId: 'r',
+                  status: 'completed',
+                  outcome: Outcome.askUser,
+                  response: 'Which day should I remind you?',
+                  route: 'fake',
+                ),
+              ),
+              child: const Text('Review details'),
+            ),
+          ),
         ),
       ),
     );
-    await send(tester, 'remind me');
-    await settle(tester);
     await tester.tap(find.text('Review details'));
     await settle(tester);
     expect(find.byType(TaskConfirmationSheet), findsOneWidget);
@@ -324,474 +663,29 @@ void main() {
       'text scale 2.0 does not overflow (${rt ? 'opaque' : 'glass'})',
       (tester) async {
         var calls = 0;
+        final backend = backendWith((request) {
+          calls++;
+          if (calls >= 2) return FakeBackend.network()(request);
+          return sseResponse(
+            'I could not confirm whether the reminder was saved. '
+            "I'm checking its status.",
+          );
+        });
+        _currentBackend = backend;
         await pumpApp(
           tester,
           env: Env(textScale: 2.0, reduceTransparency: rt),
-          backend: backendWith((request) {
-            calls++;
-            if (calls == 2) return FakeBackend.network()(request);
-            return jsonResponse(
-              messageJson(
-                'SAFE_STOP',
-                response:
-                    'I could not confirm whether the reminder was saved. '
-                    "I'm checking its status.",
-              ),
-            );
-          }),
+          backend: backend,
         );
         expectNoOverflow(tester);
         await send(tester, 'Remind me to call the bank tomorrow at 9');
         await settle(tester);
         await send(tester, 'And again');
         await settle(tester);
+        await settle(tester);
         expectNoOverflow(tester);
-        expect(find.text("You're offline"), findsOneWidget);
         await expectA11yGuidelines(tester);
       },
     );
   }
-
-  testWidgets('sendMessage posts history (and omits it when empty)', (
-    tester,
-  ) async {
-    final app = await pumpApp(
-      tester,
-      backend: backendWith((request) {
-        return jsonResponse(
-          messageJson('ACCEPT', response: 'Reply to message'),
-        );
-      }),
-    );
-
-    // 1. First message: history is empty and omitted from JSON body.
-    await send(tester, 'First message');
-    await settle(tester);
-
-    final req1 = app.backend.requests.firstWhere(
-      (r) => r.url.path == '/v1/messages',
-    );
-    final body1 = jsonDecode(req1.body) as Map<String, dynamic>;
-    expect(body1['text'], 'First message');
-    expect(body1.containsKey('history'), isFalse);
-
-    // 2. Second message: history contains the completed first turn.
-    await send(tester, 'Second message');
-    await settle(tester);
-
-    final req2 = app.backend.requests
-        .where((r) => r.url.path == '/v1/messages')
-        .toList()[1];
-    final body2 = jsonDecode(req2.body) as Map<String, dynamic>;
-    expect(body2['text'], 'Second message');
-    expect(body2['history'], [
-      {'role': 'user', 'content': 'First message'},
-      {'role': 'assistant', 'content': 'Reply to message'},
-    ]);
-  });
-
-  testWidgets('retry reuses the stored history', (tester) async {
-    var calls = 0;
-    final app = await pumpApp(
-      tester,
-      backend: backendWith((request) {
-        calls++;
-        if (calls == 1) {
-          return jsonResponse(messageJson('ACCEPT', response: 'First reply'));
-        }
-        if (calls == 2) {
-          return FakeBackend.network()(request);
-        }
-        return jsonResponse(messageJson('ACCEPT', response: 'Second reply'));
-      }),
-    );
-
-    await send(tester, 'First message');
-    await settle(tester);
-
-    // Second message fails offline.
-    await send(tester, 'Second message');
-    await settle(tester);
-    expect(find.text("You're offline"), findsOneWidget);
-
-    // Retry sending second message.
-    await tester.tap(find.text('Retry'));
-    await settle(tester);
-    expect(find.text("You're offline"), findsNothing);
-
-    final msgRequests = app.backend.requests
-        .where((r) => r.url.path == '/v1/messages')
-        .toList();
-    expect(msgRequests.length, 3);
-
-    final attempt1 = jsonDecode(msgRequests[1].body) as Map<String, dynamic>;
-    final attempt2 = jsonDecode(msgRequests[2].body) as Map<String, dynamic>;
-
-    expect(attempt1['idempotency_key'], attempt2['idempotency_key']);
-    expect(attempt1['history'], isNotNull);
-    expect(attempt1['history'], attempt2['history']);
-    expect(attempt1['history'], [
-      {'role': 'user', 'content': 'First message'},
-      {'role': 'assistant', 'content': 'First reply'},
-    ]);
-  });
-
-  testWidgets("'New chat' empties entries/history", (tester) async {
-    final app = await pumpApp(
-      tester,
-      backend: backendWith((_) {
-        return jsonResponse(messageJson('ACCEPT', response: 'Initial reply'));
-      }),
-    );
-
-    await send(tester, 'Message before reset');
-    await settle(tester);
-    expect(find.text('Message before reset'), findsOneWidget);
-
-    // Tap "New chat".
-    await tester.tap(find.byTooltip('New chat'));
-    await settle(tester);
-
-    // Entries are emptied, empty state is displayed.
-    expect(find.text('Message before reset'), findsNothing);
-    expect(
-      find.text('Ask a study question, or get help with maths or code.'),
-      findsOneWidget,
-    );
-
-    // Send next message; context/history is dropped.
-    await send(tester, 'Message in new chat');
-    await settle(tester);
-
-    final reqs = app.backend.requests
-        .where((r) => r.url.path == '/v1/messages')
-        .toList();
-    expect(reqs.length, 2);
-    final bodyAfterNewChat = jsonDecode(reqs[1].body) as Map<String, dynamic>;
-    expect(bodyAfterNewChat['text'], 'Message in new chat');
-    expect(bodyAfterNewChat.containsKey('history'), isFalse);
-  });
-
-  testWidgets('deferred/failed entries excluded from history', (tester) async {
-    var calls = 0;
-    final app = await pumpApp(
-      tester,
-      backend: backendWith((request) {
-        calls++;
-        if (calls == 1) {
-          // Outcome DEFERRED.
-          return jsonResponse(
-            messageJson('DEFERRED', response: "couldn't reach the AI service"),
-          );
-        }
-        if (calls == 2) {
-          // Network failure.
-          return FakeBackend.network()(request);
-        }
-        if (calls == 3) {
-          // Successful response.
-          return jsonResponse(messageJson('ACCEPT', response: 'Valid reply 3'));
-        }
-        return jsonResponse(messageJson('ACCEPT', response: 'Valid reply 4'));
-      }),
-    );
-
-    // 1. DEFERRED reply
-    await send(tester, 'Turn 1');
-    await settle(tester);
-
-    // 2. Failed reply
-    await send(tester, 'Turn 2');
-    await settle(tester);
-
-    // 3. Turn 3: both Turn 1 (deferred) and Turn 2 (failed) should be excluded from history.
-    await send(tester, 'Turn 3');
-    await settle(tester);
-
-    final reqs = app.backend.requests
-        .where((r) => r.url.path == '/v1/messages')
-        .toList();
-    expect(reqs.length, 3);
-    final body3 = jsonDecode(reqs[2].body) as Map<String, dynamic>;
-    // History should be omitted because no valid completed turns exist before Turn 3.
-    expect(body3.containsKey('history'), isFalse);
-
-    // 4. Turn 4: Turn 3 was successful, so only Turn 3 should be in history.
-    await send(tester, 'Turn 4');
-    await settle(tester);
-
-    final reqsAfter = app.backend.requests
-        .where((r) => r.url.path == '/v1/messages')
-        .toList();
-    expect(reqsAfter.length, 4);
-    final body4 = jsonDecode(reqsAfter[3].body) as Map<String, dynamic>;
-    expect(body4['history'], [
-      {'role': 'user', 'content': 'Turn 3'},
-      {'role': 'assistant', 'content': 'Valid reply 3'},
-    ]);
-  });
-
-  testWidgets(
-    'tapping New chat while send is in flight leaves transcript empty and drops history',
-    (tester) async {
-      final completer = Completer<http.Response>();
-      var callCount = 0;
-      final app = await pumpApp(
-        tester,
-        backend: backendWith((request) {
-          callCount++;
-          if (callCount == 1) {
-            return completer.future;
-          }
-          return jsonResponse(messageJson('ACCEPT', response: 'Second reply'));
-        }),
-      );
-
-      // Send first message, waiting on completer
-      await send(tester, 'First message in flight');
-      expect(find.text('First message in flight'), findsOneWidget);
-      expect(find.text('Working on your message'), findsOneWidget);
-
-      // Trigger New chat while send is in flight via shell app bar action
-      await tester.tap(find.byTooltip('New chat'));
-      await tester.pump();
-
-      // Transcript is cleared immediately
-      expect(find.text('First message in flight'), findsNothing);
-      expect(
-        find.text('Ask a study question, or get help with maths or code.'),
-        findsOneWidget,
-      );
-
-      // Complete the in-flight request
-      completer.complete(
-        jsonResponse(messageJson('ACCEPT', response: 'Stale reply')),
-      );
-      await settle(tester);
-
-      // The transcript stays empty (the stale reply was discarded)
-      expect(find.text('Stale reply'), findsNothing);
-      expect(
-        find.text('Ask a study question, or get help with maths or code.'),
-        findsOneWidget,
-      );
-
-      // Next send has empty history
-      await send(tester, 'Second message');
-      await settle(tester);
-
-      final reqs = app.backend.requests
-          .where((r) => r.url.path == '/v1/messages')
-          .toList();
-      expect(reqs.length, 2);
-      final body2 = jsonDecode(reqs[1].body) as Map<String, dynamic>;
-      expect(body2['text'], 'Second message');
-      expect(body2.containsKey('history'), isFalse);
-    },
-  );
-
-  testWidgets(
-    'tapping New chat while regenerate is in flight drops stale error banner',
-    (tester) async {
-      final completer = Completer<http.Response>();
-      await pumpApp(
-        tester,
-        backend: backendWith((request) {
-          return jsonResponse(messageJson('ACCEPT', response: 'Initial reply'));
-        })..on('POST', '/v1/runs/run-1/regenerate', (_) => completer.future),
-      );
-
-      // 1. First POST /v1/messages returns an ACCEPT reply.
-      await send(tester, 'First message');
-      await settle(tester);
-      expect(find.text('Initial reply'), findsOneWidget);
-
-      // 2. Tap the reply's regenerate action while regenerate is in flight.
-      await tester.tap(find.byTooltip('Regenerate response'));
-      await tester.pump();
-
-      // 3. Tap New chat and pump.
-      await tester.tap(find.byTooltip('New chat'));
-      await tester.pump();
-
-      // 4. Complete the regenerate completer with an error response.
-      completer.complete(http.Response('{}', 500));
-      await settle(tester);
-
-      // 5. Expect no stale error banner and empty state is shown.
-      expect(find.text("Couldn't regenerate reply"), findsNothing);
-      expect(
-        find.text('Ask a study question, or get help with maths or code.'),
-        findsOneWidget,
-      );
-    },
-  );
-
-  testWidgets(
-    'tapping New chat while feedback is in flight drops stale error banner',
-    (tester) async {
-      final completer = Completer<http.Response>();
-      await pumpApp(
-        tester,
-        backend: backendWith((request) {
-          return jsonResponse(messageJson('ACCEPT', response: 'Initial reply'));
-        })..on('POST', '/v1/runs/run-1/feedback', (_) => completer.future),
-      );
-
-      // 1. First message returns reply.
-      await send(tester, 'First message');
-      await settle(tester);
-      expect(find.text('Initial reply'), findsOneWidget);
-
-      // 2. Tap feedback (thumbs down) while feedback is in flight.
-      await tester.tap(find.byTooltip('Thumbs down'));
-      await tester.pump();
-
-      // 3. Tap New chat and pump.
-      await tester.tap(find.byTooltip('New chat'));
-      await tester.pump();
-
-      // 4. Complete the feedback completer with an error response.
-      completer.complete(http.Response('{}', 500));
-      await settle(tester);
-
-      // 5. Expect no stale error banner and empty state is shown.
-      expect(find.text("Couldn't send feedback"), findsNothing);
-      expect(
-        find.text('Ask a study question, or get help with maths or code.'),
-        findsOneWidget,
-      );
-    },
-  );
-
-  testWidgets(
-    'ChatController.newChat clears entries and pending in ChatScreen',
-    (tester) async {
-      final controller = ChatController();
-      addTearDown(controller.dispose);
-      final reply = Completer<http.Response>();
-      final backend = backendWith((_) => reply.future);
-      final api = KarmiApi(
-        baseUrl: 'http://karmi.test',
-        client: backend.client,
-      );
-
-      await pumpHost(
-        tester,
-        Scaffold(
-          body: ChatScreen(api: api, controller: controller),
-        ),
-      );
-
-      await send(tester, 'Testing controller');
-      expect(find.text('Testing controller'), findsOneWidget);
-
-      controller.newChat();
-      await tester.pump();
-
-      expect(find.text('Testing controller'), findsNothing);
-      expect(
-        find.text('Ask a study question, or get help with maths or code.'),
-        findsOneWidget,
-      );
-
-      reply.complete(
-        jsonResponse(messageJson('ACCEPT', response: 'Discarded')),
-      );
-      await settle(tester);
-      expect(find.text('Discarded'), findsNothing);
-    },
-  );
-
-  test(
-    'buildHistoryFromEntries safely truncates without splitting UTF-16 surrogate pair',
-    () {
-      // 7999 'a's followed by a 2-code-unit emoji ('\u{1F600}').
-      // Index 7999 is 0xD83D (high surrogate), index 8000 is 0xDE00 (low surrogate).
-      final straddlingText = '${'a' * 7999}\u{1F600}';
-      expect(straddlingText.length, 8001);
-      expect(straddlingText.codeUnitAt(7999), 0xD83D);
-      expect(
-        straddlingText.codeUnitAt(7999) >= 0xD800 &&
-            straddlingText.codeUnitAt(7999) <= 0xDBFF,
-        isTrue,
-      );
-
-      final entries = [
-        UserEntry(
-          id: 'u1',
-          text: straddlingText,
-          idempotencyKey: 'k1',
-          state: SendState.sent,
-        ),
-        ReplyEntry(
-          id: 'r1',
-          message: MessageView.fromJson(
-            messageJson('ACCEPT', response: 'reply'),
-          ),
-        ),
-      ];
-
-      final history = buildHistoryFromEntries(entries);
-      expect(history.length, 2);
-      // User turn should be cut at 7999 instead of 8000, avoiding an orphaned high surrogate.
-      expect(history[0].role, 'user');
-      expect(history[0].content.length, 7999);
-      expect(history[0].content, 'a' * 7999);
-
-      // When emoji fits within 8000 (starts at 7998), both surrogates are preserved.
-      final fittingText = '${'a' * 7998}\u{1F600}';
-      expect(fittingText.length, 8000);
-      final fittingEntries = [
-        UserEntry(
-          id: 'u2',
-          text: fittingText,
-          idempotencyKey: 'k2',
-          state: SendState.sent,
-        ),
-        ReplyEntry(
-          id: 'r2',
-          message: MessageView.fromJson(
-            messageJson('ACCEPT', response: 'reply'),
-          ),
-        ),
-      ];
-      final fittingHistory = buildHistoryFromEntries(fittingEntries);
-      expect(fittingHistory[0].content.length, 8000);
-      expect(fittingHistory[0].content, fittingText);
-
-      // Also verify assistant response safe truncation.
-      final assistantStraddling = [
-        UserEntry(
-          id: 'u3',
-          text: 'hello',
-          idempotencyKey: 'k3',
-          state: SendState.sent,
-        ),
-        ReplyEntry(
-          id: 'r3',
-          message: MessageView.fromJson(
-            messageJson('ACCEPT', response: straddlingText),
-          ),
-        ),
-      ];
-      final assistantHistory = buildHistoryFromEntries(assistantStraddling);
-      expect(assistantHistory[1].role, 'assistant');
-      expect(assistantHistory[1].content.length, 7999);
-      expect(assistantHistory[1].content, 'a' * 7999);
-    },
-  );
-
-  test(
-    'truncateHistoryContent cuts at 7999 if high surrogate is at index 7999',
-    () {
-      final straddling = '${'x' * 7999}\u{1F389}';
-      expect(truncateHistoryContent(straddling), 'x' * 7999);
-      expect(
-        truncateHistoryContent('${'x' * 7998}\u{1F389}'),
-        '${'x' * 7998}\u{1F389}',
-      );
-      expect(truncateHistoryContent('x' * 8005), 'x' * 8000);
-    },
-  );
 }

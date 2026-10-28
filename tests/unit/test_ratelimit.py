@@ -1,6 +1,7 @@
 import logging
 
 import pytest
+from uvicorn.logging import AccessFormatter
 
 from daily_agent.ratelimit import SlidingWindowLimiter, install_log_redaction, redact
 
@@ -50,3 +51,24 @@ def test_installed_redaction_applies_to_every_logger(caplog: pytest.LogCaptureFi
         logging.getLogger("any.module").info("token=%s", "Bearer abcdefghijklmnop")
     assert "abcdefghijklmnop" not in caplog.text
     assert "[REDACTED]" in caplog.text
+
+
+def test_redaction_keeps_uvicorn_access_args_formattable() -> None:
+    install_log_redaction()
+    factory = logging.getLogRecordFactory()
+    record = factory(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:5000", "GET", "/api/v1/x?token=SECRETVALUE123456&q=1", "1.1", 200),
+        None,
+    )
+    assert len(record.args) == 5
+    formatter = AccessFormatter("%(client_addr)s - %(request_line)s %(status_code)s", use_colors=False)
+    out = formatter.format(record)
+    assert "GET" in out
+    assert "200" in out
+    assert "SECRETVALUE" not in out
+    assert "[REDACTED]" in out

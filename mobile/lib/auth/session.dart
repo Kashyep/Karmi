@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
 
 import '../api/karmi_api.dart';
+import '../features/chat/composer/draft_store.dart';
 
 /// `--dart-define=KARMI_DEV_AUTH=false` hides the local development sign-in.
 /// Defaults on outside release mode.
@@ -24,6 +25,7 @@ class KarmiSession extends ChangeNotifier {
     required SharedPreferences prefs,
     this.clerkAuth,
   }) : _prefs = prefs {
+    unawaited(SharedPrefsDraftStore.purgeUnscopedDrafts(prefs));
     final auth = clerkAuth;
     if (auth != null) {
       // Never let a leftover synthetic token authenticate a Clerk-configured
@@ -54,6 +56,25 @@ class KarmiSession extends ChangeNotifier {
   /// Why the previous session ended, for the Welcome screen copy.
   SessionEnd get lastEnd => _lastEnd;
 
+  /// Stable id of the signed-in user, or null while unknown (e.g. Clerk still
+  /// loading). Dev tokens are `<userId>|<role>|<exp>|<tv>|<sig>`.
+  String? get userId {
+    final auth = clerkAuth;
+    if (auth != null) return auth.user?.id;
+    final token = api.token;
+    if (token == null) return null;
+    final sep = token.indexOf('|');
+    return sep > 0 ? token.substring(0, sep) : null;
+  }
+
+  /// Drafts scoped to the signed-in user; null when no user id is known, in
+  /// which case callers fall back to non-persistent drafts.
+  SharedPrefsDraftStore? get draftStore {
+    final uid = userId;
+    if (uid == null || uid.isEmpty || uid.contains('.')) return null;
+    return SharedPrefsDraftStore(userId: uid, prefs: _prefs);
+  }
+
   Future<String?> _clerkToken() async {
     final auth = clerkAuth;
     if (auth == null || !auth.isSignedIn) return null;
@@ -64,6 +85,7 @@ class KarmiSession extends ChangeNotifier {
     final signedIn = clerkAuth?.isSignedIn == true;
     if (_wasClerkSignedIn && !signedIn) {
       _lastEnd = SessionEnd.signedOut;
+      unawaited(SharedPrefsDraftStore.clearAllDrafts(_prefs));
     }
     _wasClerkSignedIn = signedIn;
     notifyListeners();
@@ -90,6 +112,7 @@ class KarmiSession extends ChangeNotifier {
     _lastEnd = reason;
     notifyListeners();
     await _prefs.remove(_key);
+    await SharedPrefsDraftStore.clearAllDrafts(_prefs);
     if (clerkAuth?.isSignedIn == true) {
       await clerkAuth!.signOut();
     }

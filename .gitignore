@@ -26,3 +26,16 @@ gh_2.55.0_linux_amd64.tar.gz
 .env.openrouter
 .env.azure
 .env.azure.prod
+
+# flutter golden failures
+mobile/test/**/failures/
+**/failures/*_testImage.png
+.env.testauth
+release-artifacts/
+docs/release1/onboarding-ref/
+.env.testusers
+
+# local-only artifacts (db dumps, test scratch, local admin db)
+.pytest-tmp/
+.admin-local/
+backups/

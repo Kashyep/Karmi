@@ -62,10 +62,10 @@ void main() {
     ) async {
       await pumpApp(tester);
       expect(find.byType(GlassTabBar), findsOneWidget);
-      expect(find.byType(GlassAppBar), findsOneWidget);
       expect(find.byType(NavigationBar), findsNothing);
 
       await openTab(tester, 'Settings');
+      expect(find.byType(GlassAppBar), findsOneWidget);
       await tester.tap(find.text('Reduce transparency'));
       await settle(tester);
 

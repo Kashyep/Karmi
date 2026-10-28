@@ -284,3 +284,17 @@
 - OpenCode adapter/runtime/harness edits were added immediately before the pause and remain unverified:
   `src/daily_agent/opencode.py`, `src/model_lab/opencode_runner.py`, changes to config/services/API/router/CLI, and `tests/unit/test_opencode.py`. No tests or lint ran after these edits. Reinspect current diff and verify before relying on them.
 - No OpenCode key was read and no provider request was made. Continue only with synthetic prompts and explicit bounded free-model requests; keep runtime disabled until privacy, evaluation and routing evidence gates pass.
+
+## Release 1 chat redesign (2026-10-21 to 2026-10-22, branch release1/chat-redesign, HEAD 4b95f5c)
+
+- Verified: contract v1 (`docs/release1/EXECUTION_CONTRACT.md`, 5de20a8), discovery `docs/release1/discovery/01–05`, `DEPENDENCY_BOARD.md`, `SCOPE_TIMELINE.md`, `R1_1_BACKLOG.md`, `TEST_STRATEGY.md` exist. Deviations D1–D7 are in contract §0 and mapped to R1.1 tickets.
+- Verified (git log): 63 commits `dcf4f75..4b95f5c` (54 non-merge, 9 merge). Diff stat `dcf4f75..4b95f5c`: 223 files, +23,847 / −660. Squads P1, F, A, B, BW, C, D, E, G, Phase 2 Wiring, QA-gap, FIX are merged on the branch.
+- Verified (re-run 2026-10-22 at 4b95f5c): `make` lint clean; typecheck 49 files clean; `test-unit` 226 passed; `test-e2e` 62 passed; `test-integration` 6 passed (podman, postgres:17, redis:8). Baseline pre-R1: unit 166, e2e 51.
+- Reported by Supervisor at HEAD 4b95f5c (not re-run here): `flutter analyze` clean; a11y and chat suites 103 passed. Full Flutter suite (goldens included) final count: from the Supervisor's run, recorded in `docs/release1/QA_REPORT.md` when received.
+- Backend audit 10/10 fixed with regression tests. Client audit: AUDIT-01/02 in `147b1ee`, `90586b6`; AUDIT-03/04/05 in `4b95f5c`. AUDIT-02 residual: two accounts on one device without sign-out share `draft.v1.new`.
+- Perf: host-VM proxies only (`docs/release1/perf/AFTER.md`, measured at `e9dd199`). Filtered rebuilds per send median 9 → 20 (regression signal; batching claim NOT supported). Device/profile frame timings, streaming frame timing, APK size, backend p50 are NOT MEASURED.
+- Goldens: 27 regenerated under `mobile/test/goldens/linux/` plus 1 new. Not visually reviewed (R-9).
+- `docs/release1/RELEASE_REPORT.md` rewritten as final (no DRAFT). `docs/release1/QA_REPORT.md` verdict updated to Boss rejection round 1: resubmitted, not signed off by QA. Sign-off blocked on PENDING-USER items (device/emulator, real provider and model, auth sign-in, onboarding): none run, none passed.
+- R-6 resolved by Supervisor: Artifact and Sources drawers deferred to R1.1 (inside R1.1-5). R1 keeps inline citation chips and file cards.
+- No production deploy, migration, live charge, or real message. R1.1 NOT started. Untracked `Claude outputs/` and `docs/release-evidence/device/*.png` preserved; `docs/release-evidence/device/01-launch.png` shows modified in the working tree and was not changed by this work.
+

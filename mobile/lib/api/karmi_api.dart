@@ -32,6 +32,7 @@ class KarmiApi {
   final String baseUrl;
   final Duration timeout;
   final http.Client _client;
+  http.Client get client => _client;
 
   /// Bearer token for `/v1/*`. Managed by `KarmiSession`.
   String? token;
