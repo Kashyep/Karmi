@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/home/rosso/Projects/Karmi/.codex/hooks/ruff_check.py'"
+          }
+        ]
+      }
+    ]
+  }
+}

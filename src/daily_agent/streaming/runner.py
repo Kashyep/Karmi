@@ -16,6 +16,7 @@ from sqlalchemy.pool import SingletonThreadPool
 
 from daily_agent.config import Settings
 from daily_agent.conversations.service import touch_conversation
+from daily_agent.db_admission import leased_session
 from daily_agent.gateway.service import Gateway, build_system_prompt
 from daily_agent.gateway.types import (
     CapacityFullError,
@@ -187,7 +188,7 @@ class StreamRunner:
             self.last_flush_time = time.monotonic()
             self.last_flushed_len = len(text)
 
-    def _settle_or_release_budget(self, *, release: bool = False) -> None:
+        with self._flush_lock, leased_session(self.session_factory) as session:
         with self._budget_lock:
             if self._budget_settled:
                 return
@@ -226,7 +227,7 @@ class StreamRunner:
                     message_finish_reason=FinishReason.ERROR.value,
                     outcome="FAILED",
                 )
-            except Exception:
+        with self._flush_lock, leased_session(self.session_factory) as session:
                 logger.exception("Failed to flush DB during runner finalization")
 
     async def _heartbeat_loop(self) -> None:
@@ -237,7 +238,7 @@ class StreamRunner:
             now = time.monotonic()
             if now - self.last_event_time >= 15.0:
                 self.last_event_time = now
-                heartbeat_at = datetime.now(UTC).isoformat()
+            with leased_session(self.session_factory) as session:
                 await self.run_state.publish("heartbeat", {"at": heartbeat_at})
 
     async def run(self) -> None:

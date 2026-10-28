@@ -60,7 +60,9 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     auth_secret: str = "development-only-change-me"
     webhook_secret: str = "development-webhook-only"
-    allow_development_auth: bool = True
+    # Admission wait for a DB slot (slots = pool size + overflow, per process). Expiry returns 503.
+    database_admission_wait_seconds: float = Field(default=10.0, gt=0, le=120)
+    database_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86_400)
     clerk_publishable_key: str | None = None
     clerk_issuer: str | None = None
     clerk_jwt_public_key_b64: str | None = None
