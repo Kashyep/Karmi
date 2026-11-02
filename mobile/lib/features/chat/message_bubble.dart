@@ -89,6 +89,13 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isEmptyFailed = chatMessage != null &&
+        chatMessage!.status == MessageStatus.failed &&
+        chatMessage!.content.trim().isEmpty;
+    if (isEmptyFailed) {
+      return const SizedBox.shrink();
+    }
+
     final colors = KarmiColors.of(context);
     final text = Theme.of(context).textTheme;
     final isUser =
@@ -203,7 +210,9 @@ class MessageBubble extends StatelessWidget {
                       const SizedBox(height: 8),
                       _ConfirmationCard(onReviewDetails: onReviewDetails),
                     ],
-                    if (chatMessage!.status != MessageStatus.streaming) ...[
+                    if (chatMessage!.status != MessageStatus.streaming &&
+                        !(chatMessage!.status == MessageStatus.failed &&
+                            chatMessage!.content.trim().isEmpty)) ...[
                       const SizedBox(height: 4),
                       _ChatMessageActions(
                         message: chatMessage!,
