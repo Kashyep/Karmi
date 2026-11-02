@@ -7,6 +7,7 @@ import 'conversation_actions.dart';
 import 'conversation_groups.dart';
 import 'conversation_list_controller.dart';
 import 'search_field.dart';
+import '../../widgets/karmi_skeleton.dart';
 
 sealed class _HistoryEntry {
   const _HistoryEntry();
@@ -293,15 +294,7 @@ class _ConversationListState extends State<ConversationList> {
     final theme = Theme.of(context);
 
     if (controller.searching && controller.results.isEmpty) {
-      return Center(
-        child: SizedBox.square(
-          dimension: 24,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: karmiColors?.primary,
-          ),
-        ),
-      );
+      return const KarmiHistorySkeletonList(count: 4);
     }
 
     if (controller.results.isEmpty) {
@@ -432,15 +425,7 @@ class _ConversationListState extends State<ConversationList> {
     final theme = Theme.of(context);
 
     if (controller.loading && controller.conversations.isEmpty) {
-      return Center(
-        child: SizedBox.square(
-          dimension: 24,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: karmiColors?.primary,
-          ),
-        ),
-      );
+      return const KarmiHistorySkeletonList(count: 6);
     }
 
     if (controller.conversations.isEmpty) {
@@ -530,13 +515,8 @@ class _ConversationListState extends State<ConversationList> {
 
             case _LoadingMoreEntry():
               return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(
-                  child: SizedBox.square(
-                    dimension: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: KarmiHistorySkeletonRow(widthFactor: 0.5),
               );
 
             case _ConversationEntry(:final conversation):

@@ -21,6 +21,7 @@ import 'message_bubble.dart';
 import 'scroll/end_anchored_scroll.dart';
 import 'scroll/jump_to_latest_button.dart';
 import 'state/chat_controller.dart';
+import '../../widgets/karmi_skeleton.dart';
 
 /// Chat tab: streaming messages, error recovery, history navigation, and rich rendering.
 class ChatScreen extends StatefulWidget {
@@ -606,7 +607,6 @@ class _ChatScreenState extends State<ChatScreen> {
               onOpenHistory: _resolveOpenHistory(context),
               onNewChat: _isBusy ? null : _startNewChat,
             ),
-            if (_isLoadingMessages) const LinearProgressIndicator(minHeight: 2),
             if (bannerError != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -617,7 +617,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             Expanded(
-              child: messages.isEmpty
+              child: _isLoadingMessages
+                  ? const KarmiMessageHistorySkeleton()
+                  : messages.isEmpty
                   ? LayoutBuilder(
                       builder: (context, constraints) {
                         return SingleChildScrollView(
