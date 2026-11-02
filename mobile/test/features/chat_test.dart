@@ -14,6 +14,7 @@ import 'package:karmi_app/features/onboarding/onboarding.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/widgets/feedback.dart';
+import 'package:karmi_app/widgets/karmi_typing_dots.dart';
 
 import '../support/fake_backend.dart';
 import '../support/harness.dart';
@@ -407,7 +408,7 @@ void main() {
     await pumpApp(tester, backend: backend);
     await send(tester, 'Plan my week');
     expect(find.text('Working…'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(KarmiTypingDots), findsOneWidget);
     expect(find.byIcon(Icons.stop), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'second');
     await tester.pump();
@@ -434,7 +435,7 @@ void main() {
     await send(tester, 'Plan my week');
     expect(find.text('Working…'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+    expect(find.byType(KarmiTypingDots), findsOneWidget);
     reply.complete(sseResponse('Completed'));
     await settle(tester);
   });

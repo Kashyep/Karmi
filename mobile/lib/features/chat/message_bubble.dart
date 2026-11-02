@@ -6,13 +6,13 @@ import 'package:flutter/services.dart';
 import '../../api/chat/chat_models.dart';
 import '../../api/models.dart';
 import '../../theme/karmi_colors.dart';
-import '../../theme/karmi_motion.dart';
 import '../../theme/karmi_theme.dart';
 import 'chat_entry.dart';
 import 'provider_identity.dart';
 import 'debug_meta_line.dart';
 import 'rendering/markdown_message.dart';
 import 'status_chip.dart';
+import '../../widgets/karmi_typing_dots.dart';
 
 /// A chat bubble on an opaque surface, capped to a readable line length.
 class MessageBubble extends StatelessWidget {
@@ -89,6 +89,14 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isEmptyFailed =
+        chatMessage != null &&
+        chatMessage!.status == MessageStatus.failed &&
+        chatMessage!.content.trim().isEmpty;
+    if (isEmptyFailed) {
+      return const SizedBox.shrink();
+    }
+
     final colors = KarmiColors.of(context);
     final text = Theme.of(context).textTheme;
     final isUser =
@@ -203,7 +211,9 @@ class MessageBubble extends StatelessWidget {
                       const SizedBox(height: 8),
                       _ConfirmationCard(onReviewDetails: onReviewDetails),
                     ],
-                    if (chatMessage!.status != MessageStatus.streaming) ...[
+                    if (chatMessage!.status != MessageStatus.streaming &&
+                        !(chatMessage!.status == MessageStatus.failed &&
+                            chatMessage!.content.trim().isEmpty)) ...[
                       const SizedBox(height: 4),
                       _ChatMessageActions(
                         message: chatMessage!,
@@ -317,33 +327,7 @@ class _PendingNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = KarmiColors.of(context);
-    final text = Theme.of(context).textTheme;
-    return Semantics(
-      liveRegion: true,
-      label: label,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox.square(
-            dimension: 14,
-            child: KarmiAccessibility.reduceMotionOf(context)
-                ? Icon(Icons.more_horiz, size: 14, color: colors.foreground)
-                : CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.foreground,
-                  ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              label,
-              style: text.bodyMedium?.copyWith(color: colors.mutedForeground),
-            ),
-          ),
-        ],
-      ),
-    );
+    return KarmiTypingDots(label: label);
   }
 }
 

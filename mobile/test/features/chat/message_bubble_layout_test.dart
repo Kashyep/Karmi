@@ -329,5 +329,67 @@ void main() {
         handle.dispose();
       },
     );
+    testWidgets(
+      'failed+empty assistant message renders no actions or buttons; completed message has actions',
+      (tester) async {
+        final failedEmpty = ChatMessageView(
+          id: 'msg-failed-empty',
+          conversationId: 'c1',
+          role: 'assistant',
+          status: MessageStatus.failed,
+          content: '',
+          createdAt: DateTime(2026, 1, 1),
+          updatedAt: DateTime(2026, 1, 1),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
+            home: Scaffold(
+              body: MessageBubble.chatMessage(chatMessage: failedEmpty),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // No copy, no regenerate, no thumb buttons on empty failed message
+        expect(find.byTooltip('Copy'), findsNothing);
+        expect(find.byTooltip('Regenerate response'), findsNothing);
+        expect(find.byTooltip('Thumbs up'), findsNothing);
+        expect(find.byTooltip('Thumbs down'), findsNothing);
+        expect(find.byIcon(Icons.copy_outlined), findsNothing);
+        expect(find.byIcon(Icons.thumb_up_outlined), findsNothing);
+
+        final completedMessage = ChatMessageView(
+          id: 'msg-completed',
+          conversationId: 'c1',
+          role: 'assistant',
+          status: MessageStatus.complete,
+          content: 'Here is your response.',
+          createdAt: DateTime(2026, 1, 1),
+          updatedAt: DateTime(2026, 1, 1),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
+            home: Scaffold(
+              body: MessageBubble.chatMessage(
+                chatMessage: completedMessage,
+                onFeedback: (_) {},
+                onRegenerate: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Completed message has buttons present
+        expect(find.byTooltip('Copy'), findsOneWidget);
+        expect(find.byTooltip('Regenerate response'), findsOneWidget);
+        expect(find.byTooltip('Thumbs up'), findsOneWidget);
+        expect(find.byTooltip('Thumbs down'), findsOneWidget);
+      },
+    );
   });
 }
