@@ -320,23 +320,60 @@ def run(serial: str, out_root: Path) -> Report:
         device.adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
         return {}
 
+    def onboard_with_dev_sign_in() -> dict[str, object]:
+        """Walk the 7-step onboarding with the development sign-in (no Clerk, no credentials)."""
+        if device.find(lambda n: n.label.startswith("Already have an account"), 0):
+            device.tap_desc("Already have an account", timeout=10)
+        device.tap_desc("Continue (development sign-in)", timeout=15)
+        name_field = device.wait(lambda n: n.kind == "EditText", "onboarding name field", 15)
+        device.type_into(name_field, "Device Test")
+        device.back()  # hide the keyboard so Continue is on screen
+        device.tap_desc("Continue", timeout=10)
+        device.tap_desc("Concise", timeout=15)
+        device.tap_desc("Continue", timeout=10)
+        device.tap_desc("Continue with", timeout=15)  # plan step: "Continue with Ananta Free"
+        device.tap_desc("Maybe Later", timeout=15)  # notifications: never grant from a script
+        device.tap_desc("Enter Karmi", timeout=15)
+        device.composer(timeout=30)
+        return {"method": "onboarding with development sign-in"}
+
     def sign_in() -> dict[str, object]:
-        """Sign in through Clerk's email card with the tester code (never printed)."""
+        """Development sign-in through onboarding when offered; else Clerk with the tester code."""
 
         def ready(nodes: list[Node]) -> bool:
             return any(n.label.startswith(("Send message", "Stop generating")) for n in nodes)
+
+        def dev_sign_in_offered(nodes: list[Node]) -> bool:
+            return any(
+                n.label.startswith(("Already have an account", "Continue (development sign-in)"))
+                for n in nodes
+            )
 
         device.guard_clerk = False
         try:
             nodes = device.nodes()
             deadline = time.monotonic() + 25
-            while not ready(nodes) and not clerk_showing(nodes) and time.monotonic() < deadline:
+            while (
+                not ready(nodes)
+                and not dev_sign_in_offered(nodes)
+                and not clerk_showing(nodes)
+                and time.monotonic() < deadline
+            ):
                 time.sleep(1.0)
                 nodes = device.nodes()
+                notice = next(
+                    (n for n in nodes if n.label.startswith("I Understand and Acknowledge")), None
+                )
+                if notice is not None:  # first-launch tester notice (synthetic account only)
+                    device.tap(notice)
+                    time.sleep(1.0)
+                    nodes = device.nodes()
             if ready(nodes):
                 return {"method": "already signed in"}
+            if dev_sign_in_offered(nodes):
+                return onboard_with_dev_sign_in()
             if not clerk_showing(nodes):
-                raise StepFailed("neither chat composer nor Clerk's sign-in card appeared")
+                raise StepFailed("neither chat composer nor a sign-in screen appeared")
             email = next((n for n in nodes if n.kind == "EditText"), None)
             if email is None:
                 raise StepFailed("Clerk sign-in card has no email field")
@@ -443,22 +480,19 @@ def run(serial: str, out_root: Path) -> Report:
         return {"shot": shot}
 
     def dark_mode() -> dict[str, object]:
-        if device.find(lambda n: n.label.startswith("Settings tab"), 0) is None:
-            device.tap_desc("More options", timeout=10)
-            device.tap_desc("Settings", timeout=10)
-        else:
-            device.tap_desc("Settings tab", timeout=10)
-        device.wait(lambda n: n.text == "Dark", "dark theme control", 15)
+        if device.find(lambda n: n.label.startswith("Settings tab"), 2) is None:
+            launch()
+        device.tap_desc("Settings tab", timeout=10)
+        themes = {"System", "Light", "Dark"}
+        device.wait(lambda n: n.label == "Dark", "dark theme control", 15)
         selected = [
-            n.text
-            for n in device.nodes()
-            if n.text in {"System", "Light", "Dark"} and (n.selected or n.checked)
+            n.label for n in device.nodes() if n.label in themes and (n.selected or n.checked)
         ]
-        device.tap(device.wait(lambda n: n.text == "Dark", "Dark control", 5))
+        device.tap(device.wait(lambda n: n.label == "Dark", "Dark control", 5))
         time.sleep(1.5)
         shot = device.screenshot(report, "dark-mode")
         restore = selected[0] if selected else "System"
-        device.tap(device.wait(lambda n: n.text == restore, f"{restore} control", 5))
+        device.tap(device.wait(lambda n: n.label == restore, f"{restore} control", 5))
         time.sleep(1.0)
         return {"previous_theme": selected, "shot": shot, "restored_to": restore}
 
