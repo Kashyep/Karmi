@@ -172,6 +172,27 @@ def test_admin_response_carries_strict_csp_and_framing_headers(client_factory) -
     assert response.headers["referrer-policy"] == "no-referrer"
 
 
+def test_admin_csp_allows_clerk_workers_frames_protect_and_images(client_factory) -> None:
+    response = client_factory(_publishable_key()).get("/admin")
+    directives = _csp_directives(response.headers["content-security-policy"])
+
+    assert "blob:" in directives["worker-src"]
+    assert "https://cdn.protect.clerk.com" in directives["script-src"]
+    assert "https://img.clerk.com" in directives["img-src"]
+    assert "https://challenges.cloudflare.com" in directives["frame-src"]
+    assert "https://clerk.example.test" in directives["frame-src"]
+    assert "https://clerk.example.test" in directives["connect-src"]
+
+
+def test_admin_csp_without_clerk_key_names_no_clerk_hosts(client_factory) -> None:
+    response = client_factory(None).get("/admin")
+    policy = response.headers["content-security-policy"]
+
+    assert "clerk" not in policy
+    assert "cloudflare" not in policy
+    assert _csp_directives(policy)["script-src"] == ["'self'"]
+
+
 def test_admin_clerk_js_is_pinned_to_exact_version() -> None:
     source = (STATIC / "admin.js").read_text(encoding="utf-8")
     assert "CLERK_JS_VERSION = '5.125.11'" in source

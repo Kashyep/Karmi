@@ -18,6 +18,14 @@ _TIERS: Final[tuple[str, ...]] = ("ananta", "yanta", "trika", "parth")
 _CLERK_DOMAIN: Final = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+", re.IGNORECASE)
 
 
+# Clerk's own hosts beyond the per-instance frontend API. Clerk loads its bot-protection
+# bootstrap script from the protect CDN, avatars and social-provider icons from img.clerk.com,
+# and its challenge widget (Cloudflare Turnstile) in an iframe.
+CLERK_PROTECT_ORIGIN = "https://cdn.protect.clerk.com"
+CLERK_IMAGE_ORIGIN = "https://img.clerk.com"
+CLERK_CHALLENGE_ORIGIN = "https://challenges.cloudflare.com"
+
+
 def clerk_frontend_domain(publishable_key: str | None) -> str | None:
     """Clerk frontend API host encoded in a publishable key (``pk_<env>_<base64(host$)>``)."""
     if not publishable_key:
@@ -39,18 +47,24 @@ def clerk_frontend_domain(publishable_key: str | None) -> str | None:
 def admin_page_headers(*, publishable_key: str | None) -> dict[str, str]:
     """Headers for ``/admin``: scripts only from this origin and the exact Clerk host.
 
-    The admin page is a single document with no inline script, so ``script-src`` allows
-    only ``'self'`` and the Clerk frontend host derived from the publishable key. Clerk
-    loads its bundle and calls its frontend API from that host, so ``connect-src`` and
-    ``img-src`` name it too. Framing and plugin content are refused outright.
+    The admin page is a single document with no inline script. ``script-src`` allows only
+    ``'self'`` and the Clerk hosts (frontend API, protect bootstrap); Clerk creates blob
+    workers and frames its challenge widget, so ``worker-src`` and ``frame-src`` are listed.
+    ``connect-src`` and ``img-src`` name the Clerk hosts too. Framing and plugin content are
+    refused outright.
     """
     domain = clerk_frontend_domain(publishable_key)
     clerk_origin = f" https://{domain}" if domain else ""
+    clerk_protect = f" {CLERK_PROTECT_ORIGIN}" if domain else ""
+    clerk_images = f" {CLERK_IMAGE_ORIGIN}" if domain else ""
+    challenge_frames = f" {CLERK_CHALLENGE_ORIGIN}" if domain else ""
     csp = "; ".join(
         [
-            f"script-src 'self'{clerk_origin}",
+            f"script-src 'self'{clerk_origin}{clerk_protect}",
+            "worker-src 'self' blob:",
             f"connect-src 'self'{clerk_origin}",
-            f"img-src 'self' data:{clerk_origin}",
+            f"img-src 'self' data:{clerk_origin}{clerk_images}",
+            f"frame-src 'self'{clerk_origin}{challenge_frames}",
             "object-src 'none'",
             "base-uri 'none'",
             "form-action 'self'",
@@ -179,6 +193,7 @@ def render_admin_page(*, publishable_key: str | None) -> str:
                       <th scope="col">Status</th>
                       <th scope="col">Last active</th>
                       <th scope="col">Created</th>
+                    </tr>
                   </thead>
                   <tbody id="users-body"></tbody>
                 </table>
