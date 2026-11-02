@@ -47,10 +47,7 @@ class ChoiceTile extends StatelessWidget {
             ),
             child: Row(
               children: [
-                if (icon != null) ...[
-                  icon!,
-                  const SizedBox(width: 14),
-                ],
+                if (icon != null) ...[icon!, const SizedBox(width: 14)],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -60,8 +57,9 @@ class ChoiceTile extends StatelessWidget {
                         title,
                         style: textTheme.titleMedium?.copyWith(
                           color: colors.foreground,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
                         ),
                       ),
                       if (description != null) ...[

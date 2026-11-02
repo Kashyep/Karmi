@@ -112,7 +112,11 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     Future<void> Function() operation,
     ClerkFlowErrorHandler onError,
   ) async {
-    await auth.safelyCall(context, operation, onError: (error) => onError(error));
+    await auth.safelyCall(
+      context,
+      operation,
+      onError: (error) => onError(error),
+    );
   }
 
   @override
@@ -153,7 +157,8 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
   @override
   Future<void> verifySignUpCode(String code, ClerkFlowErrorHandler onError) =>
       _safely(
-        () => auth.attemptSignUp(strategy: clerk.Strategy.emailCode, code: code),
+        () =>
+            auth.attemptSignUp(strategy: clerk.Strategy.emailCode, code: code),
         onError,
       );
 
@@ -172,10 +177,8 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
   );
 
   @override
-  Future<void> resendCode(ClerkFlowErrorHandler onError) => _safely(
-    () => auth.resendCode(clerk.Strategy.emailCode),
-    onError,
-  );
+  Future<void> resendCode(ClerkFlowErrorHandler onError) =>
+      _safely(() => auth.resendCode(clerk.Strategy.emailCode), onError);
 
   @override
   Future<void> reset(ClerkFlowErrorHandler onError) =>

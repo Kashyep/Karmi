@@ -10,6 +10,7 @@ import 'widgets/choice_tile.dart';
 import 'widgets/onboarding_scaffold.dart';
 import 'widgets/account_auth_step.dart';
 import 'widgets/pill_cta.dart';
+
 /// Redesigned Onboarding Flow for Karmi Release 1.
 /// Manages multi-step navigation, state persistence, Clerk auth integration,
 /// backend profile persistence, and clean cutover to the Karmi shell.
@@ -113,7 +114,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Future<void> _submitProfile() async {
     final firstName = _firstNameController.text.trim();
     if (firstName.length < 2) {
-      setState(() => _profileError = 'First name must be at least 2 characters.');
+      setState(
+        () => _profileError = 'First name must be at least 2 characters.',
+      );
       return;
     }
 
@@ -123,7 +126,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     });
 
     final lastName = _lastNameController.text.trim();
-    final displayName = lastName.isNotEmpty ? '$firstName $lastName' : firstName;
+    final displayName = lastName.isNotEmpty
+        ? '$firstName $lastName'
+        : firstName;
 
     try {
       if (widget.session.isSignedIn) {
@@ -133,7 +138,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       if (mounted) {
         setState(() {
           _profileLoading = false;
-          _profileError = 'Could not save your name. Check your connection and try again.';
+          _profileError =
+              'Could not save your name. Check your connection and try again.';
         });
       }
       return;
@@ -187,7 +193,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       totalSteps: _totalSteps,
       showBack: false,
       title: 'Meet Karmi',
-      subtitle: 'One intelligent workspace for your thoughts, tasks, and drafts.',
+      subtitle:
+          'One intelligent workspace for your thoughts, tasks, and drafts.',
       body: Column(
         children: [
           Container(
@@ -291,7 +298,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       totalSteps: _totalSteps,
       onBack: _onBack,
       title: 'What should we call you?',
-      subtitle: 'Your name helps personalize conversations and generated drafts.',
+      subtitle:
+          'Your name helps personalize conversations and generated drafts.',
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -398,7 +406,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       totalSteps: _totalSteps,
       onBack: _onBack,
       title: "You're starting on Ananta Free",
-      subtitle: 'Enjoy essential features, reliable local execution, and free community models.',
+      subtitle:
+          'Enjoy essential features, reliable local execution, and free community models.',
       body: Column(
         children: [
           Container(
@@ -485,7 +494,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       totalSteps: _totalSteps,
       onBack: _onBack,
       title: 'Stay updated on background tasks',
-      subtitle: 'Get notified when complex generations or multi-step tasks finish.',
+      subtitle:
+          'Get notified when complex generations or multi-step tasks finish.',
       body: Column(
         children: [
           Container(
@@ -642,13 +652,10 @@ class _PlanFeatureRow extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: textTheme.bodyMedium?.copyWith(
-              color: colors.foreground,
-            ),
+            style: textTheme.bodyMedium?.copyWith(color: colors.foreground),
           ),
         ),
       ],
     );
   }
 }
-

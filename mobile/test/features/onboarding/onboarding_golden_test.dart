@@ -100,14 +100,18 @@ void main() {
     });
 
     // ── Create account (step 1) ─────────────────────────────────────────────
-    testWidgets('golden onboarding_create_account_${b}_x1.0_glass', (tester) async {
+    testWidgets('golden onboarding_create_account_${b}_x1.0_glass', (
+      tester,
+    ) async {
       final (_, _, widget) = await _setup(0);
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
       await _openCreateAccount(tester);
       await expectLater(
         find.byType(MaterialApp),
-        matchesGoldenFile(goldenPath('onboarding_create_account_${b}_x1.0_glass')),
+        matchesGoldenFile(
+          goldenPath('onboarding_create_account_${b}_x1.0_glass'),
+        ),
       );
     });
 
@@ -135,7 +139,10 @@ void main() {
       await _fillCreateAccount(tester);
       await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
       await settle(tester);
-      expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('onboarding_otp_field')),
+        findsOneWidget,
+      );
       await expectLater(
         find.byType(MaterialApp),
         matchesGoldenFile(goldenPath('onboarding_otp_${b}_x1.0_glass')),
@@ -160,7 +167,9 @@ void main() {
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
       // Tap Continue without entering a name to trigger validation error
-      await tester.tap(find.byKey(const ValueKey('onboarding_profile_continue')));
+      await tester.tap(
+        find.byKey(const ValueKey('onboarding_profile_continue')),
+      );
       await settle(tester);
       expect(
         find.text('First name must be at least 2 characters.'),
@@ -173,7 +182,9 @@ void main() {
     });
 
     // ── Preferences (step 3) ─────────────────────────────────────────────────
-    testWidgets('golden onboarding_preferences_${b}_x1.0_glass', (tester) async {
+    testWidgets('golden onboarding_preferences_${b}_x1.0_glass', (
+      tester,
+    ) async {
       final (_, _, widget) = await _setup(3);
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
@@ -197,7 +208,9 @@ void main() {
     });
 
     // ── Notifications (step 5) ───────────────────────────────────────────────
-    testWidgets('golden onboarding_notifications_${b}_x1.0_glass', (tester) async {
+    testWidgets('golden onboarding_notifications_${b}_x1.0_glass', (
+      tester,
+    ) async {
       final (_, _, widget) = await _setup(5);
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
@@ -224,20 +237,27 @@ void main() {
   }
 
   // ── Create account — text scale 2.0 (overflow gate) ───────────────────────
-  testWidgets('golden onboarding_create_account_light_x2.0_glass — no overflow', (tester) async {
-    final (_, _, widget) = await _setup(0);
-    const env = Env(brightness: Brightness.light, textScale: 2.0);
-    await pumpHost(tester, widget, env: env, size: phoneSize);
-    await _openCreateAccount(tester);
-    expectNoOverflow(tester);
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile(goldenPath('onboarding_create_account_light_x2.0_glass')),
-    );
-  });
+  testWidgets(
+    'golden onboarding_create_account_light_x2.0_glass — no overflow',
+    (tester) async {
+      final (_, _, widget) = await _setup(0);
+      const env = Env(brightness: Brightness.light, textScale: 2.0);
+      await pumpHost(tester, widget, env: env, size: phoneSize);
+      await _openCreateAccount(tester);
+      expectNoOverflow(tester);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile(
+          goldenPath('onboarding_create_account_light_x2.0_glass'),
+        ),
+      );
+    },
+  );
 
   // ── Name screen — text scale 2.0 (overflow gate) ──────────────────────────
-  testWidgets('golden onboarding_name_light_x2.0_glass — no overflow', (tester) async {
+  testWidgets('golden onboarding_name_light_x2.0_glass — no overflow', (
+    tester,
+  ) async {
     final (_, _, widget) = await _setup(2);
     const env = Env(brightness: Brightness.light, textScale: 2.0);
     await pumpHost(tester, widget, env: env, size: phoneSize);

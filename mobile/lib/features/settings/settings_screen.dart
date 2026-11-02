@@ -42,12 +42,17 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = KarmiColors.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([settings, armory, if (admin != null) admin!]),
+      listenable: Listenable.merge([
+        settings,
+        armory,
+        if (admin != null) admin!,
+      ]),
       builder: (context, _) => ListView(
         padding: karmiPageInsets(context),
         children: [

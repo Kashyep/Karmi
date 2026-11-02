@@ -8,21 +8,18 @@ import '../../support/harness.dart';
 String _boxes(WidgetTester tester) => [
   for (var i = 0; i < 6; i++)
     (tester.widget<Text>(
-      find.descendant(
-        of: find.byKey(ValueKey('otp_box_$i')),
-        matching: find.byType(Text),
-      ),
-    )).data ??
+          find.descendant(
+            of: find.byKey(ValueKey('otp_box_$i')),
+            matching: find.byType(Text),
+          ),
+        )).data ??
         '',
 ].join();
 
 void main() {
   Future<List<String>> pumpOtp(WidgetTester tester) async {
     final completed = <String>[];
-    await pumpHost(
-      tester,
-      OtpField(onCompleted: completed.add),
-    );
+    await pumpHost(tester, OtpField(onCompleted: completed.add));
     return completed;
   }
 

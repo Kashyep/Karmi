@@ -63,22 +63,22 @@ void main() {
     });
 
     test('reports the length rule with the configured minimum', () {
-      expect(
-        passwordProblems('Aa1!', minLength: 8),
-        ['at least 8 characters'],
-      );
-      expect(
-        passwordProblems('Aa1!aaaa', minLength: 10),
-        ['at least 10 characters'],
-      );
+      expect(passwordProblems('Aa1!', minLength: 8), ['at least 8 characters']);
+      expect(passwordProblems('Aa1!aaaa', minLength: 10), [
+        'at least 10 characters',
+      ]);
     });
 
     test('reports a missing uppercase letter', () {
-      expect(passwordProblems('sunrise#42', minLength: 8), ['an uppercase letter']);
+      expect(passwordProblems('sunrise#42', minLength: 8), [
+        'an uppercase letter',
+      ]);
     });
 
     test('reports a missing lowercase letter', () {
-      expect(passwordProblems('SUNRISE#42', minLength: 8), ['a lowercase letter']);
+      expect(passwordProblems('SUNRISE#42', minLength: 8), [
+        'a lowercase letter',
+      ]);
     });
 
     test('reports a missing number', () {
@@ -86,7 +86,9 @@ void main() {
     });
 
     test('reports a missing special character', () {
-      expect(passwordProblems('Sunrise42x', minLength: 8), ['a special character']);
+      expect(passwordProblems('Sunrise42x', minLength: 8), [
+        'a special character',
+      ]);
     });
 
     test('accepts every special character Clerk allows', () {
@@ -100,23 +102,19 @@ void main() {
     });
 
     test('a space is not a special character', () {
-      expect(
-        passwordProblems('Sunrise 42', minLength: 8),
-        ['a special character'],
-      );
+      expect(passwordProblems('Sunrise 42', minLength: 8), [
+        'a special character',
+      ]);
     });
 
     test('lists every unmet rule in order when nothing is met', () {
-      expect(
-        passwordProblems('', minLength: 8),
-        [
-          'at least 8 characters',
-          'an uppercase letter',
-          'a lowercase letter',
-          'a number',
-          'a special character',
-        ],
-      );
+      expect(passwordProblems('', minLength: 8), [
+        'at least 8 characters',
+        'an uppercase letter',
+        'a lowercase letter',
+        'a number',
+        'a special character',
+      ]);
     });
   });
 
@@ -130,7 +128,9 @@ void main() {
     });
 
     test('identifier not found maps to email with a create offer', () {
-      final issue = issueFromClerkError(_clerkError('form_identifier_not_found'));
+      final issue = issueFromClerkError(
+        _clerkError('form_identifier_not_found'),
+      );
       expect(issue.field, AccountField.email);
       expect(issue.offerCreate, isTrue);
       expect(issue.offerSignIn, isFalse);
@@ -206,12 +206,15 @@ void main() {
       );
     });
 
-    test('identifier-exists takes precedence over password codes in one response', () {
-      final issue = issueFromClerkError(
-        _clerkError('form_password_pwned', 'form_identifier_exists'),
-      );
-      expect(issue.field, AccountField.email);
-      expect(issue.offerSignIn, isTrue);
-    });
+    test(
+      'identifier-exists takes precedence over password codes in one response',
+      () {
+        final issue = issueFromClerkError(
+          _clerkError('form_password_pwned', 'form_identifier_exists'),
+        );
+        expect(issue.field, AccountField.email);
+        expect(issue.offerSignIn, isTrue);
+      },
+    );
   });
 }

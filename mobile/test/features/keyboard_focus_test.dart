@@ -190,15 +190,11 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester, signedIn: false);
-    final button = find.widgetWithText(
-      FilledButton,
-      'Get Started',
-    );
+    final button = find.widgetWithText(FilledButton, 'Get Started');
     final changed = await changedPixels(
       tester,
       tester.getRect(button),
-      () =>
-          focusByKeyboard(tester, find.text('Get Started')),
+      () => focusByKeyboard(tester, find.text('Get Started')),
     );
     expect(changed, greaterThan(400), reason: 'changed=$changed');
   });

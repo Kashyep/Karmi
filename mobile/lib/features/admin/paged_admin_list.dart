@@ -17,11 +17,7 @@ typedef AdminPageFetch<T> =
 /// and [loadMore] appends the next page. A reload that starts while another
 /// request is in flight wins: responses from the older request are dropped.
 class PagedAdminList<T> extends ChangeNotifier {
-  PagedAdminList({
-    required this.controller,
-    required this.fetch,
-    this.order,
-  });
+  PagedAdminList({required this.controller, required this.fetch, this.order});
 
   final AdminController controller;
   final AdminPageFetch<T> fetch;

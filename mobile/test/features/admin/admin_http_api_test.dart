@@ -23,10 +23,8 @@ void main() {
   test('probe accepts 401 ADMIN_SESSION_REQUIRED as eligible', () async {
     final api = _api(
       MockClient(
-        (_) async => http.Response(
-          '{"detail":{"code":"ADMIN_SESSION_REQUIRED"}}',
-          401,
-        ),
+        (_) async =>
+            http.Response('{"detail":{"code":"ADMIN_SESSION_REQUIRED"}}', 401),
       ),
     );
     await api.probe();
@@ -42,10 +40,8 @@ void main() {
   test('probe 403 ADMIN_FORBIDDEN maps to AdminForbidden', () async {
     final api = _api(
       MockClient(
-        (_) async => http.Response(
-          '{"detail":{"code":"ADMIN_FORBIDDEN"}}',
-          403,
-        ),
+        (_) async =>
+            http.Response('{"detail":{"code":"ADMIN_FORBIDDEN"}}', 403),
       ),
     );
     await expectLater(api.probe(), throwsA(isA<AdminForbidden>()));
@@ -54,10 +50,7 @@ void main() {
   test('probe 401 with another code is not eligible', () async {
     final api = _api(
       MockClient(
-        (_) async => http.Response(
-          '{"detail":{"code":"INVALID_TOKEN"}}',
-          401,
-        ),
+        (_) async => http.Response('{"detail":{"code":"INVALID_TOKEN"}}', 401),
       ),
     );
     await expectLater(api.probe(), throwsA(isA<AdminUnauthorized>()));
@@ -119,10 +112,7 @@ void main() {
 
   test('401 on a call maps to AdminUnauthorized', () async {
     final api = _api(MockClient((_) async => http.Response('{}', 401)));
-    expect(
-      api.monitor('tok'),
-      throwsA(isA<AdminUnauthorized>()),
-    );
+    expect(api.monitor('tok'), throwsA(isA<AdminUnauthorized>()));
   });
 
   test('exportUser sends reason as query and returns pretty JSON', () async {
@@ -154,22 +144,25 @@ void main() {
     expect(body, {'reason': 'gdpr', 'confirm': 'DELETE'});
   });
 
-  test('403 ADMIN_TARGET_PROTECTED is a failure, not console-hiding forbidden', () async {
-    final api = _api(
-      MockClient(
-        (_) async => http.Response(
-          '{"detail":{"code":"ADMIN_TARGET_PROTECTED","message":"admins cannot act on another admin"}}',
-          403,
+  test(
+    '403 ADMIN_TARGET_PROTECTED is a failure, not console-hiding forbidden',
+    () async {
+      final api = _api(
+        MockClient(
+          (_) async => http.Response(
+            '{"detail":{"code":"ADMIN_TARGET_PROTECTED","message":"admins cannot act on another admin"}}',
+            403,
+          ),
         ),
-      ),
-    );
-    await expectLater(
-      api.suspend('tok', 'u2', reason: 'abuse report'),
-      throwsA(
-        isA<AdminFailure>().having((e) => e.statusCode, 'statusCode', 403),
-      ),
-    );
-  });
+      );
+      await expectLater(
+        api.suspend('tok', 'u2', reason: 'abuse report'),
+        throwsA(
+          isA<AdminFailure>().having((e) => e.statusCode, 'statusCode', 403),
+        ),
+      );
+    },
+  );
 
   test('ADMIN_FORBIDDEN object detail still maps to AdminForbidden', () async {
     final api = _api(

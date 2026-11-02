@@ -101,14 +101,16 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
       if (!mounted) return;
       _changed = true;
       if (deletesUser) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(success)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(success)));
         Navigator.of(context).pop(true);
         return;
       }
       setState(() => _notice = success);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(success)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(success)));
       await _load();
     } on AdminException catch (e) {
       if (mounted) setState(() => _noticeError = e);

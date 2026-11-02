@@ -17,6 +17,7 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   bool _signUpAwaitingCode = false;
   bool _signInAwaitingCode = false;
   bool _signInNeedsSecondFactor = false;
+
   /// Simulates an unknown non-complete Clerk state after password sign-in.
   bool stallAfterPassword = false;
   Object? nextError;
@@ -98,7 +99,10 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   }
 
   @override
-  Future<void> verifySignUpCode(String code, ClerkFlowErrorHandler onError) async {
+  Future<void> verifySignUpCode(
+    String code,
+    ClerkFlowErrorHandler onError,
+  ) async {
     calls.add('verifySignUp');
     lastCode = code;
     if (nextError != null) return _maybeFail(onError);
@@ -135,12 +139,12 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
 /// A Clerk error carrying one server [ExternalError] per code, shaped like the
 /// SDK's response for a failed form submission.
 clerk.ClerkError clerkErrorWithCodes(List<String> codes) => clerk.ClerkError(
-      code: clerk.ClerkErrorCode.serverErrorResponse,
-      message: '{arg} (ERROR RECEIVED FROM SERVER)',
-      errors: ExternalErrorCollection(
-        errors: [
-          for (final code in codes)
-            ExternalError(message: 'server said $code', code: code),
-        ],
-      ),
-    );
+  code: clerk.ClerkErrorCode.serverErrorResponse,
+  message: '{arg} (ERROR RECEIVED FROM SERVER)',
+  errors: ExternalErrorCollection(
+    errors: [
+      for (final code in codes)
+        ExternalError(message: 'server said $code', code: code),
+    ],
+  ),
+);

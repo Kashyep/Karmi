@@ -59,18 +59,15 @@ class PillCta extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (icon != null) ...[
-                      icon!,
-                      const SizedBox(width: 8),
-                    ],
+                    if (icon != null) ...[icon!, const SizedBox(width: 8)],
                     Text(
                       label,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: isClickable
-                                ? colors.primaryForeground
-                                : colors.mutedForeground,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        color: isClickable
+                            ? colors.primaryForeground
+                            : colors.mutedForeground,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),

@@ -117,13 +117,15 @@ class _UsersScreenState extends State<UsersScreen> {
       if (mounted) {
         setState(() => _selected.clear());
         _list.reload();
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Plans updated.')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Plans updated.')));
       }
     } on AdminException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(adminErrorMessage(error))));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(adminErrorMessage(error))));
       }
     }
   }

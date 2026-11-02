@@ -49,10 +49,22 @@ Future<void> _fillCreateForm(
   String password = 'Sunrise#42',
   String email = 'alice@example.com',
 }) async {
-  await tester.enterText(find.byKey(const ValueKey('onboarding_first_name_field')), 'Alice');
-  await tester.enterText(find.byKey(const ValueKey('onboarding_username_field')), 'alice_k');
-  await tester.enterText(find.byKey(const ValueKey('onboarding_email_field')), email);
-  await tester.enterText(find.byKey(const ValueKey('onboarding_password_field')), password);
+  await tester.enterText(
+    find.byKey(const ValueKey('onboarding_first_name_field')),
+    'Alice',
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey('onboarding_username_field')),
+    'alice_k',
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey('onboarding_email_field')),
+    email,
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey('onboarding_password_field')),
+    password,
+  );
 }
 
 Future<void> _tapCta(WidgetTester tester) async {
@@ -75,35 +87,49 @@ Future<void> _tapNoClock(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('create-account validation errors show inline and nothing is sent', (tester) async {
-    final fake = FakeClerkEmailCodeActions();
-    await _pumpFlow(tester, fake: fake);
-    expect(find.text('Create your account'), findsOneWidget);
+  testWidgets(
+    'create-account validation errors show inline and nothing is sent',
+    (tester) async {
+      final fake = FakeClerkEmailCodeActions();
+      await _pumpFlow(tester, fake: fake);
+      expect(find.text('Create your account'), findsOneWidget);
 
-    await _fillCreateForm(tester, email: 'not-an-email', password: 'short');
-    await tester.enterText(find.byKey(const ValueKey('onboarding_username_field')), 'ab');
-    await _tapCta(tester);
+      await _fillCreateForm(tester, email: 'not-an-email', password: 'short');
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_username_field')),
+        'ab',
+      );
+      await _tapCta(tester);
 
-    expect(find.text('Enter a valid email address.'), findsOneWidget);
-    expect(find.text('Use 4–64 letters, numbers, _ or -.'), findsOneWidget);
-    expect(
-      find.text(
-        'Password needs at least 8 characters, an uppercase letter, a number, a special character.',
-      ),
-      findsOneWidget,
-    );
-    expect(fake.calls, isEmpty);
-  });
+      expect(find.text('Enter a valid email address.'), findsOneWidget);
+      expect(find.text('Use 4–64 letters, numbers, _ or -.'), findsOneWidget);
+      expect(
+        find.text(
+          'Password needs at least 8 characters, an uppercase letter, a number, a special character.',
+        ),
+        findsOneWidget,
+      );
+      expect(fake.calls, isEmpty);
+    },
+  );
 
-  testWidgets('empty first name shows the form-level error and sends nothing', (tester) async {
+  testWidgets('empty first name shows the form-level error and sends nothing', (
+    tester,
+  ) async {
     final fake = FakeClerkEmailCodeActions();
     await _pumpFlow(tester, fake: fake);
 
     await _fillCreateForm(tester);
-    await tester.enterText(find.byKey(const ValueKey('onboarding_first_name_field')), ' ');
+    await tester.enterText(
+      find.byKey(const ValueKey('onboarding_first_name_field')),
+      ' ',
+    );
     await _tapCta(tester);
 
-    expect(find.text('First name must be at least 2 characters.'), findsOneWidget);
+    expect(
+      find.text('First name must be at least 2 characters.'),
+      findsOneWidget,
+    );
     expect(fake.calls, isEmpty);
   });
 
@@ -119,15 +145,23 @@ void main() {
       find.text('An account already exists for this email. Sign in instead.'),
       findsOneWidget,
     );
-    expect(find.byKey(const ValueKey('onboarding_offer_sign_in')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('onboarding_offer_sign_in')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('onboarding_offer_sign_in')));
     await settle(tester);
     expect(find.text('Welcome back'), findsOneWidget);
-    expect(find.byKey(const ValueKey('onboarding_password_field')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('onboarding_password_field')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('pwned password on sign-up is shown on the password field', (tester) async {
+  testWidgets('pwned password on sign-up is shown on the password field', (
+    tester,
+  ) async {
     final fake = FakeClerkEmailCodeActions()
       ..nextError = _clerkError('form_password_pwned');
     await _pumpFlow(tester, fake: fake);
@@ -145,50 +179,75 @@ void main() {
     expect(find.byKey(const ValueKey('onboarding_otp_field')), findsNothing);
   });
 
-  testWidgets('Welcome "Already have an account?" opens Sign in, Get Started opens Create', (tester) async {
-    final fake = FakeClerkEmailCodeActions();
-    await _pumpFlow(tester, fake: fake, step: 0);
+  testWidgets(
+    'Welcome "Already have an account?" opens Sign in, Get Started opens Create',
+    (tester) async {
+      final fake = FakeClerkEmailCodeActions();
+      await _pumpFlow(tester, fake: fake, step: 0);
 
-    await tester.tap(find.byKey(const ValueKey('onboarding_already_have_account')));
-    await settle(tester);
-    expect(find.text('Welcome back'), findsOneWidget);
-    expect(find.text('Create your account'), findsNothing);
-    expect(find.byKey(const ValueKey('onboarding_username_field')), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('onboarding_already_have_account')),
+      );
+      await settle(tester);
+      expect(find.text('Welcome back'), findsOneWidget);
+      expect(find.text('Create your account'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('onboarding_username_field')),
+        findsNothing,
+      );
 
-    // Back to Welcome, then Get Started must open Create account.
-    await tester.pageBack();
-    await settle(tester);
-    await tester.tap(find.byKey(const ValueKey('onboarding_get_started')));
-    await settle(tester);
-    expect(find.text('Create your account'), findsOneWidget);
-  });
+      // Back to Welcome, then Get Started must open Create account.
+      await tester.pageBack();
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('onboarding_get_started')));
+      await settle(tester);
+      expect(find.text('Create your account'), findsOneWidget);
+    },
+  );
 
-  testWidgets('sign-in with password completes and advances to the profile step', (tester) async {
-    final fake = FakeClerkEmailCodeActions();
-    await _pumpFlow(tester, fake: fake);
+  testWidgets(
+    'sign-in with password completes and advances to the profile step',
+    (tester) async {
+      final fake = FakeClerkEmailCodeActions();
+      await _pumpFlow(tester, fake: fake);
 
-    await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
-    await settle(tester);
-    expect(find.text('Welcome back'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
+      await settle(tester);
+      expect(find.text('Welcome back'), findsOneWidget);
 
-    await tester.enterText(find.byKey(const ValueKey('onboarding_email_field')), 'alice_k');
-    await tester.enterText(find.byKey(const ValueKey('onboarding_password_field')), 'Sunrise#42');
-    await _tapCta(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_email_field')),
+        'alice_k',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_password_field')),
+        'Sunrise#42',
+      );
+      await _tapCta(tester);
 
-    expect(fake.calls, ['signIn']);
-    expect(fake.lastSignInIdentifier, 'alice_k');
-    expect(fake.lastPassword, 'Sunrise#42');
-    expect(find.text('What should we call you?'), findsOneWidget);
-  });
+      expect(fake.calls, ['signIn']);
+      expect(fake.lastSignInIdentifier, 'alice_k');
+      expect(fake.lastPassword, 'Sunrise#42');
+      expect(find.text('What should we call you?'), findsOneWidget);
+    },
+  );
 
-  testWidgets('sign-in that needs an email code shows the OTP field', (tester) async {
+  testWidgets('sign-in that needs an email code shows the OTP field', (
+    tester,
+  ) async {
     final fake = FakeClerkEmailCodeActions()..requireSecondFactor = true;
     await _pumpFlow(tester, fake: fake);
 
     await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
     await settle(tester);
-    await tester.enterText(find.byKey(const ValueKey('onboarding_email_field')), 'alice@example.com');
-    await tester.enterText(find.byKey(const ValueKey('onboarding_password_field')), 'Sunrise#42');
+    await tester.enterText(
+      find.byKey(const ValueKey('onboarding_email_field')),
+      'alice@example.com',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('onboarding_password_field')),
+      'Sunrise#42',
+    );
     await _tapCta(tester);
 
     // Clerk does not send the second-factor code by itself; the app must ask.
@@ -198,53 +257,75 @@ void main() {
     expect(find.text('Verify & Continue'), findsOneWidget);
     expect(find.text('What should we call you?'), findsNothing);
 
-    await tester.enterText(find.byKey(const ValueKey('onboarding_otp_field')), '424242');
+    await tester.enterText(
+      find.byKey(const ValueKey('onboarding_otp_field')),
+      '424242',
+    );
     await _tapCta(tester);
     expect(fake.calls.last, 'verifySignIn');
     expect(find.text('What should we call you?'), findsOneWidget);
   });
 
-  testWidgets('sign-in that stalls in an unknown Clerk state shows an error, not a dead button', (tester) async {
-    final fake = FakeClerkEmailCodeActions()..stallAfterPassword = true;
-    await _pumpFlow(tester, fake: fake);
+  testWidgets(
+    'sign-in that stalls in an unknown Clerk state shows an error, not a dead button',
+    (tester) async {
+      final fake = FakeClerkEmailCodeActions()..stallAfterPassword = true;
+      await _pumpFlow(tester, fake: fake);
 
-    await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
-    await settle(tester);
-    await tester.enterText(find.byKey(const ValueKey('onboarding_email_field')), 'alice_k');
-    await tester.enterText(find.byKey(const ValueKey('onboarding_password_field')), 'Sunrise#42');
-    await _tapCta(tester);
+      await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
+      await settle(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_email_field')),
+        'alice_k',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_password_field')),
+        'Sunrise#42',
+      );
+      await _tapCta(tester);
 
-    expect(find.textContaining('Sign-in could not continue'), findsOneWidget);
-    expect(find.byKey(const ValueKey('onboarding_otp_field')), findsNothing);
-  });
+      expect(find.textContaining('Sign-in could not continue'), findsOneWidget);
+      expect(find.byKey(const ValueKey('onboarding_otp_field')), findsNothing);
+    },
+  );
 
-  testWidgets('resend is disabled during the 30 second cooldown, then re-enabled', (tester) async {
-    final fake = FakeClerkEmailCodeActions();
-    await _pumpFlow(tester, fake: fake);
+  testWidgets(
+    'resend is disabled during the 30 second cooldown, then re-enabled',
+    (tester) async {
+      final fake = FakeClerkEmailCodeActions();
+      await _pumpFlow(tester, fake: fake);
 
-    await _fillCreateForm(tester);
-    await _tapNoClock(tester);
-    expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
-    expect(find.text('Resend in 30s'), findsOneWidget);
+      await _fillCreateForm(tester);
+      await _tapNoClock(tester);
+      expect(
+        find.byKey(const ValueKey('onboarding_otp_field')),
+        findsOneWidget,
+      );
+      expect(find.text('Resend in 30s'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('onboarding_resend_code')));
-    await _settleNoClock(tester);
-    expect(fake.calls, ['signUp'], reason: 'resend is ignored during cooldown');
+      await tester.tap(find.byKey(const ValueKey('onboarding_resend_code')));
+      await _settleNoClock(tester);
+      expect(fake.calls, [
+        'signUp',
+      ], reason: 'resend is ignored during cooldown');
 
-    for (var i = 0; i < 29; i++) {
+      for (var i = 0; i < 29; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(find.text('Resend in 1s'), findsOneWidget);
       await tester.pump(const Duration(seconds: 1));
-    }
-    expect(find.text('Resend in 1s'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Resend code'), findsOneWidget);
+      expect(find.text('Resend code'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('onboarding_resend_code')));
-    await _settleNoClock(tester);
-    expect(fake.calls, ['signUp', 'resend']);
-    expect(find.text('Resend in 30s'), findsOneWidget);
-  });
+      await tester.tap(find.byKey(const ValueKey('onboarding_resend_code')));
+      await _settleNoClock(tester);
+      expect(fake.calls, ['signUp', 'resend']);
+      expect(find.text('Resend in 30s'), findsOneWidget);
+    },
+  );
 
-  testWidgets('back from the OTP screen returns to editable details', (tester) async {
+  testWidgets('back from the OTP screen returns to editable details', (
+    tester,
+  ) async {
     final fake = FakeClerkEmailCodeActions();
     await _pumpFlow(tester, fake: fake);
 
@@ -272,12 +353,24 @@ void main() {
     expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
   });
 
-  testWidgets('profile save backend error is shown and does not advance', (tester) async {
+  testWidgets('profile save backend error is shown and does not advance', (
+    tester,
+  ) async {
     // Signed-in session; PATCH /v1/user/profile is unrouted, so it fails.
     final fake = FakeClerkEmailCodeActions();
     final backend = FakeBackend()
-      ..on('POST', '/dev/token', (_) => jsonResponse({'token': 't', 'user_id': 'u'}));
-    await _pumpFlow(tester, fake: fake, step: 2, signedIn: true, backend: backend);
+      ..on(
+        'POST',
+        '/dev/token',
+        (_) => jsonResponse({'token': 't', 'user_id': 'u'}),
+      );
+    await _pumpFlow(
+      tester,
+      fake: fake,
+      step: 2,
+      signedIn: true,
+      backend: backend,
+    );
     expect(find.text('What should we call you?'), findsOneWidget);
 
     await tester.enterText(
@@ -288,7 +381,9 @@ void main() {
     await settle(tester);
 
     expect(
-      find.text('Could not save your name. Check your connection and try again.'),
+      find.text(
+        'Could not save your name. Check your connection and try again.',
+      ),
       findsOneWidget,
     );
     expect(find.text('What should we call you?'), findsOneWidget);

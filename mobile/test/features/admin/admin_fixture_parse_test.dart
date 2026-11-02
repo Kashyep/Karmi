@@ -32,7 +32,10 @@ HttpAdminApi _apiReturning(
   tokenProvider: () async => 'bearer-1',
 );
 
-HttpAdminApi _fromFixture(String name, {void Function(http.Request)? onRequest}) {
+HttpAdminApi _fromFixture(
+  String name, {
+  void Function(http.Request)? onRequest,
+}) {
   final f = _fixture(name);
   return _apiReturning(
     f['body']!,
@@ -68,16 +71,18 @@ void main() {
       await _fromFixture('session_probe_bogus_admin_session.json').probe();
     });
 
-    test('probe without bearer is 401 detail string, not ADMIN_SESSION_REQUIRED',
-        () async {
-      final f = _fixture('session_probe_no_bearer.json');
-      expect(f['status'], 401);
-      expect(f['body'], {'detail': 'authentication required'});
-      await expectLater(
-        _fromFixture('session_probe_no_bearer.json').probe(),
-        throwsA(isA<AdminUnauthorized>()),
-      );
-    });
+    test(
+      'probe without bearer is 401 detail string, not ADMIN_SESSION_REQUIRED',
+      () async {
+        final f = _fixture('session_probe_no_bearer.json');
+        expect(f['status'], 401);
+        expect(f['body'], {'detail': 'authentication required'});
+        await expectLater(
+          _fromFixture('session_probe_no_bearer.json').probe(),
+          throwsA(isA<AdminUnauthorized>()),
+        );
+      },
+    );
 
     test('open session parses token and UTC expiry', () async {
       final f = _fixture('session_open.json');
@@ -85,7 +90,9 @@ void main() {
         'admin_session_token': 'PLACEHOLDER_ADMIN_SESSION_TOKEN',
         'expires_at': isA<String>(),
       });
-      final grant = await _fromFixture('session_open.json').openSession('000000');
+      final grant = await _fromFixture(
+        'session_open.json',
+      ).openSession('000000');
       expect(grant.token, 'PLACEHOLDER_ADMIN_SESSION_TOKEN');
       expect(grant.expiresAt.isUtc, isTrue);
       expect(grant.expiresAt.year, 2026);
@@ -138,10 +145,9 @@ void main() {
     });
 
     test('q with no match yields empty items and null cursor', () async {
-      final page = await _fromFixture('users_list_q_no_match.json').listUsers(
-        'tok',
-        q: 'zzz-no-match',
-      );
+      final page = await _fromFixture(
+        'users_list_q_no_match.json',
+      ).listUsers('tok', q: 'zzz-no-match');
       expect(page.items, isEmpty);
       expect(page.nextCursor, isNull);
     });
@@ -167,10 +173,9 @@ void main() {
       expect(usage['month_spend_usd'], isA<double>());
       expect(usage['credits_remaining'], isA<double>());
 
-      final detail = await _fromFixture('user_detail_usage.json').getUser(
-        'tok',
-        f['body']['id'] as String,
-      );
+      final detail = await _fromFixture(
+        'user_detail_usage.json',
+      ).getUser('tok', f['body']['id'] as String);
       expect(detail.user.id, f['body']['id']);
       expect(detail.user.adminNotes, isNull);
       expect(detail.usage.todayRequests, 11);
@@ -180,10 +185,9 @@ void main() {
     });
 
     test('edge user: null plan, notes, and last_active fields', () async {
-      final detail = await _fromFixture('user_detail_edge_nulls.json').getUser(
-        'tok',
-        'x',
-      );
+      final detail = await _fromFixture(
+        'user_detail_edge_nulls.json',
+      ).getUser('tok', 'x');
       expect(detail.user.email, '');
       expect(detail.user.testerLabel, isNull);
       expect(detail.user.adminNotes, isNull);
@@ -291,7 +295,12 @@ void main() {
 
       final audit = await _apiReturning({
         'items': [
-          {'id': 9, 'action': 'x', 'detail': {'k': 'v'}, 'unknown': 1},
+          {
+            'id': 9,
+            'action': 'x',
+            'detail': {'k': 'v'},
+            'unknown': 1,
+          },
         ],
         'next_cursor': null,
       }).audit('tok');

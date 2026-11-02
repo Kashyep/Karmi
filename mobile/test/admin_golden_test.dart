@@ -48,11 +48,13 @@ Future<void> _pump(
       debugShowCheckedModeBanner: false,
       theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
       darkTheme: KarmiTheme.of(KarmiTier.ananta, Brightness.dark),
-      themeMode: brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+      themeMode: brightness == Brightness.dark
+          ? ThemeMode.dark
+          : ThemeMode.light,
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.linear(textScale),
-        ),
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
         child: child!,
       ),
       home: home,
@@ -63,7 +65,11 @@ Future<void> _pump(
 
 class _AuditFake extends FakeAdminApi {
   @override
-  Future<AuditPage> audit(String token, {int limit = 50, String? cursor}) async {
+  Future<AuditPage> audit(
+    String token, {
+    int limit = 50,
+    String? cursor,
+  }) async {
     return AuditPage(
       items: [
         AuditEntry(
@@ -92,7 +98,7 @@ void main() {
     final name = brightness.name;
     testWidgets('users narrow $name', (tester) async {
       final controller = await _signedIn(FakeAdminApi());
-        await _pump(
+      await _pump(
         tester,
         home: AdminShell(controller: controller),
         brightness: brightness,

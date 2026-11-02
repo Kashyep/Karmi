@@ -17,16 +17,9 @@ void main() {
         tester,
         Column(
           children: [
-            PillCta(
-              label: 'Continue',
-              onPressed: () => tapped = true,
-            ),
+            PillCta(label: 'Continue', onPressed: () => tapped = true),
             const SizedBox(height: 10),
-            const PillCta(
-              label: 'Loading',
-              onPressed: null,
-              isLoading: true,
-            ),
+            const PillCta(label: 'Loading', onPressed: null, isLoading: true),
             const SizedBox(height: 10),
             PillCta(
               label: 'Disabled',
@@ -65,30 +58,38 @@ void main() {
       expect(selected, isTrue);
     });
 
-    testWidgets('OnboardingScaffold renders progress, back button, offline banner', (tester) async {
-      bool backCalled = false;
-      await pumpHost(
-        tester,
-        OnboardingScaffold(
-          currentStep: 1,
-          totalSteps: 5,
-          isOffline: true,
-          onBack: () => backCalled = true,
-          body: const Text('Step body'),
-        ),
-      );
+    testWidgets(
+      'OnboardingScaffold renders progress, back button, offline banner',
+      (tester) async {
+        bool backCalled = false;
+        await pumpHost(
+          tester,
+          OnboardingScaffold(
+            currentStep: 1,
+            totalSteps: 5,
+            isOffline: true,
+            onBack: () => backCalled = true,
+            body: const Text('Step body'),
+          ),
+        );
 
-      expect(find.text('Offline. Reconnecting when internet is restored...'), findsOneWidget);
-      expect(find.text('Step body'), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+        expect(
+          find.text('Offline. Reconnecting when internet is restored...'),
+          findsOneWidget,
+        );
+        expect(find.text('Step body'), findsOneWidget);
+        expect(find.byIcon(Icons.arrow_back), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      expect(backCalled, isTrue);
-    });
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        expect(backCalled, isTrue);
+      },
+    );
   });
 
   group('OnboardingFlow Integration', () {
-    testWidgets('navigation, validation, back navigation, and dev sign-in', (tester) async {
+    testWidgets('navigation, validation, back navigation, and dev sign-in', (
+      tester,
+    ) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final settings = KarmiSettings(prefs);
@@ -123,7 +124,10 @@ void main() {
       // Profile validation: empty first name
       await tester.tap(find.text('Continue'));
       await settle(tester);
-      expect(find.text('First name must be at least 2 characters.'), findsOneWidget);
+      expect(
+        find.text('First name must be at least 2 characters.'),
+        findsOneWidget,
+      );
 
       // Enter first name
       await tester.enterText(find.byType(TextField).first, 'Alice');
@@ -153,9 +157,7 @@ void main() {
     });
 
     testWidgets('resume persistence from saved step', (tester) async {
-      SharedPreferences.setMockInitialValues({
-        'onboarding_active_step': 2,
-      });
+      SharedPreferences.setMockInitialValues({'onboarding_active_step': 2});
       final prefs = await SharedPreferences.getInstance();
       final settings = KarmiSettings(prefs);
       final backend = FakeBackend.healthy();
@@ -166,10 +168,7 @@ void main() {
 
       await pumpHost(
         tester,
-        OnboardingFlow(
-          session: session,
-          settings: settings,
-        ),
+        OnboardingFlow(session: session, settings: settings),
       );
 
       // Should resume at step 2 (Profile step)
@@ -178,68 +177,83 @@ void main() {
   });
 
   group('OnboardingFlow Auth Step — dev sign-in gate', () {
-    testWidgets('dev sign-in button is hidden when devAuthEnabled is false (release mode)',
-        (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      final settings = KarmiSettings(prefs);
-      final backend = FakeBackend.healthy();
-      final session = KarmiSession(
-        api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
-        prefs: prefs,
-      );
+    testWidgets(
+      'dev sign-in button is hidden when devAuthEnabled is false (release mode)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final settings = KarmiSettings(prefs);
+        final backend = FakeBackend.healthy();
+        final session = KarmiSession(
+          api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
+          prefs: prefs,
+        );
 
-      await pumpHost(
-        tester,
-        OnboardingFlow(
-          session: session,
-          settings: settings,
-          devAuthEnabled: false, // simulates kReleaseMode / dart-define gate
-        ),
-      );
+        await pumpHost(
+          tester,
+          OnboardingFlow(
+            session: session,
+            settings: settings,
+            devAuthEnabled: false, // simulates kReleaseMode / dart-define gate
+          ),
+        );
 
-      // Navigate to auth step
-      expect(find.text('Meet Karmi'), findsOneWidget);
-      await tester.tap(find.text('Get Started'));
-      await settle(tester);
+        // Navigate to auth step
+        expect(find.text('Meet Karmi'), findsOneWidget);
+        await tester.tap(find.text('Get Started'));
+        await settle(tester);
 
-      // Auth step visible but dev sign-in button must be absent
-      expect(find.text('Create your account'), findsOneWidget);
-      expect(find.text('Continue (development sign-in)'), findsNothing);
-      expect(find.byKey(const ValueKey('onboarding_dev_signin')), findsNothing);
-      await tester.enterText(
-        find.byKey(const ValueKey('onboarding_email_field')),
-        'release@example.com',
-      );
-      await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
-      await settle(tester);
-      expect(find.text('Clerk authentication is not configured.'), findsOneWidget);
-    });
+        // Auth step visible but dev sign-in button must be absent
+        expect(find.text('Create your account'), findsOneWidget);
+        expect(find.text('Continue (development sign-in)'), findsNothing);
+        expect(
+          find.byKey(const ValueKey('onboarding_dev_signin')),
+          findsNothing,
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_email_field')),
+          'release@example.com',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('onboarding_auth_continue')),
+        );
+        await settle(tester);
+        expect(
+          find.text('Clerk authentication is not configured.'),
+          findsOneWidget,
+        );
+      },
+    );
 
-    testWidgets('dev sign-in button is shown when devAuthEnabled is true (debug/profile mode)',
-        (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      final settings = KarmiSettings(prefs);
-      final backend = FakeBackend.healthy();
-      final session = KarmiSession(
-        api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
-        prefs: prefs,
-      );
+    testWidgets(
+      'dev sign-in button is shown when devAuthEnabled is true (debug/profile mode)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final settings = KarmiSettings(prefs);
+        final backend = FakeBackend.healthy();
+        final session = KarmiSession(
+          api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
+          prefs: prefs,
+        );
 
-      await pumpHost(
-        tester,
-        OnboardingFlow(
-          session: session,
-          settings: settings,
-          devAuthEnabled: true,
-        ),
-      );
+        await pumpHost(
+          tester,
+          OnboardingFlow(
+            session: session,
+            settings: settings,
+            devAuthEnabled: true,
+          ),
+        );
 
-      await tester.tap(find.text('Get Started'));
-      await settle(tester);
+        await tester.tap(find.text('Get Started'));
+        await settle(tester);
 
-      expect(find.byKey(const ValueKey('onboarding_dev_signin')), findsOneWidget);
-    });
+        expect(
+          find.byKey(const ValueKey('onboarding_dev_signin')),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }

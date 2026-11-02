@@ -149,15 +149,18 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
       if (email.isEmpty || password.isEmpty) {
         setState(() {
           _clearErrors();
-          _errors[AccountField.form] = 'Enter your email or username and password.';
+          _errors[AccountField.form] =
+              'Enter your email or username and password.';
         });
         return;
       }
-      await _run((a) => a.signIn(
-            identifier: email,
-            password: password,
-            onError: _onClerkError,
-          ));
+      await _run(
+        (a) => a.signIn(
+          identifier: email,
+          password: password,
+          onError: _onClerkError,
+        ),
+      );
       if (!mounted || _errors.isNotEmpty || actions.isSignedIn) return;
       // Clerk accepted the password but needs an email code (e.g. new device):
       // ask Clerk to send it, then show the code field.
@@ -181,11 +184,15 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
     final first = _first.text.trim();
     final last = _last.text.trim();
     final username = _username.text.trim();
-    final problems = passwordProblems(password, minLength: actions.passwordMinLength);
+    final problems = passwordProblems(
+      password,
+      minLength: actions.passwordMinLength,
+    );
     setState(() {
       _clearErrors();
       if (first.length < 2) {
-        _errors[AccountField.form] = 'First name must be at least 2 characters.';
+        _errors[AccountField.form] =
+            'First name must be at least 2 characters.';
       }
       if (!isValidUsername(username)) {
         _errors[AccountField.username] = 'Use 4–64 letters, numbers, _ or -.';
@@ -194,7 +201,8 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
         _errors[AccountField.email] = 'Enter a valid email address.';
       }
       if (problems.isNotEmpty) {
-        _errors[AccountField.password] = 'Password needs ${problems.join(', ')}.';
+        _errors[AccountField.password] =
+            'Password needs ${problems.join(', ')}.';
       }
     });
     if (_errors.isNotEmpty) return;
@@ -203,14 +211,16 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
       firstName: first,
       lastName: last.isEmpty ? null : last,
     );
-    await _run((a) => a.signUp(
-          email: email,
-          firstName: first,
-          lastName: last.isEmpty ? null : last,
-          username: username,
-          password: password,
-          onError: _onClerkError,
-        ));
+    await _run(
+      (a) => a.signUp(
+        email: email,
+        firstName: first,
+        lastName: last.isEmpty ? null : last,
+        username: username,
+        password: password,
+        onError: _onClerkError,
+      ),
+    );
     if (!mounted || _errors.isNotEmpty || actions.isSignedIn) return;
     if (actions.signUpAwaitingCode) {
       setState(() => _awaitingCode = true);
@@ -233,9 +243,11 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
     }
     final isCreate = _mode == _Mode.create;
     final email = _email.text.trim();
-    await _run((a) => isCreate
-        ? a.verifySignUpCode(code, _onClerkError)
-        : a.verifySignInCode(email, code, _onClerkError));
+    await _run(
+      (a) => isCreate
+          ? a.verifySignUpCode(code, _onClerkError)
+          : a.verifySignInCode(email, code, _onClerkError),
+    );
   }
 
   Future<void> _resend() async {
@@ -410,7 +422,9 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
                 isCreate
                     ? 'Already have an account? Sign in'
                     : 'New to Karmi? Create an account',
-                style: textTheme.bodyMedium?.copyWith(color: colors.primaryText),
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colors.primaryText,
+                ),
               ),
             ),
           ],

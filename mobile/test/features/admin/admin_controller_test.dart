@@ -70,10 +70,7 @@ void main() {
   test('forbidden on verifyCode marks not eligible and rethrows', () async {
     final api = FakeAdminApi(forbidden: true);
     final c = AdminController(api: api);
-    await expectLater(
-      c.verifyCode('123456'),
-      throwsA(isA<AdminForbidden>()),
-    );
+    await expectLater(c.verifyCode('123456'), throwsA(isA<AdminForbidden>()));
     expect(c.eligibility, AdminEligibility.notAdmin);
   });
 

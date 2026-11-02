@@ -153,10 +153,15 @@ class _MonitorScreenState extends State<MonitorScreen>
   Widget _metricGrid(AdminMonitor m) {
     final cards = <_Metric>[
       _Metric('Active users', m.activeUsers?.toString() ?? kAdminUnavailable),
-      _Metric('Active streams', m.activeStreams?.toString() ?? kAdminUnavailable),
+      _Metric(
+        'Active streams',
+        m.activeStreams?.toString() ?? kAdminUnavailable,
+      ),
       _Metric(
         'Requests per minute',
-        m.reqPerMin == null ? kAdminUnavailable : m.reqPerMin!.toStringAsFixed(1),
+        m.reqPerMin == null
+            ? kAdminUnavailable
+            : m.reqPerMin!.toStringAsFixed(1),
       ),
       _Metric(
         'Error rate',
@@ -166,7 +171,9 @@ class _MonitorScreenState extends State<MonitorScreen>
       ),
       _Metric(
         'p95 latency',
-        m.p95LatencyMs == null ? kAdminUnavailable : '${m.p95LatencyMs!.round()} ms',
+        m.p95LatencyMs == null
+            ? kAdminUnavailable
+            : '${m.p95LatencyMs!.round()} ms',
       ),
       _Metric(
         'Spend today',
@@ -185,7 +192,10 @@ class _MonitorScreenState extends State<MonitorScreen>
           runSpacing: gap,
           children: [
             for (final c in cards)
-              SizedBox(width: width, child: _MetricCard(metric: c)),
+              SizedBox(
+                width: width,
+                child: _MetricCard(metric: c),
+              ),
           ],
         );
       },
@@ -252,8 +262,14 @@ class _ProviderRow extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final colors = KarmiColors.of(context);
     final (word, icon, color) = switch (health.status.toLowerCase()) {
-      'ok' || 'healthy' || 'up' => ('OK', Icons.check_circle_outline, colors.success),
-      'degraded' => ('Degraded', Icons.warning_amber_rounded, colors.foreground),
+      'ok' ||
+      'healthy' ||
+      'up' => ('OK', Icons.check_circle_outline, colors.success),
+      'degraded' => (
+        'Degraded',
+        Icons.warning_amber_rounded,
+        colors.foreground,
+      ),
       'down' || 'error' => ('Down', Icons.error_outline, colors.destructive),
       _ => ('Unknown', Icons.help_outline, colors.mutedForeground),
     };

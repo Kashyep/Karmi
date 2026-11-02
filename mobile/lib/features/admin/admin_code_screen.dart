@@ -120,9 +120,7 @@ class _AdminCodeScreenState extends State<AdminCodeScreen> {
           ],
           const SizedBox(height: 16),
           FilledButton(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(48, 48),
-            ),
+            style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
             onPressed: _busy ? null : _submit,
             child: _busy
                 ? const SizedBox.square(

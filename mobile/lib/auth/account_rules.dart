@@ -27,9 +27,7 @@ List<String> passwordProblems(String password, {required int minLength}) {
   if (!RegExp(r'[0-9]').hasMatch(password)) {
     problems.add('a number');
   }
-  final special = RegExp(
-    '[${RegExp.escape(clerkPasswordSpecialChars)}]',
-  );
+  final special = RegExp('[${RegExp.escape(clerkPasswordSpecialChars)}]');
   if (!special.hasMatch(password)) {
     problems.add('a special character');
   }
@@ -40,7 +38,12 @@ List<String> passwordProblems(String password, {required int minLength}) {
 enum AccountField { username, email, password, code, form }
 
 class AccountIssue {
-  const AccountIssue(this.field, this.message, {this.offerSignIn = false, this.offerCreate = false});
+  const AccountIssue(
+    this.field,
+    this.message, {
+    this.offerSignIn = false,
+    this.offerCreate = false,
+  });
 
   final AccountField field;
   final String message;

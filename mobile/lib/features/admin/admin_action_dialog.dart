@@ -195,10 +195,7 @@ class _AdminActionDialogState extends State<AdminActionDialog> {
             if (!_valid)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
-                child: Text(
-                  _hint(),
-                  style: text.bodySmall,
-                ),
+                child: Text(_hint(), style: text.bodySmall),
               ),
           ],
         ),

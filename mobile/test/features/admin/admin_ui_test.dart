@@ -17,7 +17,11 @@ class _AuditFake extends FakeAdminApi {
   final Map<String?, AuditPage> pages;
 
   @override
-  Future<AuditPage> audit(String token, {int limit = 50, String? cursor}) async {
+  Future<AuditPage> audit(
+    String token, {
+    int limit = 50,
+    String? cursor,
+  }) async {
     calls.add('audit:${cursor ?? ''}');
     return pages[cursor] ?? const AuditPage(items: []);
   }
@@ -73,9 +77,9 @@ Future<void> pumpAdmin(
       debugShowCheckedModeBanner: false,
       theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.linear(textScale),
-        ),
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
         child: child!,
       ),
       home: AdminShell(controller: controller),
@@ -119,7 +123,10 @@ void main() {
     await tester.pump();
     api.calls.clear();
 
-    await tester.enterText(find.widgetWithText(TextField, 'Search users'), 'bob');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Search users'),
+      'bob',
+    );
     await tester.pump(const Duration(milliseconds: 300));
     expect(api.calls.where((c) => c.startsWith('list:')), isEmpty);
 
@@ -148,7 +155,9 @@ void main() {
     expect(find.text('Load more users'), findsNothing);
   });
 
-  adminTest('user detail shows usage and Unavailable for nulls', (tester) async {
+  adminTest('user detail shows usage and Unavailable for nulls', (
+    tester,
+  ) async {
     final api = _NullUsageFake();
     final controller = await signedIn(api);
     await pumpAdmin(tester, controller);
@@ -255,7 +264,10 @@ void main() {
     expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
 
     final dialog = find.byType(AlertDialog);
-    final fields = find.descendant(of: dialog, matching: find.byType(TextField));
+    final fields = find.descendant(
+      of: dialog,
+      matching: find.byType(TextField),
+    );
     await tester.enterText(fields.at(0), 'cleanup');
     await tester.pump();
     expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
@@ -275,7 +287,9 @@ void main() {
     expect(find.text('Bob'), findsNothing);
   });
 
-  adminTest('monitor refreshes every 5s and pauses when not resumed', (tester) async {
+  adminTest('monitor refreshes every 5s and pauses when not resumed', (
+    tester,
+  ) async {
     final api = FakeAdminApi();
     final controller = await signedIn(api);
     await pumpAdmin(tester, controller);
@@ -300,7 +314,9 @@ void main() {
     expect(api.calls.where((c) => c == 'monitor').length, 3);
   });
 
-  adminTest('monitor keeps last data behind a banner when refresh fails', (tester) async {
+  adminTest('monitor keeps last data behind a banner when refresh fails', (
+    tester,
+  ) async {
     final api = FakeAdminApi();
     final controller = await signedIn(api);
     await pumpAdmin(tester, controller);
@@ -370,7 +386,9 @@ void main() {
     expect(find.text('Admin console'), findsNothing);
   });
 
-  adminTest('log out of admin calls logout and clears the token', (tester) async {
+  adminTest('log out of admin calls logout and clears the token', (
+    tester,
+  ) async {
     final api = FakeAdminApi();
     final controller = await signedIn(api);
     await pumpAdmin(tester, controller);
@@ -382,7 +400,9 @@ void main() {
     expect(api.calls, contains(startsWith('close:')));
   });
 
-  adminTest('no overflow at 200% text on phone and desktop sizes', (tester) async {
+  adminTest('no overflow at 200% text on phone and desktop sizes', (
+    tester,
+  ) async {
     final api = FakeAdminApi();
     final controller = await signedIn(api);
     for (final size in const [Size(360, 740), Size(1280, 800)]) {
@@ -401,7 +421,9 @@ void main() {
     }
   });
 
-  adminTest('wide layout uses a NavigationRail, narrow uses NavigationBar', (tester) async {
+  adminTest('wide layout uses a NavigationRail, narrow uses NavigationBar', (
+    tester,
+  ) async {
     final api = FakeAdminApi();
     final controller = await signedIn(api);
     await pumpAdmin(tester, controller, size: const Size(1280, 800));
@@ -429,7 +451,9 @@ void main() {
     expect(api.calls, contains('list::yanta:::'));
   });
 
-  adminTest('change tier dialog offers plan ids and sends the choice', (tester) async {
+  adminTest('change tier dialog offers plan ids and sends the choice', (
+    tester,
+  ) async {
     final api = FakeAdminApi();
     final controller = await signedIn(api);
     await pumpAdmin(tester, controller);
