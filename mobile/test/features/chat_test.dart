@@ -496,7 +496,7 @@ void main() {
     await settle(tester);
     await settle(tester);
     expect(find.byType(ErrorCard), findsOneWidget);
-    expect(find.text('The model service had a problem.'), findsOneWidget);
+    expect(find.text("Karmi couldn't finish this reply."), findsOneWidget);
     expect(find.textContaining('Exception'), findsNothing);
     expect(find.textContaining('500'), findsNothing);
     expect(find.textContaining('Traceback'), findsNothing);
