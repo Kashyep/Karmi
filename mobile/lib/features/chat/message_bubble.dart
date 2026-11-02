@@ -89,7 +89,8 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isEmptyFailed = chatMessage != null &&
+    final isEmptyFailed =
+        chatMessage != null &&
         chatMessage!.status == MessageStatus.failed &&
         chatMessage!.content.trim().isEmpty;
     if (isEmptyFailed) {

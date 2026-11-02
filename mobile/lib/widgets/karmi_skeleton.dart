@@ -66,11 +66,12 @@ class _KarmiSkeletonState extends State<KarmiSkeleton>
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KarmiColors>();
-    final baseColor = widget.color ??
+    final baseColor =
+        widget.color ??
         (colors != null
             ? (colors.brightness == Brightness.dark
-                ? Colors.white
-                : Colors.black)
+                  ? Colors.white
+                  : Colors.black)
             : Theme.of(context).colorScheme.onSurface);
 
     final radius = widget.borderRadius ?? BorderRadius.circular(4);
@@ -107,10 +108,7 @@ class _KarmiSkeletonState extends State<KarmiSkeleton>
 
 /// A skeleton placeholder row representing a conversation item in the history list.
 class KarmiHistorySkeletonRow extends StatelessWidget {
-  const KarmiHistorySkeletonRow({
-    super.key,
-    this.widthFactor = 0.7,
-  });
+  const KarmiHistorySkeletonRow({super.key, this.widthFactor = 0.7});
 
   final double widthFactor;
 
@@ -146,10 +144,7 @@ class KarmiHistorySkeletonRow extends StatelessWidget {
 
 /// A list of skeleton rows displayed while the conversation history list is loading.
 class KarmiHistorySkeletonList extends StatelessWidget {
-  const KarmiHistorySkeletonList({
-    super.key,
-    this.count = 6,
-  });
+  const KarmiHistorySkeletonList({super.key, this.count = 6});
 
   final int count;
 

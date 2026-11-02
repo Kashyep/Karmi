@@ -54,10 +54,8 @@ class _SlowFakeConversationsApi implements ConversationsApi {
   }) => listCompleter.future;
 
   @override
-  Future<List<ConversationSearchResult>> search(
-    String q, {
-    int limit = 20,
-  }) => searchCompleter.future;
+  Future<List<ConversationSearchResult>> search(String q, {int limit = 20}) =>
+      searchCompleter.future;
 
   @override
   Future<ConversationView> get(String id) async {
@@ -65,11 +63,8 @@ class _SlowFakeConversationsApi implements ConversationsApi {
   }
 
   @override
-  Future<MessagePage> messages(
-    String id, {
-    String? before,
-    int limit = 50,
-  }) => messagesCompleter.future;
+  Future<MessagePage> messages(String id, {String? before, int limit = 50}) =>
+      messagesCompleter.future;
 
   @override
   Future<ConversationView> update(
@@ -217,7 +212,6 @@ void main() {
         await tester.pump();
       },
     );
-
 
     testWidgets(
       'KarmiMessageHistorySkeleton is shown when message history is loading in ChatScreen',

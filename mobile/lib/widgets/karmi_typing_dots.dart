@@ -77,7 +77,8 @@ class _KarmiTypingDotsState extends State<KarmiTypingDots>
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<KarmiColors>();
-    final dotColor = widget.color ??
+    final dotColor =
+        widget.color ??
         colors?.primary ??
         Theme.of(context).colorScheme.primary;
 
@@ -127,9 +128,9 @@ class _KarmiTypingDotsState extends State<KarmiTypingDots>
     }
 
     final effectiveLabel = widget.label;
-    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
-      color: colors?.mutedForeground,
-    );
+    final textStyle = Theme.of(
+      context,
+    ).textTheme.bodyMedium?.copyWith(color: colors?.mutedForeground);
 
     final content = Row(
       mainAxisSize: MainAxisSize.min,
@@ -138,12 +139,7 @@ class _KarmiTypingDotsState extends State<KarmiTypingDots>
         dots,
         if (effectiveLabel != null && effectiveLabel.isNotEmpty) ...[
           const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              effectiveLabel,
-              style: textStyle,
-            ),
-          ),
+          Flexible(child: Text(effectiveLabel, style: textStyle)),
         ],
       ],
     );
@@ -192,11 +188,7 @@ class _TypingDotsPainter extends CustomPainter {
         ..color = color.withValues(alpha: opacity)
         ..style = PaintingStyle.fill;
 
-      canvas.drawCircle(
-        Offset(dotCenterX, centerY),
-        radius * scale,
-        paint,
-      );
+      canvas.drawCircle(Offset(dotCenterX, centerY), radius * scale, paint);
     }
   }
 
