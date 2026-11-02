@@ -1,21 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select
 
 from daily_agent.models import (
-    AdminAuditLog,
     BugReport,
     GatewayRequestDay,
     Run,
     RunStatus,
-    UsageWindow,
 )
-from tests.conftest import create_identity
 from tests.unit.test_admin_api import Env
 
 VALID_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64

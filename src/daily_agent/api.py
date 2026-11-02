@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_for_code
 from daily_agent.admin_metrics import MetricsMiddleware
+from daily_agent.bug_reports import create_bug_report, get_bug_report
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_engine, get_session
 from daily_agent.db_admission import DatabaseBusy
@@ -42,7 +43,6 @@ from daily_agent.ratelimit import RateLimiter, build_limiter, install_log_redact
 from daily_agent.routes.admin import router as admin_router
 from daily_agent.routes.conversations import router as conversations_router
 from daily_agent.routes.stream import router as stream_router
-from daily_agent.bug_reports import create_bug_report, get_bug_report
 from daily_agent.schemas import (
     ARMORY_TIERS,
     AccessCodeRedeem,
