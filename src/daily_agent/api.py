@@ -68,6 +68,7 @@ from daily_agent.schemas import (
 )
 from daily_agent.security import (
     Principal,
+    as_utc,
     issue_development_token,
     require_principal,
     verify_event_signature,
@@ -362,7 +363,7 @@ def create_app() -> FastAPI:
             id=report.id,
             ticket=report.ticket,
             status=report.status,
-            created_at=report.created_at.isoformat(),
+            created_at=as_utc(report.created_at).isoformat(),
         )
 
     @app.get("/v1/bug-reports/{report_id}", response_model=BugReportDetailView)
@@ -380,8 +381,8 @@ def create_app() -> FastAPI:
             diagnostics=report.diagnostics,
             status=report.status,
             has_screenshot=report.screenshot is not None,
-            created_at=report.created_at.isoformat(),
-            updated_at=report.updated_at.isoformat(),
+            created_at=as_utc(report.created_at).isoformat(),
+            updated_at=as_utc(report.updated_at).isoformat(),
         )
 
     @app.get("/v1/tasks", response_model=list[TaskView])

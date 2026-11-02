@@ -973,7 +973,7 @@ def get_admin_bug_report(
 ) -> dict[str, Any]:
     report = session.get(BugReport, report_id)
     if report is None:
-        raise _not_found("bug report not found")
+        raise _not_found()
     user = session.get(User, report.user_id)
     sub = _subscription(session, report.account_id)
     plan = plan_policy(sub).plan_id
@@ -1013,7 +1013,7 @@ def get_admin_bug_report_screenshot(
 ) -> tuple[bytes, str]:
     report = session.get(BugReport, report_id)
     if report is None or report.screenshot is None:
-        raise _not_found("screenshot not found")
+        raise _not_found()
     append_audit(
         session,
         admin_user_id=admin_id,
@@ -1036,7 +1036,7 @@ def patch_admin_bug_report(
 ) -> dict[str, Any]:
     report = session.get(BugReport, report_id)
     if report is None:
-        raise _not_found("bug report not found")
+        raise _not_found()
     now = datetime.now(UTC)
     if status is not None:
         if status not in ALLOWED_BUG_REPORT_STATUSES:

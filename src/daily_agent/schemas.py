@@ -290,7 +290,15 @@ class BugReportDetailView(BaseModel):
 class PatchBugReportBody(BaseModel):
     status: str | None = None
     admin_notes: str | None = Field(default=None, max_length=4000)
-    reason: str = Field(min_length=3, max_length=500)
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, v: str) -> str:
+        stripped = v.strip()
+        if len(stripped) < 3 or len(stripped) > 500:
+            raise ValueError("reason must be 3..500 characters after strip")
+        return stripped
 
     @model_validator(mode="after")
     def at_least_one(self) -> PatchBugReportBody:
