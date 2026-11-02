@@ -19,7 +19,6 @@ Failure behavior: not allowlisted / not admin -> `403`; wrong code or no code en
 | --- | --- |
 | `ADMIN_CLERK_USER_IDS` | Allowlisted Clerk subjects. Server-side only; never in client bundles. |
 | `DAILY_AGENT_CLERK_SECRET_KEY` | Clerk Backend API secret (`sk_...`), server-side only, never logged or shipped to a client. Needed for admin "revoke sessions". Unset means revocation is refused (see below). |
-| `DAILY_AGENT_ADMIN_MICRO_PER_USD` | Budget-unit micros per displayed "USD" in the admin API (default `1000000`, i.e. the stored budget unit shown 1:1). |
 
 ## Revoking sessions
 

@@ -42,17 +42,22 @@ from daily_agent.ratelimit import RateLimiter, build_limiter, install_log_redact
 from daily_agent.routes.admin import router as admin_router
 from daily_agent.routes.conversations import router as conversations_router
 from daily_agent.routes.stream import router as stream_router
+from daily_agent.bug_reports import create_bug_report, get_bug_report
 from daily_agent.schemas import (
     ARMORY_TIERS,
     AccessCodeRedeem,
     AccessCodeView,
     ActiveThemeUpdate,
     ArmoryView,
+    BugReportCreate,
+    BugReportCreatedView,
+    BugReportDetailView,
     FeedbackCreate,
     FeedbackView,
     MessageCreate,
     MessageView,
     Outcome,
+    PlanView,
     RegenerateCreate,
     ReminderCreate,
     TaskCreate,
@@ -319,6 +324,65 @@ def create_app() -> FastAPI:
         user.display_name = body.display_name
         session.commit()
         return UserProfileView(id=user.id, display_name=user.display_name)
+
+    @app.get("/v1/plans", response_model=list[PlanView])
+    def get_plans(
+        _principal: Principal = Depends(require_principal),
+    ) -> list[PlanView]:
+        return [
+            PlanView(
+                id=policy.plan_id,
+                label=policy.display_name,
+                price_inr=policy.price_inr,
+                everyday_limit=policy.everyday_limit,
+                daily_token_limit=policy.daily_token_limit,
+                input_tokens=policy.input_tokens,
+                output_tokens=policy.output_tokens,
+                request_cost_cap_micro=policy.request_cost_cap_micro,
+                period_cost_cap_micro=policy.period_cost_cap_micro,
+                model_classes=list(policy.model_classes),
+                min_class=policy.min_class,
+            )
+            for policy in SYNTHETIC_POLICIES.values()
+        ]
+
+    @app.post("/v1/bug-reports", response_model=BugReportCreatedView)
+    def submit_bug_report(
+        body: BugReportCreate,
+        response: Response,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> BugReportCreatedView:
+        report, is_replay = create_bug_report(session, principal, body)
+        if not is_replay:
+            response.status_code = status.HTTP_201_CREATED
+        else:
+            response.status_code = status.HTTP_200_OK
+        return BugReportCreatedView(
+            id=report.id,
+            ticket=report.ticket,
+            status=report.status,
+            created_at=report.created_at.isoformat(),
+        )
+
+    @app.get("/v1/bug-reports/{report_id}", response_model=BugReportDetailView)
+    def read_bug_report(
+        report_id: str,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> BugReportDetailView:
+        report = get_bug_report(session, principal, report_id)
+        return BugReportDetailView(
+            id=report.id,
+            ticket=report.ticket,
+            category=report.category,
+            description=report.description,
+            diagnostics=report.diagnostics,
+            status=report.status,
+            has_screenshot=report.screenshot is not None,
+            created_at=report.created_at.isoformat(),
+            updated_at=report.updated_at.isoformat(),
+        )
 
     @app.get("/v1/tasks", response_model=list[TaskView])
     def list_tasks(

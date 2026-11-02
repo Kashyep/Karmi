@@ -138,8 +138,6 @@ class Settings(BaseSettings):
         default_factory=list,
         validation_alias=AliasChoices("ADMIN_CLERK_USER_IDS", "DAILY_AGENT_ADMIN_CLERK_USER_IDS"),
     )
-    # Budget-unit micros per displayed "USD" in the admin API (1:1 keeps the stored unit visible).
-    admin_micro_per_usd: int = Field(default=1_000_000, ge=1)
     # Hex Ed25519 public keys whose PolicyBundleV1 signatures Karmi accepts. Empty: none.
     parakh_trusted_public_keys: list[str] = Field(default_factory=list)
 

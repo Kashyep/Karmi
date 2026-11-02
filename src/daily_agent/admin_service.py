@@ -31,10 +31,12 @@ from daily_agent.models import (
     AdminSession,
     BillingEvent,
     BudgetReservation,
+    BugReport,
     ChatMessage,
     Conversation,
     CostLedger,
     ErasedClerkSubject,
+    GatewayRequestDay,
     MessageFeedback,
     OutboxEvent,
     PlatformBudget,
@@ -42,13 +44,14 @@ from daily_agent.models import (
     RoutingDecision,
     RoutingRecord,
     Run,
+    RunStatus,
     Subscription,
     Task,
     UsagePeriod,
     UsageWindow,
     User,
 )
-from daily_agent.plans import SYNTHETIC_POLICIES
+from daily_agent.plans import MICRO_PER_INR, SYNTHETIC_POLICIES
 from daily_agent.security import as_utc, clerk_subject_digest
 from daily_agent.services import (
     current_window_key,
@@ -95,19 +98,31 @@ def parse_tier(tier: str | int) -> str:
     return plan
 
 
-def to_micro(settings: Settings, usd: float) -> int:
-    return round(usd * settings.admin_micro_per_usd)
+def inr_to_micro(inr: float) -> int:
+    return round(inr * MICRO_PER_INR)
 
 
-def from_micro(settings: Settings, micro: int) -> float:
-    return round(micro / settings.admin_micro_per_usd, 6)
+def micro_to_inr(micro: int) -> float:
+    return round(micro / MICRO_PER_INR, 6)
+
+
+def to_micro(_settings: Settings | None, inr: float) -> int:
+    return inr_to_micro(inr)
+
+
+def from_micro(_settings: Settings | None, micro: int) -> float:
+    return micro_to_inr(micro)
 
 
 def _subscription(session: Session, account_id: str) -> Subscription | None:
     return session.scalar(select(Subscription).where(Subscription.account_id == account_id))
 
 
-def user_item(user: User, subscription: Subscription | None) -> dict[str, Any]:
+def user_item(
+    user: User,
+    subscription: Subscription | None,
+    open_bug_reports: int = 0,
+) -> dict[str, Any]:
     policy = plan_policy(subscription)
     return {
         "id": user.id,
@@ -123,6 +138,7 @@ def user_item(user: User, subscription: Subscription | None) -> dict[str, Any]:
         "disabled": user.disabled,
         "created_at": _iso(user.created_at),
         "last_active_at": _iso(user.last_active_at),
+        "open_bug_reports": open_bug_reports,
     }
 
 
@@ -175,7 +191,22 @@ def list_users(
         plan = parse_tier(tier)
         rows = [(user, sub) for user, sub in rows if user_item(user, sub)["effective_plan"] == plan]  # type: ignore[misc]
     page = rows[:limit]
-    return {"items": [user_item(user, sub) for user, sub in page], "next_cursor": page[-1][0].id if len(rows) > limit and page else None}
+    user_ids = [u.id for u, _ in page]
+    counts: dict[str, int] = {}
+    if user_ids:
+        report_counts = session.execute(
+            select(BugReport.user_id, func.count())
+            .where(
+                BugReport.user_id.in_(user_ids),
+                BugReport.status.notin_(["fixed", "closed", "duplicate", "wontfix"]),
+            )
+            .group_by(BugReport.user_id)
+        ).all()
+        counts = {uid: int(count) for uid, count in report_counts}
+    return {
+        "items": [user_item(user, sub, counts.get(user.id, 0)) for user, sub in page],
+        "next_cursor": page[-1][0].id if len(rows) > limit and page else None,
+    }
 
 
 def usage_summary(session: Session, settings: Settings, user: User) -> dict[str, Any]:
@@ -202,15 +233,26 @@ def usage_summary(session: Session, settings: Settings, user: User) -> dict[str,
     )
     return {
         "today_requests": window.everyday_used if window else 0,
-        "month_spend_usd": from_micro(settings, spent),
-        "credits_remaining": from_micro(settings, max(0, limit - spent)),
+        "month_spend_inr": micro_to_inr(spent),
+        "credits_remaining": micro_to_inr(max(0, limit - spent)),
         "sessions": conversations or 0,
     }
 
 
 def user_detail(session: Session, settings: Settings, admin_id: str, user_id: str) -> dict[str, Any]:
     user = _load_user(session, user_id)
-    result = user_item(user, _subscription(session, user.account_id))
+    open_reports = (
+        session.scalar(
+            select(func.count())
+            .select_from(BugReport)
+            .where(
+                BugReport.user_id == user.id,
+                BugReport.status.notin_(["fixed", "closed", "duplicate", "wontfix"]),
+            )
+        )
+        or 0
+    )
+    result = user_item(user, _subscription(session, user.account_id), open_bug_reports=open_reports)
     result["admin_notes"] = user.admin_notes
     result["usage"] = usage_summary(session, settings, user)
     append_audit(session, admin_user_id=admin_id, action="user.view", target_user_id=user.id)
@@ -452,8 +494,10 @@ def adjust_credits(
     admin_id: str,
     user_id: str,
     *,
-    delta_usd: float | None,
-    budget_usd: float | None,
+    delta_inr: float | None = None,
+    budget_inr: float | None = None,
+    delta_usd: float | None = None,
+    budget_usd: float | None = None,
     reason: str,
 ) -> dict[str, Any]:
     user = _load_user(session, user_id)
@@ -466,12 +510,16 @@ def adjust_credits(
     policy = plan_policy(subscription)
     period = ensure_usage_period(session, user.account_id, policy, subscription.period_anchor)
     before = period.spend_limit_micro
-    if delta_usd is not None:
-        adjustment = to_micro(settings, delta_usd)
+    if delta_inr is None and delta_usd is not None:
+        delta_inr = delta_usd
+    if budget_inr is None and budget_usd is not None:
+        budget_inr = budget_usd
+    if delta_inr is not None:
+        adjustment = inr_to_micro(delta_inr)
         after = before + adjustment
         period.credit_adjust_micro = (period.credit_adjust_micro or 0) + adjustment
     else:
-        after = to_micro(settings, budget_usd or 0.0)
+        after = inr_to_micro(budget_inr or 0.0)
         period.credit_adjust_micro = after - policy.period_cost_cap_micro
     used = period.reserved_micro + period.settled_micro
     if after < used:
@@ -487,14 +535,14 @@ def adjust_credits(
         detail={
             "before_budget_micro": before,
             "after_budget_micro": after,
-            "delta_usd": delta_usd,
-            "budget_usd": budget_usd,
+            "delta_inr": delta_inr,
+            "budget_inr": budget_inr,
         },
     )
     session.commit()
     return {
-        "budget_usd": from_micro(settings, after),
-        "credits_remaining": from_micro(settings, after - used),
+        "budget_inr": micro_to_inr(after),
+        "credits_remaining": micro_to_inr(after - used),
     }
 
 
@@ -623,6 +671,7 @@ def erase_user(
     purge("conversations", delete(Conversation).where(Conversation.account_id == account_id))
     purge("tasks", delete(Task).where(Task.account_id == account_id))
     purge("reminders", delete(Reminder).where(Reminder.account_id == account_id))
+    purge("bug_reports", delete(BugReport).where(BugReport.account_id == account_id))
     purge("usage_windows", delete(UsageWindow).where(UsageWindow.account_id == account_id))
     purge("usage_periods", delete(UsagePeriod).where(UsagePeriod.account_id == account_id))
     purge("subscriptions", delete(Subscription).where(Subscription.account_id == account_id))
@@ -753,15 +802,291 @@ def build_monitor(
         for provider in sorted({model.provider for model in gateway.registry.models})
     }
     snapshot = metrics.snapshot()
+    day_requests = session.get(GatewayRequestDay, day_key)
+    requests_today = day_requests.requests_used if day_requests else 0
+    daily_request_cap = settings.gateway_daily_request_limit
+
+    today_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
+    total_runs_today = (
+        session.scalar(
+            select(func.count()).select_from(Run).where(Run.created_at >= today_start)
+        )
+        or 0
+    )
+    if total_runs_today > 0:
+        successful_runs_today = (
+            session.scalar(
+                select(func.count()).select_from(Run).where(
+                    Run.created_at >= today_start,
+                    Run.status == RunStatus.COMPLETED,
+                )
+            )
+            or 0
+        )
+        success_rate: float | None = round(successful_runs_today / total_runs_today, 4)
+    else:
+        success_rate = None
+
+    open_bug_reports = (
+        session.scalar(
+            select(func.count()).select_from(BugReport).where(
+                BugReport.status.notin_(["fixed", "closed", "duplicate", "wontfix"])
+            )
+        )
+        or 0
+    )
+
+    since_24h = now - timedelta(hours=24)
+    recent_runs = session.scalars(
+        select(Run).where(
+            Run.created_at >= since_24h,
+            Run.served_model.is_not(None),
+        )
+    ).all()
+    models_map: dict[tuple[str, str], list[Run]] = {
+        (m.model_id, m.provider): [] for m in gateway.registry.models
+    }
+    for r in recent_runs:
+        if r.served_model and r.served_provider:
+            models_map.setdefault((r.served_model, r.served_provider), []).append(r)
+
+    model_health = []
+    for (model_id, provider), runs in sorted(models_map.items()):
+        run_count = len(runs)
+        if run_count > 0:
+            successful = [r for r in runs if r.status == RunStatus.COMPLETED]
+            last_success = max((r.created_at for r in successful), default=None)
+            failed = [r for r in runs if r.status == RunStatus.FAILED]
+            err_rate = round(len(failed) / run_count, 4)
+            latencies = sorted(r.latency_ms for r in runs if r.latency_ms is not None)
+            p50_ms: float | None = float(latencies[len(latencies) // 2]) if latencies else None
+            last_success_str = _iso(last_success) if last_success else None
+        else:
+            last_success_str = None
+            err_rate = 0.0
+            p50_ms = None
+        model_health.append(
+            {
+                "model": model_id,
+                "provider": provider,
+                "last_success_at": last_success_str,
+                "error_rate": err_rate,
+                "p50_latency_ms": p50_ms,
+                "runs": run_count,
+            }
+        )
+
     return {
         "active_users": active_users or 0,
         "active_streams": get_stream_registry().active_count(),
         "req_per_min": snapshot["req_per_min"],
         "error_rate": snapshot["error_rate"],
         "p95_latency_ms": snapshot["p95_latency_ms"],
-        "spend_today_usd": from_micro(settings, spent),
-        "platform_budget_usd": from_micro(settings, limit),
+        "spend_today_inr": micro_to_inr(spent),
+        "platform_budget_inr": micro_to_inr(limit),
+        "cost_today_inr": micro_to_inr(spent),
+        "requests_today": requests_today,
+        "daily_request_cap": daily_request_cap,
+        "success_rate": success_rate,
+        "open_bug_reports": open_bug_reports,
+        "model_health": model_health,
         "provider_health": [{"provider": p, "status": s} for p, s in providers.items()],
         "generated_at": now.isoformat(),
+    }
+
+
+ALLOWED_BUG_REPORT_STATUSES = {
+    "new", "triaged", "in_progress", "fixed", "closed", "duplicate", "wontfix"
+}
+
+ALLOWED_BUG_REPORT_TRANSITIONS: dict[str, set[str]] = {
+    "new": {"triaged", "duplicate", "wontfix", "closed"},
+    "triaged": {"in_progress", "duplicate", "wontfix", "closed"},
+    "in_progress": {"fixed", "wontfix", "closed"},
+    "fixed": {"closed", "in_progress"},
+    "duplicate": {"closed", "triaged"},
+    "wontfix": {"closed", "triaged"},
+    "closed": {"triaged"},
+}
+
+
+def list_bug_reports(
+    session: Session,
+    *,
+    status: str | None = None,
+    category: str | None = None,
+    limit: int = 25,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    limit = max(1, min(limit, 100))
+    stmt = (
+        select(BugReport, User.display_name)
+        .outerjoin(User, User.id == BugReport.user_id)
+        .order_by(BugReport.created_at.desc(), BugReport.id.desc())
+        .limit(limit + 1)
+    )
+    if status:
+        stmt = stmt.where(BugReport.status == status)
+    if category:
+        stmt = stmt.where(BugReport.category == category)
+    if cursor:
+        try:
+            stamp, report_id = cursor.split("|", 1)
+            at = as_utc(datetime.fromisoformat(stamp))
+        except ValueError:
+            raise _bad("invalid cursor") from None
+        stmt = stmt.where(
+            or_(
+                BugReport.created_at < at,
+                and_(BugReport.created_at == at, BugReport.id < report_id),
+            )
+        )
+    rows = session.execute(stmt).all()
+    page = rows[:limit]
+    items = [
+        {
+            "id": report.id,
+            "ticket": report.ticket,
+            "category": report.category,
+            "status": report.status,
+            "description_preview": report.description[:140],
+            "user_id": report.user_id,
+            "user_display_name": display_name or "",
+            "has_screenshot": report.screenshot is not None,
+            "created_at": _iso(report.created_at),
+            "updated_at": _iso(report.updated_at),
+        }
+        for report, display_name in page
+    ]
+    next_cursor = (
+        f"{as_utc(page[-1][0].created_at).astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%S.%fZ')}|{page[-1][0].id}"
+        if len(rows) > limit and page
+        else None
+    )
+    return {"items": items, "next_cursor": next_cursor}
+
+
+def get_admin_bug_report(
+    session: Session,
+    admin_id: str,
+    report_id: str,
+) -> dict[str, Any]:
+    report = session.get(BugReport, report_id)
+    if report is None:
+        raise _not_found("bug report not found")
+    user = session.get(User, report.user_id)
+    sub = _subscription(session, report.account_id)
+    plan = plan_policy(sub).plan_id
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="bug_report.read",
+        target_user_id=report.user_id,
+        detail={"bug_report_id": report.id, "ticket": report.ticket},
+    )
+    session.commit()
+    return {
+        "id": report.id,
+        "ticket": report.ticket,
+        "category": report.category,
+        "description": report.description,
+        "diagnostics": report.diagnostics,
+        "status": report.status,
+        "admin_notes": report.admin_notes,
+        "has_screenshot": report.screenshot is not None,
+        "user": {
+            "id": user.id if user else report.user_id,
+            "display_name": user.display_name if user else "",
+            "plan": plan,
+        },
+        "created_at": _iso(report.created_at),
+        "updated_at": _iso(report.updated_at),
+        "triaged_at": _iso(report.triaged_at) if report.triaged_at else None,
+        "resolved_at": _iso(report.resolved_at) if report.resolved_at else None,
+    }
+
+
+def get_admin_bug_report_screenshot(
+    session: Session,
+    admin_id: str,
+    report_id: str,
+) -> tuple[bytes, str]:
+    report = session.get(BugReport, report_id)
+    if report is None or report.screenshot is None:
+        raise _not_found("screenshot not found")
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="bug_report.screenshot",
+        target_user_id=report.user_id,
+        detail={"bug_report_id": report.id, "ticket": report.ticket},
+    )
+    session.commit()
+    return report.screenshot, report.screenshot_content_type or "image/png"
+
+
+def patch_admin_bug_report(
+    session: Session,
+    admin_id: str,
+    report_id: str,
+    *,
+    status: str | None,
+    admin_notes: str | None,
+    reason: str,
+) -> dict[str, Any]:
+    report = session.get(BugReport, report_id)
+    if report is None:
+        raise _not_found("bug report not found")
+    now = datetime.now(UTC)
+    if status is not None:
+        if status not in ALLOWED_BUG_REPORT_STATUSES:
+            raise _bad(f"unknown bug report status {status}")
+        if status != report.status:
+            allowed = ALLOWED_BUG_REPORT_TRANSITIONS.get(report.status, set())
+            if status not in allowed:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"invalid status transition from {report.status} to {status}",
+                )
+            if status == "triaged" and report.triaged_at is None:
+                report.triaged_at = now
+            if status in {"fixed", "closed", "duplicate", "wontfix"}:
+                report.resolved_at = now
+            elif status in {"triaged", "in_progress"}:
+                report.resolved_at = None
+            report.status = status
+    if admin_notes is not None:
+        report.admin_notes = admin_notes
+    report.updated_at = now
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="bug_report.update",
+        target_user_id=report.user_id,
+        reason=reason,
+        detail={"bug_report_id": report.id, "ticket": report.ticket, "status": report.status},
+    )
+    session.commit()
+    user = session.get(User, report.user_id)
+    sub = _subscription(session, report.account_id)
+    plan = plan_policy(sub).plan_id
+    return {
+        "id": report.id,
+        "ticket": report.ticket,
+        "category": report.category,
+        "description": report.description,
+        "diagnostics": report.diagnostics,
+        "status": report.status,
+        "admin_notes": report.admin_notes,
+        "has_screenshot": report.screenshot is not None,
+        "user": {
+            "id": user.id if user else report.user_id,
+            "display_name": user.display_name if user else "",
+            "plan": plan,
+        },
+        "created_at": _iso(report.created_at),
+        "updated_at": _iso(report.updated_at),
+        "triaged_at": _iso(report.triaged_at) if report.triaged_at else None,
+        "resolved_at": _iso(report.resolved_at) if report.resolved_at else None,
     }
 

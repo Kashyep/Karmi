@@ -1,14 +1,19 @@
+from __future__ import annotations
+
+import uuid
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     SerializerFunctionWrapHandler,
     StrictInt,
     field_validator,
     model_serializer,
+    model_validator,
 )
 
 
@@ -183,3 +188,112 @@ class UserProfileUpdate(BaseModel):
         if not stripped:
             raise ValueError("display_name must not be blank or whitespace-only")
         return stripped
+
+
+class PlanView(BaseModel):
+    id: str
+    label: str
+    price_inr: int
+    everyday_limit: int
+    daily_token_limit: int
+    input_tokens: int
+    output_tokens: int
+    request_cost_cap_micro: int
+    period_cost_cap_micro: int
+    model_classes: list[str]
+    min_class: str
+
+
+class BugReportScreenshotCreate(BaseModel):
+    content_type: str
+    data_base64: str
+
+
+class BugReportDiagnostics(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    app_version: str | None = Field(default=None, max_length=128)
+    build_number: str | None = Field(default=None, max_length=128)
+    git_sha: str | None = Field(default=None, max_length=128)
+    os: str | None = Field(default=None, max_length=128)
+    os_version: str | None = Field(default=None, max_length=128)
+    device_model: str | None = Field(default=None, max_length=128)
+    locale: str | None = Field(default=None, max_length=128)
+    text_scale: float | None = None
+    theme: str | None = Field(default=None, max_length=128)
+    reduce_transparency: bool | None = None
+    plan: str | None = Field(default=None, max_length=128)
+    screen: str | None = Field(default=None, max_length=128)
+    recent_request_ids: list[str] | None = None
+    recent_error_codes: list[str] | None = None
+    run_id: str | None = Field(default=None, max_length=128)
+    error_code: str | None = Field(default=None, max_length=128)
+
+    @field_validator("recent_request_ids", "recent_error_codes")
+    @classmethod
+    def validate_lists(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            if len(v) > 10:
+                raise ValueError("list may contain at most 10 items")
+            for item in v:
+                if not isinstance(item, str) or len(item) > 128:
+                    raise ValueError("list items must be strings <= 128 chars")
+        return v
+
+
+class BugReportCreate(BaseModel):
+    client_report_id: str
+    category: Literal["crash", "chat", "ui", "account", "other"]
+    description: str
+    diagnostics: BugReportDiagnostics
+    screenshot: BugReportScreenshotCreate | None = None
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: str) -> str:
+        stripped = v.strip()
+        if len(stripped) < 10 or len(stripped) > 2000:
+            raise ValueError("description must be 10..2000 characters after strip")
+        return stripped
+
+    @field_validator("client_report_id")
+    @classmethod
+    def validate_uuid(cls, v: str) -> str:
+        try:
+            parsed = uuid.UUID(v, version=4)
+            if str(parsed) != v.lower():
+                raise ValueError("invalid uuid")
+        except Exception:
+            raise ValueError("client_report_id must be a valid UUIDv4") from None
+        return v
+
+
+class BugReportCreatedView(BaseModel):
+    id: str
+    ticket: str
+    status: str
+    created_at: str
+
+
+class BugReportDetailView(BaseModel):
+    id: str
+    ticket: str
+    category: str
+    description: str
+    diagnostics: dict[str, Any]
+    status: str
+    has_screenshot: bool
+    created_at: str
+    updated_at: str
+
+
+class PatchBugReportBody(BaseModel):
+    status: str | None = None
+    admin_notes: str | None = Field(default=None, max_length=4000)
+    reason: str = Field(min_length=3, max_length=500)
+
+    @model_validator(mode="after")
+    def at_least_one(self) -> PatchBugReportBody:
+        if self.status is None and self.admin_notes is None:
+            raise ValueError("provide at least one of status or admin_notes")
+        return self

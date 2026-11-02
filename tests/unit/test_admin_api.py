@@ -248,7 +248,7 @@ def test_user_detail_has_usage_and_is_audited(env: Env) -> None:
     uid, _acc, _b = env.customer()
     headers = env.headers()
     body = env.client.get(f"/v1/admin/users/{uid}", headers=headers).json()
-    assert set(body["usage"]) == {"today_requests", "month_spend_usd", "credits_remaining", "sessions"}
+    assert set(body["usage"]) == {"today_requests", "month_spend_inr", "credits_remaining", "sessions"}
     assert body["usage"]["credits_remaining"] > 0
     assert env.client.get("/v1/admin/users/nope", headers=headers).status_code == 404
     assert env.audit("user.view")[0].target_user_id == uid
@@ -281,7 +281,7 @@ def test_mutations_require_a_reason(env: Env) -> None:
         ("unsuspend", {"reason": ""}),
         ("revoke-sessions", {}),
         ("tier", {"tier": "yanta"}),
-        ("credits", {"delta_usd": 1}),
+        ("credits", {"delta_inr": 1}),
     ):
         assert env.client.post(f"/v1/admin/users/{uid}/{path}", json=body, headers=headers).status_code == 422
     assert env.client.request(
@@ -344,21 +344,21 @@ def test_credit_adjustments(env: Env) -> None:
     uid, _acc, _b = env.customer()
     headers = env.headers()
     base = env.client.get(f"/v1/admin/users/{uid}", headers=headers).json()["usage"]["credits_remaining"]
-    r = env.client.post(f"/v1/admin/users/{uid}/credits", json={"delta_usd": 0.5, "reason": "goodwill"}, headers=headers)
+    r = env.client.post(f"/v1/admin/users/{uid}/credits", json={"delta_inr": 0.5, "reason": "goodwill"}, headers=headers)
     assert r.status_code == 200
     assert r.json()["credits_remaining"] == pytest.approx(base + 0.5)
-    r = env.client.post(f"/v1/admin/users/{uid}/credits", json={"budget_usd": 0.25, "reason": "cap"}, headers=headers)
-    assert r.json()["budget_usd"] == pytest.approx(0.25)
+    r = env.client.post(f"/v1/admin/users/{uid}/credits", json={"budget_inr": 0.25, "reason": "cap"}, headers=headers)
+    assert r.json()["budget_inr"] == pytest.approx(0.25)
     assert env.client.post(f"/v1/admin/users/{uid}/credits", json={"reason": "x1x"}, headers=headers).status_code == 422
     assert env.client.post(
-        f"/v1/admin/users/{uid}/credits", json={"delta_usd": 1, "budget_usd": 1, "reason": "both"}, headers=headers
+        f"/v1/admin/users/{uid}/credits", json={"delta_inr": 1, "budget_inr": 1, "reason": "both"}, headers=headers
     ).status_code == 422
     with env.factory() as session:
         period = session.scalars(select(UsagePeriod)).first()
         assert period is not None
         period.settled_micro = 200_000
         session.commit()
-    low = env.client.post(f"/v1/admin/users/{uid}/credits", json={"budget_usd": 0.1, "reason": "too low"}, headers=headers)
+    low = env.client.post(f"/v1/admin/users/{uid}/credits", json={"budget_inr": 0.1, "reason": "too low"}, headers=headers)
     assert low.status_code == 400
     rows = env.audit("user.credits")
     assert len(rows) == 2 and {r.reason for r in rows} == {"goodwill", "cap"}
@@ -373,7 +373,7 @@ def test_credit_adjustment_survives_normal_reservation(env: Env) -> None:
         session.commit()
     response = env.client.post(
         f"/v1/admin/users/{uid}/credits",
-        json={"delta_usd": 5, "reason": "durability"},
+        json={"delta_inr": 5, "reason": "durability"},
         headers=env.headers(),
     )
     assert response.status_code == 200
@@ -452,11 +452,25 @@ def test_monitor_shape_and_short_cache(env: Env) -> None:
     assert first.status_code == 200
     body = first.json()
     assert set(body) == {
-        "active_users", "active_streams", "req_per_min", "error_rate", "p95_latency_ms",
-        "spend_today_usd", "platform_budget_usd", "provider_health", "generated_at",
+        "active_users",
+        "active_streams",
+        "req_per_min",
+        "error_rate",
+        "p95_latency_ms",
+        "spend_today_inr",
+        "platform_budget_inr",
+        "cost_today_inr",
+        "requests_today",
+        "daily_request_cap",
+        "success_rate",
+        "open_bug_reports",
+        "model_health",
+        "provider_health",
+        "generated_at",
     }
     assert isinstance(body["provider_health"], list)
-    assert body["platform_budget_usd"] > 0
+    assert isinstance(body["model_health"], list)
+    assert body["platform_budget_inr"] > 0
     assert env.client.get("/v1/admin/monitor", headers=headers).json()["generated_at"] == body["generated_at"]
 
 
