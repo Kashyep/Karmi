@@ -36,3 +36,9 @@ mobile/test/**/failures/
 **/failures/*_testImage.png
 tests/quality_corpus/results/
 release-artifacts/
+docs/release1/onboarding-ref/
+
+# local-only artifacts (db dumps, test scratch, local admin db)
+.pytest-tmp/
+.admin-local/
+backups/
