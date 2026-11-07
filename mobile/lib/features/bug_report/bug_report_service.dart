@@ -183,7 +183,7 @@ class BugReportService {
     int sentCount = 0;
     final eligible = await queue.getEligibleItems();
     for (final item in eligible) {
-      final request = item.toRequest();
+      final request = await queue.resolveRequest(item);
       try {
         final created = await api.submitBugReport(request);
         if (created.ticket.isNotEmpty) {

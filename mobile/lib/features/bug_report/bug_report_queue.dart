@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -77,8 +78,30 @@ class BugReportQueueItem {
   }
 
   /// Converts the stored payload back into a [BugReportCreateRequest].
-  BugReportCreateRequest toRequest() {
-    return BugReportCreateRequest.fromJson(payload);
+  BugReportCreateRequest toRequest([BugReportScreenshot? screenshot]) {
+    final map = Map<String, dynamic>.from(payload);
+    if (screenshot != null) {
+      map['screenshot'] = screenshot.toJson();
+    }
+    return BugReportCreateRequest.fromJson(map);
+  }
+}
+
+/// Single-lane async lock to serialize read-modify-write queue operations.
+class _AsyncLock {
+  Future<void> _last = Future.value();
+
+  Future<T> synchronized<T>(Future<T> Function() callback) {
+    final completer = Completer<T>();
+    _last = _last.then((_) async {
+      try {
+        final result = await callback();
+        completer.complete(result);
+      } catch (e, st) {
+        completer.completeError(e, st);
+      }
+    });
+    return completer.future;
   }
 }
 
@@ -87,15 +110,20 @@ class BugReportQueue {
   BugReportQueue({SharedPreferences? prefs}) : _prefs = prefs;
 
   static const String prefKey = 'karmi_bug_report_offline_queue';
+  static const String screenshotPrefix = 'karmi_bug_report_screenshot_';
+  static final _AsyncLock _globalLock = _AsyncLock();
+
   SharedPreferences? _prefs;
+
+  static String screenshotPrefKey(String clientReportId) =>
+      '$screenshotPrefix$clientReportId';
 
   Future<SharedPreferences> _getPrefs() async {
     _prefs ??= await SharedPreferences.getInstance();
     return _prefs!;
   }
 
-  /// Loads all items in the queue from storage.
-  Future<List<BugReportQueueItem>> loadAll() async {
+  Future<List<BugReportQueueItem>> _loadAllUnlocked() async {
     final prefs = await _getPrefs();
     final rawList = prefs.getStringList(prefKey) ?? [];
     final items = <BugReportQueueItem>[];
@@ -108,47 +136,83 @@ class BugReportQueue {
     return items;
   }
 
-  /// Saves the complete list back to [SharedPreferences].
-  Future<void> _saveAll(List<BugReportQueueItem> items) async {
+  Future<void> _saveAllUnlocked(List<BugReportQueueItem> items) async {
     final prefs = await _getPrefs();
     final serialized = items.map((item) => jsonEncode(item.toJson())).toList();
     await prefs.setStringList(prefKey, serialized);
   }
 
+  /// Resolves the full [BugReportCreateRequest] including any separately stored screenshot.
+  Future<BugReportCreateRequest> resolveRequest(BugReportQueueItem item) async {
+    final prefs = await _getPrefs();
+    final rawScreenshot = prefs.getString(screenshotPrefKey(item.clientReportId));
+    final payload = Map<String, dynamic>.from(item.payload);
+    if (rawScreenshot != null && !payload.containsKey('screenshot')) {
+      try {
+        payload['screenshot'] =
+            jsonDecode(rawScreenshot) as Map<String, dynamic>;
+      } catch (_) {}
+    }
+    return BugReportCreateRequest.fromJson(payload);
+  }
+
+  /// Loads all items in the queue from storage.
+  Future<List<BugReportQueueItem>> loadAll() =>
+      _globalLock.synchronized(_loadAllUnlocked);
+
   /// Enqueues a report payload.
   ///
   /// Guarantees that each queued entry stores the exact payload and client_report_id
-  /// without re-generating or altering them.
+  /// without re-generating or altering them. Screenshots are stored under a separate
+  /// key to avoid rewriting large base64 blobs on routine queue mutations.
   Future<void> enqueue(BugReportCreateRequest request) async {
-    final items = await loadAll();
-    final index = items.indexWhere(
-      (i) => i.clientReportId == request.clientReportId,
-    );
-    if (index >= 0) {
-      // Already queued with this client_report_id; preserve the exact existing payload
-      return;
-    }
-    items.add(
-      BugReportQueueItem(
-        clientReportId: request.clientReportId,
-        payload: request.toJson(),
-        createdAt: DateTime.now().toUtc(),
-      ),
-    );
-    await _saveAll(items);
+    return _globalLock.synchronized(() async {
+      final prefs = await _getPrefs();
+      final items = await _loadAllUnlocked();
+
+      // Separate screenshot storage to keep queue list mutations fast and small
+      final scKey = screenshotPrefKey(request.clientReportId);
+      if (request.screenshot != null) {
+        await prefs.setString(scKey, jsonEncode(request.screenshot!.toJson()));
+      } else {
+        await prefs.remove(scKey);
+      }
+
+      final payloadWithoutScreenshot =
+          Map<String, dynamic>.from(request.toJson());
+      payloadWithoutScreenshot.remove('screenshot');
+
+      final index = items.indexWhere(
+        (i) => i.clientReportId == request.clientReportId,
+      );
+      if (index >= 0) {
+        // Already queued with this client_report_id; preserve the exact existing payload
+        return;
+      }
+      items.add(
+        BugReportQueueItem(
+          clientReportId: request.clientReportId,
+          payload: payloadWithoutScreenshot,
+          createdAt: DateTime.now().toUtc(),
+        ),
+      );
+      await _saveAllUnlocked(items);
+    });
   }
 
   /// Returns items eligible for automatic retrying (not rejected).
   Future<List<BugReportQueueItem>> getEligibleItems() async {
-    final items = await loadAll();
-    final now = DateTime.now().toUtc();
-    return items.where((item) {
-      if (item.isRejected) return false;
-      if (item.retryAfterUntil != null && item.retryAfterUntil!.isAfter(now)) {
-        return false;
-      }
-      return true;
-    }).toList();
+    return _globalLock.synchronized(() async {
+      final items = await _loadAllUnlocked();
+      final now = DateTime.now().toUtc();
+      return items.where((item) {
+        if (item.isRejected) return false;
+        if (item.retryAfterUntil != null && item.retryAfterUntil!.isAfter(now)) {
+          return false;
+        }
+        return true;
+      }).toList();
+    });
   }
 
   /// Alias for [loadAll].
@@ -156,39 +220,50 @@ class BugReportQueue {
 
   /// Returns all active pending items (not marked as rejected).
   Future<List<BugReportQueueItem>> getPending() async {
-    final items = await loadAll();
-    return items.where((i) => !i.isRejected).toList();
+    return _globalLock.synchronized(() async {
+      final items = await _loadAllUnlocked();
+      return items.where((i) => !i.isRejected).toList();
+    });
   }
 
   /// Removes an item once successfully submitted or manually cleared.
   Future<void> remove(String clientReportId) async {
-    final items = await loadAll();
-    items.removeWhere((i) => i.clientReportId == clientReportId);
-    await _saveAll(items);
+    return _globalLock.synchronized(() async {
+      final prefs = await _getPrefs();
+      final items = await _loadAllUnlocked();
+      items.removeWhere((i) => i.clientReportId == clientReportId);
+      await prefs.remove(screenshotPrefKey(clientReportId));
+      await _saveAllUnlocked(items);
+    });
   }
 
   /// Marks an item rejected so it is dropped from automatic retries (e.g. 413, 415, 422).
   Future<void> markRejected(String clientReportId, String reason) async {
-    final items = await loadAll();
-    final index = items.indexWhere((i) => i.clientReportId == clientReportId);
-    if (index >= 0) {
-      items[index] = items[index].copyWith(
-        isRejected: true,
-        rejectionReason: reason,
-      );
-      await _saveAll(items);
-    }
+    return _globalLock.synchronized(() async {
+      final items = await _loadAllUnlocked();
+      final index = items.indexWhere((i) => i.clientReportId == clientReportId);
+      if (index >= 0) {
+        items[index] = items[index].copyWith(
+          isRejected: true,
+          rejectionReason: reason,
+        );
+        await _saveAllUnlocked(items);
+      }
+    });
   }
 
   /// Records a 429 rate limit reset timestamp.
   Future<void> recordRetryAfter(String clientReportId, int seconds) async {
-    final items = await loadAll();
-    final index = items.indexWhere((i) => i.clientReportId == clientReportId);
-    if (index >= 0) {
-      final resetTime = DateTime.now().toUtc().add(Duration(seconds: seconds));
-      items[index] = items[index].copyWith(retryAfterUntil: resetTime);
-      await _saveAll(items);
-    }
+    return _globalLock.synchronized(() async {
+      final items = await _loadAllUnlocked();
+      final index = items.indexWhere((i) => i.clientReportId == clientReportId);
+      if (index >= 0) {
+        final resetTime =
+            DateTime.now().toUtc().add(Duration(seconds: seconds));
+        items[index] = items[index].copyWith(retryAfterUntil: resetTime);
+        await _saveAllUnlocked(items);
+      }
+    });
   }
 
   /// Alias for [recordRetryAfter].
@@ -197,19 +272,27 @@ class BugReportQueue {
 
   /// Increments the retry count for backoff.
   Future<void> incrementRetry(String clientReportId) async {
-    final items = await loadAll();
-    final index = items.indexWhere((i) => i.clientReportId == clientReportId);
-    if (index >= 0) {
-      items[index] = items[index].copyWith(
-        retryCount: items[index].retryCount + 1,
-      );
-      await _saveAll(items);
-    }
+    return _globalLock.synchronized(() async {
+      final items = await _loadAllUnlocked();
+      final index = items.indexWhere((i) => i.clientReportId == clientReportId);
+      if (index >= 0) {
+        items[index] = items[index].copyWith(
+          retryCount: items[index].retryCount + 1,
+        );
+        await _saveAllUnlocked(items);
+      }
+    });
   }
 
-  /// Clears the entire queue.
+  /// Clears the entire queue including separate screenshot entries.
   Future<void> clear() async {
-    final prefs = await _getPrefs();
-    await prefs.remove(prefKey);
+    return _globalLock.synchronized(() async {
+      final prefs = await _getPrefs();
+      final items = await _loadAllUnlocked();
+      for (final item in items) {
+        await prefs.remove(screenshotPrefKey(item.clientReportId));
+      }
+      await prefs.remove(prefKey);
+    });
   }
 }
