@@ -64,6 +64,49 @@ GoogleSignInError? ssoStartFailureOrNull({
   return null;
 }
 
+/// Pure helper that attempts to launch the external SSO browser given [redirectUrl]
+/// and [urlLauncher]. Returns `true` if launched successfully, `false` if redirect
+/// is missing, launch returned false, or launch threw.
+Future<bool> launchSsoBrowser({
+  required String? redirectUrl,
+  required UrlLauncherFunction urlLauncher,
+  LaunchMode mode = LaunchMode.platformDefault,
+}) async {
+  if (redirectUrl == null || redirectUrl.isEmpty) {
+    return false;
+  }
+  try {
+    final uri = Uri.parse(redirectUrl);
+    return await urlLauncher(uri, mode: mode);
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Pure decision helper resolving the post-ssoSignIn launch outcome into a [GoogleSignInError]
+/// or null if launch succeeded or the sign-in session progressed (signed in, transferring,
+/// or callback received).
+Future<GoogleSignInError?> postSsoSignInLaunchAndDecision({
+  required String? redirectUrl,
+  required UrlLauncherFunction urlLauncher,
+  LaunchMode mode = LaunchMode.platformDefault,
+  bool isSignedIn = false,
+  bool isTransferring = false,
+  bool ssoCallbackReceived = false,
+}) async {
+  final launched = await launchSsoBrowser(
+    redirectUrl: redirectUrl,
+    urlLauncher: urlLauncher,
+    mode: mode,
+  );
+  return ssoStartFailureOrNull(
+    launched: launched,
+    isSignedIn: isSignedIn,
+    isTransferring: isTransferring,
+    ssoCallbackReceived: ssoCallbackReceived,
+  );
+}
+
 /// Pure decision helper deciding whether to ignore an app resume event.
 bool shouldIgnoreResume({
   required bool isCompleted,
@@ -408,15 +451,11 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
           .signIn
           ?.firstFactorVerification
           ?.externalVerificationRedirectUrl;
-      if (redirectUrl != null && redirectUrl.isNotEmpty) {
-        try {
-          final uri = Uri.parse(redirectUrl);
-          final mode = auth.config.defaultLaunchMode;
-          launchSuccess = await _urlLauncher(uri, mode: mode);
-        } catch (_) {
-          launchSuccess = false;
-        }
-      }
+      launchSuccess = await launchSsoBrowser(
+        redirectUrl: redirectUrl,
+        urlLauncher: _urlLauncher,
+        mode: auth.config.defaultLaunchMode,
+      );
     } catch (e) {
       finish(GoogleSignInError(issueFromClerkError(e).message));
     }

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/auth/clerk_email_code_actions.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   group('missingFieldsMessage', () {
@@ -171,6 +172,144 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('launchSsoBrowser', () {
+    test('returns false when urlLauncher returns false', () async {
+      final launched = await launchSsoBrowser(
+        redirectUrl: 'https://accounts.google.com/o/oauth2/auth',
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => false,
+      );
+      expect(launched, isFalse);
+    });
+
+    test('returns false when urlLauncher throws', () async {
+      final launched = await launchSsoBrowser(
+        redirectUrl: 'https://accounts.google.com/o/oauth2/auth',
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async =>
+            throw Exception('Launch failed'),
+      );
+      expect(launched, isFalse);
+    });
+
+    test('returns false when redirectUrl is null', () async {
+      final launched = await launchSsoBrowser(
+        redirectUrl: null,
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => true,
+      );
+      expect(launched, isFalse);
+    });
+
+    test('returns false when redirectUrl is empty', () async {
+      final launched = await launchSsoBrowser(
+        redirectUrl: '',
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => true,
+      );
+      expect(launched, isFalse);
+    });
+
+    test('returns true when urlLauncher returns true and passes mode', () async {
+      Uri? passedUri;
+      LaunchMode? passedMode;
+      final launched = await launchSsoBrowser(
+        redirectUrl: 'https://accounts.google.com/o/oauth2/auth',
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async {
+          passedUri = uri;
+          passedMode = mode;
+          return true;
+        },
+        mode: LaunchMode.externalApplication,
+      );
+      expect(launched, isTrue);
+      expect(passedUri, Uri.parse('https://accounts.google.com/o/oauth2/auth'));
+      expect(passedMode, LaunchMode.externalApplication);
+    });
+  });
+
+  group('postSsoSignInLaunchAndDecision', () {
+    test('returns GoogleSignInError when launch returns false (a)', () async {
+      final failure = await postSsoSignInLaunchAndDecision(
+        redirectUrl: 'https://accounts.google.com/o/oauth2/auth',
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => false,
+      );
+      expect(failure, isA<GoogleSignInError>());
+      expect(
+        failure?.message,
+        'Google sign-in could not start. Please try again.',
+      );
+    });
+
+    test('returns GoogleSignInError when launch throws (b)', () async {
+      final failure = await postSsoSignInLaunchAndDecision(
+        redirectUrl: 'https://accounts.google.com/o/oauth2/auth',
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async =>
+            throw Exception('Browser launch failed'),
+      );
+      expect(failure, isA<GoogleSignInError>());
+      expect(
+        failure?.message,
+        'Google sign-in could not start. Please try again.',
+      );
+    });
+
+    test('returns GoogleSignInError when redirect is null (c)', () async {
+      final failure = await postSsoSignInLaunchAndDecision(
+        redirectUrl: null,
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => true,
+      );
+      expect(failure, isA<GoogleSignInError>());
+      expect(
+        failure?.message,
+        'Google sign-in could not start. Please try again.',
+      );
+    });
+
+    test('returns GoogleSignInError when redirect is empty (c)', () async {
+      final failure = await postSsoSignInLaunchAndDecision(
+        redirectUrl: '',
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => true,
+      );
+      expect(failure, isA<GoogleSignInError>());
+      expect(
+        failure?.message,
+        'Google sign-in could not start. Please try again.',
+      );
+    });
+
+    test('returns null when browser launch succeeds', () async {
+      final failure = await postSsoSignInLaunchAndDecision(
+        redirectUrl: 'https://accounts.google.com/o/oauth2/auth',
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => true,
+      );
+      expect(failure, isNull);
+    });
+
+    test('returns null when user is already signed in', () async {
+      final failure = await postSsoSignInLaunchAndDecision(
+        redirectUrl: null,
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => false,
+        isSignedIn: true,
+      );
+      expect(failure, isNull);
+    });
+
+    test('returns null when transfer is active', () async {
+      final failure = await postSsoSignInLaunchAndDecision(
+        redirectUrl: null,
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => false,
+        isTransferring: true,
+      );
+      expect(failure, isNull);
+    });
+
+    test('returns null when SSO callback was received', () async {
+      final failure = await postSsoSignInLaunchAndDecision(
+        redirectUrl: null,
+        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => false,
+        ssoCallbackReceived: true,
+      );
+      expect(failure, isNull);
     });
   });
 }
