@@ -245,8 +245,8 @@ def _resolve_node_modules() -> str:
         if not p.is_dir():
             raise FileNotFoundError(f"KARMI_NODE_MODULES does not point to a valid directory: {env_path}")
         return str(p.resolve())
-    check = subprocess.run(  # noqa: S603, S607
-        ["node", "-e", "require.resolve('playwright')"],
+    check = subprocess.run(  # noqa: S603
+        ["node", "-e", "require.resolve('playwright')"],  # noqa: S607
         capture_output=True,
         text=True,
     )
