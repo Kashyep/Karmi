@@ -36,8 +36,18 @@ class KarmiSession extends ChangeNotifier {
       api.tokenProvider = _clerkToken;
       auth.addListener(_onClerkChange);
       _wasClerkSignedIn = auth.isSignedIn;
+      if (auth.isSignedIn) {
+        _lastSignedInUserId = auth.user?.id;
+      }
     } else {
       api.token = _prefs.getString(_key);
+      final token = api.token;
+      if (token != null) {
+        final sep = token.indexOf('|');
+        if (sep > 0) {
+          _lastSignedInUserId = token.substring(0, sep);
+        }
+      }
     }
     api.onUnauthorized = expire;
   }
@@ -49,7 +59,7 @@ class KarmiSession extends ChangeNotifier {
   final ClerkAuthState? clerkAuth;
   SessionEnd _lastEnd = SessionEnd.none;
   bool _wasClerkSignedIn = false;
-
+  String? _lastSignedInUserId;
   bool get isSignedIn => api.token != null || clerkAuth?.isSignedIn == true;
 
   bool get hasClerk => clerkAuth != null;
@@ -61,11 +71,22 @@ class KarmiSession extends ChangeNotifier {
   /// loading). Dev tokens are `<userId>|<role>|<exp>|<tv>|<sig>`.
   String? get userId {
     final auth = clerkAuth;
-    if (auth != null) return auth.user?.id;
-    final token = api.token;
-    if (token == null) return null;
-    final sep = token.indexOf('|');
-    return sep > 0 ? token.substring(0, sep) : null;
+    final String? uid;
+    if (auth != null) {
+      uid = auth.user?.id;
+    } else {
+      final token = api.token;
+      if (token == null) {
+        uid = null;
+      } else {
+        final sep = token.indexOf('|');
+        uid = sep > 0 ? token.substring(0, sep) : null;
+      }
+    }
+    if (uid != null && uid.isNotEmpty) {
+      _lastSignedInUserId = uid;
+    }
+    return uid;
   }
 
   /// Drafts scoped to the signed-in user; null when no user id is known, in
@@ -85,11 +106,23 @@ class KarmiSession extends ChangeNotifier {
   void _onClerkChange() {
     final signedIn = clerkAuth?.isSignedIn == true;
     if (_wasClerkSignedIn && !signedIn) {
-      final oldUserId = userId;
-      _lastEnd = SessionEnd.signedOut;
+      final oldUserId = userId ?? _lastSignedInUserId;
+      if (_lastEnd != SessionEnd.expired) {
+        _lastEnd = SessionEnd.signedOut;
+      }
       unawaited(SharedPrefsDraftStore.clearAllDrafts(_prefs));
-      if (oldUserId != null && oldUserId.isNotEmpty) {
+      if (_lastEnd == SessionEnd.signedOut &&
+          oldUserId != null &&
+          oldUserId.isNotEmpty) {
         unawaited(BugReportQueue(prefs: _prefs).clearUserItems(oldUserId));
+      }
+      if (_lastEnd == SessionEnd.signedOut) {
+        _lastSignedInUserId = null;
+      }
+    } else if (signedIn) {
+      final currentUid = clerkAuth?.user?.id;
+      if (currentUid != null && currentUid.isNotEmpty) {
+        _lastSignedInUserId = currentUid;
       }
     }
     _wasClerkSignedIn = signedIn;
@@ -100,6 +133,10 @@ class KarmiSession extends ChangeNotifier {
   Future<void> signInWithDevToken() async {
     final token = await api.issueDevToken();
     api.token = token;
+    final sep = token.indexOf('|');
+    if (sep > 0) {
+      _lastSignedInUserId = token.substring(0, sep);
+    }
     _lastEnd = SessionEnd.none;
     await _prefs.setString(_key, token);
     notifyListeners();
@@ -113,14 +150,17 @@ class KarmiSession extends ChangeNotifier {
   }
 
   Future<void> _end(SessionEnd reason) async {
-    final oldUserId = userId;
+    final oldUserId = userId ?? _lastSignedInUserId;
     api.token = null;
     _lastEnd = reason;
     notifyListeners();
     await _prefs.remove(_key);
     await SharedPrefsDraftStore.clearAllDrafts(_prefs);
-    if (oldUserId != null && oldUserId.isNotEmpty) {
-      await BugReportQueue(prefs: _prefs).clearUserItems(oldUserId);
+    if (reason == SessionEnd.signedOut) {
+      if (oldUserId != null && oldUserId.isNotEmpty) {
+        await BugReportQueue(prefs: _prefs).clearUserItems(oldUserId);
+      }
+      _lastSignedInUserId = null;
     }
     if (clerkAuth?.isSignedIn == true) {
       await clerkAuth!.signOut();
