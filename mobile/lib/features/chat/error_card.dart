@@ -5,6 +5,7 @@ import '../../api/chat/chat_models.dart';
 import '../../auth/session.dart';
 import '../../theme/karmi_colors.dart';
 import '../bug_report/bug_report_screen.dart';
+
 /// User-facing card for errors during assistant runs.
 class ErrorCard extends StatelessWidget {
   const ErrorCard({

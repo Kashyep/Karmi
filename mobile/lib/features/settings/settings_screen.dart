@@ -85,133 +85,139 @@ class SettingsScreen extends StatelessWidget {
       key: _boundaryKey,
       child: ListenableBuilder(
         listenable: Listenable.merge([
-        settings,
-        armory,
-        if (admin != null) admin!,
-      ]),
-      builder: (context, _) => ListView(
-        padding: karmiPageInsets(context),
-        children: [
-          KarmiGlassSurface(
-            key: const ValueKey('settings-header'),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Semantics(
-                  header: true,
-                  child: Text('Theme', style: text.titleMedium),
-                ),
-                const SizedBox(height: 12),
-                _ThemeModeChoice(
-                  selected: settings.themeMode,
-                  onSelected: settings.setThemeMode,
-                ),
-                const SizedBox(height: 16),
-                KarmiFocusRing(
-                  // Own Material so ink shows on the glass/opaque platter.
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.palette_outlined),
-                      title: const Text('Armory'),
-                      subtitle: Text('Tier theme: ${armory.activeTheme.label}'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: onOpenArmory,
-                    ),
+          settings,
+          armory,
+          if (admin != null) admin!,
+        ]),
+        builder: (context, _) => ListView(
+          padding: karmiPageInsets(context),
+          children: [
+            KarmiGlassSurface(
+              key: const ValueKey('settings-header'),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    header: true,
+                    child: Text('Theme', style: text.titleMedium),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          KarmiCard(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            semanticContainer: false,
-            child: Column(
-              children: [
-                KarmiFocusRing(
-                  child: SwitchListTile(
-                    title: const Text('Reduce transparency'),
-                    subtitle: const Text(
-                      'Replace glass with solid surfaces. On automatically when '
-                      'the system asks for higher contrast.',
-                    ),
-                    value: settings.reduceTransparency,
-                    onChanged: settings.setReduceTransparency,
+                  const SizedBox(height: 12),
+                  _ThemeModeChoice(
+                    selected: settings.themeMode,
+                    onSelected: settings.setThemeMode,
                   ),
-                ),
-                if (onOpenPlans != null) ...[
-                  const Divider(height: 1),
+                  const SizedBox(height: 16),
                   KarmiFocusRing(
-                    child: ListTile(
-                      leading: const Icon(Icons.vpn_key_outlined),
-                      title: const Text('Plans and access code'),
-                      subtitle: const Text('Unlock a beta tier with a code'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: onOpenPlans,
+                    // Own Material so ink shows on the glass/opaque platter.
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.palette_outlined),
+                        title: const Text('Armory'),
+                        subtitle: Text(
+                          'Tier theme: ${armory.activeTheme.label}',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: onOpenArmory,
+                      ),
                     ),
                   ),
                 ],
-                if (admin?.canEnter ?? false) ...[
-                  const Divider(height: 1),
-                  KarmiFocusRing(
-                    child: ListTile(
-                      key: const ValueKey('admin_console_tile'),
-                      leading: const Icon(Icons.admin_panel_settings_outlined),
-                      title: const Text('Admin console'),
-                      subtitle: const Text('Users, monitor and audit'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _openAdmin(context),
-                    ),
-                  ),
-                ],
-                const Divider(height: 1),
-                KarmiFocusRing(
-                  child: ListTile(
-                    key: const ValueKey('report_bug_tile'),
-                    leading: const Icon(Icons.bug_report_outlined),
-                    title: const Text('Report a bug'),
-                    subtitle: const Text('Send diagnostics or report an issue'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openBugReport(context),
-                  ),
-                ),
-                const Divider(height: 1),
-                KarmiFocusRing(
-                  child: ListTile(
-                    leading: const Icon(Icons.description_outlined),
-                    title: const Text('Licences'),
-                    subtitle: const Text('Open-source and font licences'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => showLicensePage(
-                      context: context,
-                      applicationName: 'Karmi',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          KarmiCard(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            semanticContainer: false,
-            child: KarmiFocusRing(
-              child: ListTile(
-                leading: Icon(Icons.logout, color: colors.destructive),
-                title: Text(
-                  'Sign out',
-                  style: text.bodyLarge?.copyWith(color: colors.destructive),
-                ),
-                subtitle: const Text('Removes the session from this device'),
-                onTap: session.signOut,
               ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 16),
+            KarmiCard(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              semanticContainer: false,
+              child: Column(
+                children: [
+                  KarmiFocusRing(
+                    child: SwitchListTile(
+                      title: const Text('Reduce transparency'),
+                      subtitle: const Text(
+                        'Replace glass with solid surfaces. On automatically when '
+                        'the system asks for higher contrast.',
+                      ),
+                      value: settings.reduceTransparency,
+                      onChanged: settings.setReduceTransparency,
+                    ),
+                  ),
+                  if (onOpenPlans != null) ...[
+                    const Divider(height: 1),
+                    KarmiFocusRing(
+                      child: ListTile(
+                        leading: const Icon(Icons.vpn_key_outlined),
+                        title: const Text('Plans and access code'),
+                        subtitle: const Text('Unlock a beta tier with a code'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: onOpenPlans,
+                      ),
+                    ),
+                  ],
+                  if (admin?.canEnter ?? false) ...[
+                    const Divider(height: 1),
+                    KarmiFocusRing(
+                      child: ListTile(
+                        key: const ValueKey('admin_console_tile'),
+                        leading: const Icon(
+                          Icons.admin_panel_settings_outlined,
+                        ),
+                        title: const Text('Admin console'),
+                        subtitle: const Text('Users, monitor and audit'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _openAdmin(context),
+                      ),
+                    ),
+                  ],
+                  const Divider(height: 1),
+                  KarmiFocusRing(
+                    child: ListTile(
+                      key: const ValueKey('report_bug_tile'),
+                      leading: const Icon(Icons.bug_report_outlined),
+                      title: const Text('Report a bug'),
+                      subtitle: const Text(
+                        'Send diagnostics or report an issue',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _openBugReport(context),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  KarmiFocusRing(
+                    child: ListTile(
+                      leading: const Icon(Icons.description_outlined),
+                      title: const Text('Licences'),
+                      subtitle: const Text('Open-source and font licences'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => showLicensePage(
+                        context: context,
+                        applicationName: 'Karmi',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            KarmiCard(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              semanticContainer: false,
+              child: KarmiFocusRing(
+                child: ListTile(
+                  leading: Icon(Icons.logout, color: colors.destructive),
+                  title: Text(
+                    'Sign out',
+                    style: text.bodyLarge?.copyWith(color: colors.destructive),
+                  ),
+                  subtitle: const Text('Removes the session from this device'),
+                  onTap: session.signOut,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
