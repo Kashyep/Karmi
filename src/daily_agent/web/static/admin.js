@@ -17,7 +17,7 @@
   const MAX_TIMEOUT_MS = 2147483647;
   const DELETE_PHRASE = 'DELETE';
   const VIEWS = ['signin', 'unavailable', 'code', 'dashboard'];
-  const TABS = ['users', 'monitor', 'audit'];
+  const TABS = ['users', 'bugs', 'monitor', 'audit'];
 
   class ApiError extends Error {
     constructor(status, message, body) {
@@ -91,11 +91,47 @@
     return value === null || value === undefined || value === '';
   }
 
-  function formatUsd(value) {
-    if (isMissing(value)) return 'Unavailable';
-    const n = Number(value);
+  function formatIndianInteger(n) {
+    const s = String(Math.abs(Math.trunc(n)));
+    if (s.length <= 3) return s;
+    const last3 = s.slice(-3);
+    const rest = s.slice(0, -3);
+    const parts = [];
+    for (let i = rest.length; i > 0; i -= 2) {
+      parts.unshift(rest.slice(Math.max(0, i - 2), i));
+    }
+    return parts.join(',') + ',' + last3;
+  }
+
+  function formatInr(micro) {
+    if (isMissing(micro)) return 'Unavailable';
+    const n = Number(micro);
     if (!Number.isFinite(n)) return 'Unavailable';
-    return `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
+    const m = Math.round(n);
+    if (m === 0) return '₹0';
+    const isNeg = m < 0;
+    const absM = Math.abs(m);
+    if (absM < 10000) {
+      return (isNeg ? '-' : '') + '<₹0.01';
+    }
+    const prefix = isNeg ? '-' : '';
+    if (absM % 1000000 === 0) {
+      return prefix + '₹' + formatIndianInteger(absM / 1000000);
+    }
+    const whole = Math.floor(absM / 1000000);
+    const paise = Math.round((absM % 1000000) / 10000);
+    if (paise >= 100) {
+      return prefix + '₹' + formatIndianInteger(whole + 1);
+    }
+    const paiseStr = String(paise).padStart(2, '0');
+    return prefix + '₹' + formatIndianInteger(whole) + '.' + paiseStr;
+  }
+
+  function formatInrRupees(rupees) {
+    if (isMissing(rupees)) return 'Unavailable';
+    const n = Number(rupees);
+    if (!Number.isFinite(n)) return 'Unavailable';
+    return formatInr(Math.round(n * 1000000));
   }
 
   function formatCount(value) {
@@ -158,11 +194,11 @@
     if (delta) {
       const n = Number(delta);
       if (!Number.isFinite(n) || n === 0) return { error: 'The credit change must be a non-zero number.' };
-      return { payload: { delta_usd: n }, summary: `Change credits by ${formatUsd(n)}` };
+      return { payload: { delta_inr: n }, summary: `Change credits by ${formatInrRupees(n)}` };
     }
     const n = Number(budget);
     if (!Number.isFinite(n) || n < 0) return { error: 'The budget must be zero or more.' };
-    return { payload: { budget_usd: n }, summary: `Set budget to ${formatUsd(n)}` };
+    return { payload: { budget_inr: n }, summary: `Set budget to ${formatInrRupees(n)}` };
   }
 
   const REASON_MIN_LENGTH = 3;
@@ -191,7 +227,9 @@
     clerkScriptUrl,
     buildPageQuery,
     buildUsersQuery,
-    formatUsd,
+    formatIndianInteger,
+    formatInr,
+    formatInrRupees,
     formatCount,
     formatPercent,
     formatMs,
@@ -203,6 +241,8 @@
     canSubmitReason,
     parseRetryAfter,
   });
+  root.formatInr = formatInr;
+  root.formatInrRupees = formatInrRupees;
 
   if (typeof document === 'undefined') return;
 
@@ -226,6 +266,13 @@
     selectedUserId: null,
     detailUser: null,
     detailRequest: 0,
+    bugsCursor: null,
+    bugsRequest: 0,
+    selectedBugId: null,
+    detailBug: null,
+    detailBugRequest: 0,
+    bugScreenshotUrl: null,
+    bugsLoaded: false,
     auditCursor: null,
     auditLoaded: false,
     auditRequest: 0,
@@ -330,15 +377,22 @@
     $('audit-more').hidden = true;
     $('monitor-metrics').replaceChildren();
     $('provider-list').replaceChildren();
+    $('model-health-body').replaceChildren();
     $('monitor-updated').textContent = 'Not yet updated.';
     $('credit-delta').value = '';
     $('credit-budget').value = '';
     clearDetail();
+    clearBugDetail();
+    $('bugs-body').replaceChildren();
+    $('bugs-more').hidden = true;
     state.usersCursor = null;
     state.auditCursor = null;
     state.auditLoaded = false;
+    state.bugsCursor = null;
+    state.bugsLoaded = false;
     state.usersRequest += 1;
     state.auditRequest += 1;
+    state.bugsRequest += 1;
   }
 
   /** Drop the admin token and all admin-only UI, then return to code entry. */
@@ -440,7 +494,7 @@
       resetToSignIn('Your sign-in ended. Sign in again to continue.');
       throw new ApiError(401, messageForStatus(401));
     }
-    const headers = { Accept: 'application/json', Authorization: `Bearer ${jwt}` };
+    const headers = { Accept: raw ? '*/*' : 'application/json', Authorization: `Bearer ${jwt}` };
     if (state.adminToken) headers['X-Admin-Session'] = state.adminToken;
     const init = { method, headers, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' };
     if (body !== undefined) {
@@ -614,6 +668,7 @@
     }
     if (name === 'monitor') startMonitor();
     else stopMonitor();
+    if (name === 'bugs' && !state.bugsLoaded) loadBugReports(true).catch(() => {});
     if (name === 'audit' && !state.auditLoaded) loadAudit(true).catch(() => {});
   }
 
@@ -651,20 +706,38 @@
   function renderMonitor(data) {
     const source = data && typeof data === 'object' ? data : {};
     $('monitor-updated').textContent = `Updated ${formatTimestamp(source.generated_at)}`;
+    const successRateText = isMissing(source.success_rate) ? '—' : formatPercent(source.success_rate);
+    const requestsText = `${formatCount(source.requests_today)} / ${formatCount(source.daily_request_cap)}`;
     const metrics = [
+      ['Requests today / Cap', requestsText],
+      ['Success rate', successRateText],
+      ['Open bug reports', formatCount(source.open_bug_reports)],
+      ['Cost today', formatInrRupees(source.cost_today_inr ?? source.spend_today_inr)],
       ['Active users', formatCount(source.active_users)],
       ['Active streams', formatCount(source.active_streams)],
       ['Requests per minute', formatCount(source.req_per_min)],
       ['Error rate', formatPercent(source.error_rate)],
       ['p95 latency', formatMs(source.p95_latency_ms)],
-      ['Spend today', formatUsd(source.spend_today_usd)],
-      ['Platform budget', formatUsd(source.platform_budget_usd)],
+      ['Platform budget', formatInrRupees(source.platform_budget_inr)],
     ];
     const nodes = [];
     for (const [label, value] of metrics) {
       nodes.push(el('dt', { text: label }), el('dd', { text: value }));
     }
     $('monitor-metrics').replaceChildren(...nodes);
+
+    const modelHealth = Array.isArray(source.model_health) ? source.model_health : [];
+    const modelRows = modelHealth.length === 0
+      ? [el('tr', {}, el('td', { colspan: 6, text: 'No model health data reported.' }))]
+      : modelHealth.map((m) => el('tr', {},
+          el('td', { 'data-label': 'Model', text: displayValue(m && m.model) }),
+          el('td', { 'data-label': 'Provider', text: displayValue(m && m.provider) }),
+          el('td', { 'data-label': 'Last success', text: formatTimestamp(m && m.last_success_at) }),
+          el('td', { 'data-label': 'Error rate', text: formatPercent(m && m.error_rate) }),
+          el('td', { 'data-label': 'p50 latency', text: formatMs(m && m.p50_latency_ms) }),
+          el('td', { 'data-label': 'Runs', text: formatCount(m && m.runs) }),
+        ));
+    $('model-health-body').replaceChildren(...modelRows);
 
     const providers = Array.isArray(source.provider_health) ? source.provider_health : [];
     const items = providers.length === 0
@@ -828,8 +901,9 @@
     ]));
     $('detail-usage').replaceChildren(...dlPairs([
       ['Requests today', formatCount(usage.today_requests)],
-      ['Spend this month', formatUsd(usage.month_spend_usd)],
-      ['Credits remaining', formatUsd(usage.credits_remaining)],
+      ['Spend this month', formatInrRupees(usage.month_spend_inr)],
+      ['Credits remaining', formatInrRupees(usage.credits_remaining)],
+      ['Open bug reports', formatCount(user.open_bug_reports)],
       ['Active sessions', formatCount(usage.sessions)],
     ]));
     $('edit-display-name').value = user.display_name || '';
@@ -882,6 +956,196 @@
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setMessage('detail-message', 'Export downloaded.', 'ok');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bug Reports
+  // ---------------------------------------------------------------------------
+
+  function bugRow(item) {
+    return el('tr', {
+      class: 'bug-row',
+      'data-bug-id': item.id,
+      onclick: () => selectBugReport(item.id).catch(() => {}),
+    },
+    el('td', { 'data-label': 'Ticket' },
+      el('button', {
+        class: 'link-button',
+        type: 'button',
+        onclick: (e) => { e.stopPropagation(); selectBugReport(item.id).catch(() => {}); },
+        text: displayValue(item.ticket),
+      })
+    ),
+    el('td', { 'data-label': 'Category', text: displayValue(item.category) }),
+    el('td', { 'data-label': 'Status' },
+      el('span', { class: 'badge', text: displayValue(item.status) })
+    ),
+    el('td', { 'data-label': 'Description', text: displayValue(item.description_preview) }),
+    el('td', { 'data-label': 'User', text: displayValue(item.user_display_name || item.user_id) }),
+    el('td', { 'data-label': 'Created', text: formatTimestamp(item.created_at) }));
+  }
+
+  function highlightSelectedBug() {
+    for (const row of $('bugs-body').querySelectorAll('tr[data-bug-id]')) {
+      const selected = state.selectedBugId !== null && row.dataset.bugId === String(state.selectedBugId);
+      row.classList.toggle('is-selected', selected);
+    }
+  }
+
+  function clearBugDetail() {
+    state.selectedBugId = null;
+    state.detailBug = null;
+    state.detailBugRequest += 1;
+    if (state.bugScreenshotUrl) {
+      URL.revokeObjectURL(state.bugScreenshotUrl);
+      state.bugScreenshotUrl = null;
+    }
+    const img = $('bug-screenshot-img');
+    if (img) img.removeAttribute('src');
+    $('bug-screenshot-wrap').hidden = true;
+    $('bug-screenshot-status').textContent = 'No screenshot.';
+    $('bug-screenshot-status').hidden = false;
+    $('bug-detail-meta').replaceChildren();
+    $('bug-detail-description').textContent = '';
+    $('bug-detail-diagnostics').textContent = '';
+    $('bug-detail-diagnostics-section').hidden = true;
+    $('bug-detail-empty').hidden = false;
+    $('bug-detail-body').hidden = true;
+    setMessage('bug-detail-message', '', '');
+    highlightSelectedBug();
+  }
+
+  async function loadBugReports(reset) {
+    if (!reset && !state.bugsCursor) return;
+    const requestId = ++state.bugsRequest;
+    if (reset) {
+      state.bugsCursor = null;
+    }
+    const statusVal = $('bug-status').value;
+    const catVal = $('bug-category').value;
+    const params = new URLSearchParams();
+    if (statusVal) params.set('status', statusVal);
+    if (catVal) params.set('category', catVal);
+    params.set('limit', String(PAGE_SIZE));
+    if (!reset && state.bugsCursor) params.set('cursor', state.bugsCursor);
+    const query = params.toString() ? `?${params.toString()}` : '';
+
+    setMessage('bugs-message', 'Loading bug reports…', 'info');
+    $('bugs-more').disabled = true;
+    try {
+      const data = await api('GET', `/bug-reports${query}`);
+      if (requestId !== state.bugsRequest) return;
+      const items = Array.isArray(data && data.items) ? data.items : [];
+      const body = $('bugs-body');
+      if (reset) body.replaceChildren();
+      if (items.length === 0 && body.children.length === 0) {
+        body.append(el('tr', {}, el('td', { colspan: 6, text: 'No bug reports found.' })));
+      }
+      for (const item of items) {
+        body.append(bugRow(item));
+      }
+      state.bugsCursor = (data && data.next_cursor) || null;
+      state.bugsLoaded = true;
+      $('bugs-more').hidden = !state.bugsCursor;
+      setMessage('bugs-message', '', '');
+      highlightSelectedBug();
+    } catch (err) {
+      if (requestId === state.bugsRequest) setMessage('bugs-message', err.message, 'error');
+    } finally {
+      if (requestId === state.bugsRequest) $('bugs-more').disabled = false;
+    }
+  }
+
+  async function selectBugReport(reportId) {
+    state.selectedBugId = reportId;
+    highlightSelectedBug();
+    const requestId = ++state.detailBugRequest;
+    setMessage('bug-detail-message', 'Loading report…', 'info');
+    try {
+      const report = await api('GET', `/bug-reports/${encodeId(reportId)}`);
+      if (requestId !== state.detailBugRequest) return;
+      renderBugDetail(report);
+      setMessage('bug-detail-message', '', '');
+    } catch (err) {
+      if (requestId === state.detailBugRequest) {
+        setMessage('bug-detail-message', err.message, 'error');
+      }
+    }
+  }
+
+  async function loadBugScreenshot(reportId) {
+    $('bug-screenshot-wrap').hidden = true;
+    $('bug-screenshot-status').textContent = 'Loading screenshot…';
+    $('bug-screenshot-status').hidden = false;
+    const requestId = state.detailBugRequest;
+    try {
+      const res = await api('GET', `/bug-reports/${encodeId(reportId)}/screenshot`, { raw: true });
+      if (requestId !== state.detailBugRequest) return;
+      const blob = await res.blob();
+      if (requestId !== state.detailBugRequest) return;
+      if (state.bugScreenshotUrl) {
+        URL.revokeObjectURL(state.bugScreenshotUrl);
+      }
+      state.bugScreenshotUrl = URL.createObjectURL(blob);
+      const img = $('bug-screenshot-img');
+      img.src = state.bugScreenshotUrl;
+      $('bug-screenshot-wrap').hidden = false;
+      $('bug-screenshot-status').hidden = true;
+    } catch (err) {
+      if (requestId === state.detailBugRequest) {
+        $('bug-screenshot-wrap').hidden = true;
+        $('bug-screenshot-status').textContent = 'Failed to load screenshot.';
+        $('bug-screenshot-status').hidden = false;
+      }
+    }
+  }
+
+  function renderBugDetail(report) {
+    state.detailBug = report;
+    $('bug-detail-empty').hidden = true;
+    $('bug-detail-body').hidden = false;
+
+    if (state.bugScreenshotUrl) {
+      URL.revokeObjectURL(state.bugScreenshotUrl);
+      state.bugScreenshotUrl = null;
+    }
+
+    const user = report.user && typeof report.user === 'object' ? report.user : {};
+    const userText = user.display_name ? `${user.display_name} (${user.id || report.user_id})` : (user.id || report.user_id || 'Unavailable');
+
+    $('bug-detail-meta').replaceChildren(...dlPairs([
+      ['Ticket', displayValue(report.ticket)],
+      ['Status', displayValue(report.status)],
+      ['Category', displayValue(report.category)],
+      ['User', displayValue(userText)],
+      ['User Plan', tierLabel(user.plan)],
+      ['Created', formatTimestamp(report.created_at)],
+      ['Updated', formatTimestamp(report.updated_at)],
+      ['Triaged at', formatTimestamp(report.triaged_at)],
+      ['Resolved at', formatTimestamp(report.resolved_at)],
+    ]));
+
+    $('bug-detail-description').textContent = report.description || 'No description provided.';
+
+    if (report.diagnostics && typeof report.diagnostics === 'object' && Object.keys(report.diagnostics).length > 0) {
+      $('bug-detail-diagnostics').textContent = JSON.stringify(report.diagnostics, null, 2);
+      $('bug-detail-diagnostics-section').hidden = false;
+    } else {
+      $('bug-detail-diagnostics').textContent = '';
+      $('bug-detail-diagnostics-section').hidden = true;
+    }
+
+    $('edit-bug-status').value = report.status || 'new';
+    $('edit-bug-notes').value = report.admin_notes || '';
+    $('edit-bug-reason').value = '';
+
+    if (report.has_screenshot) {
+      loadBugScreenshot(report.id).catch(() => {});
+    } else {
+      $('bug-screenshot-wrap').hidden = true;
+      $('bug-screenshot-status').textContent = 'No screenshot attached.';
+      $('bug-screenshot-status').hidden = false;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -938,10 +1202,30 @@
       updateConfirmState();
     }
   }
-
   // ---------------------------------------------------------------------------
   // Audit
   // ---------------------------------------------------------------------------
+
+  function renderAuditDetail(detail) {
+    if (detail === null || detail === undefined) {
+      return el('span', { text: '-' });
+    }
+    if (typeof detail !== 'object') {
+      return el('span', { text: String(detail) });
+    }
+    const entries = Object.entries(detail);
+    if (entries.length === 0) {
+      return el('span', { text: '-' });
+    }
+    const rows = entries.map(([k, v]) => {
+      const valStr = (v !== null && typeof v === 'object') ? JSON.stringify(v) : String(v);
+      return el('div', { class: 'audit-kv-row' },
+        el('span', { class: 'audit-kv-key', text: `${k}:` }),
+        el('span', { class: 'audit-kv-val', text: valStr })
+      );
+    });
+    return el('div', { class: 'audit-kv-list' }, ...rows);
+  }
 
   async function loadAudit(reset) {
     if (!reset && !state.auditCursor) return;
@@ -966,7 +1250,7 @@
           el('td', { 'data-label': 'Action', text: displayValue(entry.action) }),
           el('td', { 'data-label': 'Target user', text: displayValue(entry.target_user_id) }),
           el('td', { 'data-label': 'Reason', text: displayValue(entry.reason) }),
-          el('td', { 'data-label': 'Detail', text: displayValue(entry.detail) })));
+          el('td', { 'data-label': 'Detail' }, renderAuditDetail(entry.detail))));
       }
       state.auditCursor = (data && data.next_cursor) || null;
       state.auditLoaded = true;
@@ -1132,6 +1416,56 @@
     });
     $('audit-more').addEventListener('click', () => {
       loadAudit(false).catch(() => {});
+    });
+    $('bugs-more').addEventListener('click', () => {
+      loadBugReports(false).catch(() => {});
+    });
+    $('bug-filter-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      loadBugReports(true).catch(() => {});
+    });
+    for (const id of ['bug-status', 'bug-category']) {
+      $(id).addEventListener('change', () => {
+        loadBugReports(true).catch(() => {});
+      });
+    }
+    if ($('btn-clear-bug')) $('btn-clear-bug').addEventListener('click', clearBugDetail);
+    $('bug-update-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!state.detailBug) return;
+      const reportId = state.detailBug.id;
+      const newStatus = $('edit-bug-status').value;
+      const adminNotes = $('edit-bug-notes').value.trim();
+      const reason = $('edit-bug-reason').value.trim();
+
+      if (!reason || reason.length < 3) {
+        setMessage('bug-detail-message', 'Reason must be at least 3 characters.', 'error');
+        return;
+      }
+      const body = { reason };
+      if (newStatus !== state.detailBug.status) {
+        body.status = newStatus;
+      }
+      if (adminNotes !== (state.detailBug.admin_notes || '')) {
+        body.admin_notes = adminNotes;
+      }
+      if (!body.status && body.admin_notes === undefined) {
+        setMessage('bug-detail-message', 'Change status or admin notes before saving.', 'error');
+        return;
+      }
+      setMessage('bug-detail-message', 'Saving…', 'info');
+      const submitBtn = $('btn-bug-update');
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const updated = await api('PATCH', `/bug-reports/${encodeId(reportId)}`, { body });
+        renderBugDetail(updated);
+        setMessage('bug-detail-message', 'Bug report updated.', 'ok');
+        loadBugReports(false).catch(() => {});
+      } catch (err) {
+        setMessage('bug-detail-message', err.message || 'Failed to update bug report.', 'error');
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
     });
     $('users-select-all').addEventListener('change', (event) => {
       const checked = event.currentTarget.checked;
