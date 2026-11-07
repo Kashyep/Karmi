@@ -22,14 +22,13 @@ class ErrorCard extends StatelessWidget {
   static String messageFor(ErrorCategory category) => switch (category) {
     ErrorCategory.quotaExhausted => "You've reached your plan limit for now.",
     ErrorCategory.capacityFull => 'Karmi is busy right now.',
-    ErrorCategory.providerUnavailable => 'The model service had a problem.',
-    ErrorCategory.validationFailed =>
-      'This reply was blocked or came back empty.',
-    ErrorCategory.unauthorized => 'Your session expired. Sign in again.',
-    ErrorCategory.resumeUnavailable => 'Connection lost. Partial reply kept.',
+    ErrorCategory.providerUnavailable => "Karmi couldn't finish this reply.",
+    ErrorCategory.validationFailed => 'This response could not be displayed.',
+    ErrorCategory.unauthorized => 'Your session has expired.',
+    ErrorCategory.resumeUnavailable => 'The connection was interrupted.',
     ErrorCategory.network => 'You appear to be offline.',
-    ErrorCategory.timeout => 'Karmi is taking too long, try again',
-    ErrorCategory.internal => 'Something went wrong.',
+    ErrorCategory.timeout => 'Karmi took too long to respond.',
+    ErrorCategory.internal => 'Something went wrong on our end.',
   };
 
   /// Pure helper determining if the category is retryable by the user.

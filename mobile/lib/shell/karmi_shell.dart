@@ -285,74 +285,37 @@ class _KarmiShellState extends State<KarmiShell> {
     final isPhone = width < KarmiShape.tabletBreakpoint;
     final content = _buildContent(context, body);
     final isChat = _index == 0;
-    if (KarmiAccessibility.reduceTransparencyOf(context)) {
-      final navigationBar = isCompactNav
-          ? NavigationBar(
-              selectedIndex: _index,
-              onDestinationSelected: _select,
-              destinations: [
-                for (final d in _destinations)
-                  NavigationDestination(
-                    icon: Icon(d.icon),
-                    selectedIcon: Icon(d.selectedIcon),
-                    label: d.label,
-                  ),
-              ],
-            )
-          : null;
-      // Snackbars are positioned by the root messenger, so publish the solid
-      // navigation bar's full occupied height just as the glass bar does
-      // below. This keeps errors and undo actions above bottom chrome when
-      // reduced-transparency mode is enabled.
-      BottomChrome.tabBarHeight = navigationBar == null
-          ? 0
-          : MediaQuery.paddingOf(context).bottom +
-                (navigationBar.height ?? kBottomNavigationBarHeight);
-      return HistoryPanelScope(
-        isOpen: _isHistoryOverlayOpen,
-        openHistory: _openHistory,
-        closeHistory: _closeHistory,
-        toggleHistory: _toggleHistory,
-        child: Scaffold(
-          key: _scaffoldKey,
-          drawer: isPhone && widget.historyRailBuilder != null
-              ? HistoryDrawer(child: widget.historyRailBuilder!(context))
-              : null,
-          appBar: isChat
-              ? null
-              : AppBar(
-                  // Same toolbar height and centring as GlassAppBar so the
-                  // title sits in the same place in both modes.
-                  toolbarHeight: 44,
-                  automaticallyImplyLeading: false,
-                  centerTitle: true,
-                  title: Semantics(header: true, child: title),
-                ),
-          body: _withPreviewBanner(
-            content,
-            top: (isChat ? mq.padding.top + _chatHeaderExtent : 0) + 8,
-          ),
-          bottomNavigationBar: navigationBar,
-        ),
-      );
-    }
-
-    final appBar = GlassAppBar(
-      backgroundColor: KarmiColors.of(context).glassBase,
-      title: Semantics(header: true, child: title),
+    final isOpaque = KarmiAccessibility.reduceTransparencyOf(context);
+    final colors = KarmiColors.of(context);
+    final appBar = KarmiShellAppBar(
+      isOpaque: isOpaque,
+      child: GlassAppBar(
+        backgroundColor: isOpaque ? Colors.transparent : colors.glassBase,
+        title: Semantics(header: true, child: title),
+      ),
     );
-    final tabBar = GlassTabBar.bottom(
-      selectedIndex: _index,
-      onTabSelected: _select,
-      tabs: [
-        for (final d in _destinations)
-          GlassTab(
-            icon: Icon(d.icon),
-            activeIcon: Icon(d.selectedIcon),
-            label: d.label,
-            semanticLabel: '${d.label} tab',
-          ),
-      ],
+    final tabBar = KarmiShellTabBar(
+      isOpaque: isOpaque,
+      child: GlassTabBar.bottom(
+        selectedIndex: _index,
+        onTabSelected: _select,
+        settings: isOpaque
+            ? const LiquidGlassSettings(
+                glassColor: Colors.transparent,
+                blur: 0,
+                thickness: 0,
+              )
+            : null,
+        tabs: [
+          for (final d in _destinations)
+            GlassTab(
+              icon: Icon(d.icon),
+              activeIcon: Icon(d.selectedIcon),
+              label: d.label,
+              semanticLabel: '${d.label} tab',
+            ),
+        ],
+      ),
     );
     BottomChrome.tabBarHeight = isCompactNav
         ? MediaQuery.paddingOf(context).bottom + tabBar.preferredSize.height
@@ -429,4 +392,83 @@ class _KarmiShellState extends State<KarmiShell> {
         ),
         child: body,
       );
+}
+
+/// Surface wrapper around [GlassAppBar] for Reduce Transparency mode.
+///
+/// In standard mode, renders [child] untouched. In Reduce Transparency mode,
+/// wraps [child] in an opaque `colors.card` fill with a 1px `colors.border`
+/// bottom border, keeping the exact same height, title alignment, and controls.
+class KarmiShellAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const KarmiShellAppBar({
+    super.key,
+    required this.child,
+    required this.isOpaque,
+  });
+
+  final GlassAppBar child;
+  final bool isOpaque;
+
+  @override
+  Size get preferredSize => child.preferredSize;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isOpaque) return child;
+    final colors = KarmiColors.of(context);
+    return DecoratedBox(
+      key: const ValueKey('shell-app-bar-opaque'),
+      position: DecorationPosition.background,
+      decoration: BoxDecoration(
+        color: colors.card,
+        border: Border(bottom: BorderSide(color: colors.border, width: 1.0)),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Surface wrapper around [GlassTabBar] for Reduce Transparency mode.
+///
+/// In standard mode, renders [child] untouched. In Reduce Transparency mode,
+/// wraps the floating pill in an opaque `colors.card` fill with a 1px `colors.border`
+/// stroke, keeping the exact same position, tabs, touch targets, and semantics.
+class KarmiShellTabBar extends StatelessWidget implements PreferredSizeWidget {
+  const KarmiShellTabBar({
+    super.key,
+    required this.child,
+    required this.isOpaque,
+  });
+
+  final GlassTabBar child;
+  final bool isOpaque;
+
+  @override
+  Size get preferredSize => child.preferredSize;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isOpaque) return child;
+    final colors = KarmiColors.of(context);
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Positioned.fill(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            child: DecoratedBox(
+              key: const ValueKey('shell-tab-bar-opaque'),
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: colors.border, width: 1.0),
+              ),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+        child,
+      ],
+    );
+  }
 }

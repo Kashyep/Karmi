@@ -16,27 +16,31 @@ void main() {
       );
       expect(
         ErrorCard.messageFor(ErrorCategory.providerUnavailable),
-        'The model service had a problem.',
+        "Karmi couldn't finish this reply.",
       );
       expect(
         ErrorCard.messageFor(ErrorCategory.validationFailed),
-        'This reply was blocked or came back empty.',
+        'This response could not be displayed.',
       );
       expect(
         ErrorCard.messageFor(ErrorCategory.unauthorized),
-        'Your session expired. Sign in again.',
+        'Your session has expired.',
       );
       expect(
         ErrorCard.messageFor(ErrorCategory.resumeUnavailable),
-        'Connection lost. Partial reply kept.',
+        'The connection was interrupted.',
       );
       expect(
         ErrorCard.messageFor(ErrorCategory.network),
         'You appear to be offline.',
       );
       expect(
+        ErrorCard.messageFor(ErrorCategory.timeout),
+        'Karmi took too long to respond.',
+      );
+      expect(
         ErrorCard.messageFor(ErrorCategory.internal),
-        'Something went wrong.',
+        'Something went wrong on our end.',
       );
     });
 
@@ -155,7 +159,7 @@ void main() {
           ),
         );
 
-        expect(find.text('The model service had a problem.'), findsOneWidget);
+        expect(find.text("Karmi couldn't finish this reply."), findsOneWidget);
         expect(find.text('Retry'), findsOneWidget);
 
         await tester.tap(find.text('Retry'));
@@ -180,7 +184,7 @@ void main() {
         );
 
         expect(
-          find.text('This reply was blocked or came back empty.'),
+          find.text('This response could not be displayed.'),
           findsOneWidget,
         );
         expect(find.text('Regenerate'), findsOneWidget);
@@ -204,10 +208,7 @@ void main() {
           ),
         );
 
-        expect(
-          find.text('Your session expired. Sign in again.'),
-          findsOneWidget,
-        );
+        expect(find.text('Your session has expired.'), findsOneWidget);
         expect(find.byType(TextButton), findsNothing);
 
         // onRetry provided -> "Sign in" button
@@ -244,10 +245,7 @@ void main() {
           ),
         );
 
-        expect(
-          find.text('Connection lost. Partial reply kept.'),
-          findsOneWidget,
-        );
+        expect(find.text('The connection was interrupted.'), findsOneWidget);
         expect(find.text('Continue'), findsOneWidget);
 
         await tester.tap(find.text('Continue'));
@@ -305,7 +303,7 @@ void main() {
           ),
         );
 
-        expect(find.text('Something went wrong.'), findsOneWidget);
+        expect(find.text('Something went wrong on our end.'), findsOneWidget);
         expect(find.text('Retry'), findsOneWidget);
 
         await tester.tap(find.text('Retry'));

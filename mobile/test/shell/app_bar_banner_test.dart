@@ -23,9 +23,8 @@ const _newChatKey = ValueKey('chat-header-new-chat');
 const _bannerKey = ValueKey('armory-preview-banner');
 const _modes = [('glass', Env()), ('solid', Env(reduceTransparency: true))];
 
-/// Finds the app bar of the active mode: [GlassAppBar] or Material [AppBar].
-Finder _appBarOf(Env env) =>
-    env.reduceTransparency ? find.byType(AppBar) : find.byType(GlassAppBar);
+/// Finds the app bar of the active mode: [GlassAppBar] in both glass and solid modes.
+Finder _appBarOf(Env env) => find.byType(GlassAppBar);
 
 void main() {
   group('Phase 6 app bar and preview banner', () {

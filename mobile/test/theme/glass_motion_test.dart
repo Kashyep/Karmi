@@ -57,28 +57,56 @@ void main() {
       expect(find.byKey(const ValueKey('karmi-glass-opaque')), findsOneWidget);
     });
 
-    testWidgets('shell swaps glass bars for opaque Material bars', (
-      tester,
-    ) async {
-      await pumpApp(tester);
-      expect(find.byType(GlassTabBar), findsOneWidget);
-      expect(find.byType(NavigationBar), findsNothing);
+    testWidgets(
+      'reduce transparency swaps glass surface for opaque surface while preserving shell structure',
+      (tester) async {
+        await pumpApp(tester);
+        expect(find.byType(GlassTabBar), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('shell-tab-bar-opaque')),
+          findsNothing,
+        );
+        expect(find.byType(NavigationBar), findsNothing);
 
-      await openTab(tester, 'Settings');
-      expect(find.byType(GlassAppBar), findsOneWidget);
-      await tester.tap(find.text('Reduce transparency'));
-      await settle(tester);
+        await openTab(tester, 'Settings');
+        expect(find.byType(GlassAppBar), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('shell-app-bar-opaque')),
+          findsNothing,
+        );
 
-      expect(find.byType(GlassTabBar), findsNothing);
-      expect(find.byType(GlassAppBar), findsNothing);
-      expect(find.byType(NavigationBar), findsOneWidget);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('reduce_transparency'), isTrue);
+        await tester.tap(find.text('Reduce transparency'));
+        await settle(tester);
 
-      await tester.tap(find.text('Reduce transparency'));
-      await settle(tester);
-      expect(find.byType(GlassTabBar), findsOneWidget);
-    });
+        expect(find.byType(GlassTabBar), findsOneWidget);
+        expect(find.byType(GlassAppBar), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('shell-tab-bar-opaque')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('shell-app-bar-opaque')),
+          findsOneWidget,
+        );
+        expect(find.byType(NavigationBar), findsNothing);
+        expect(find.byType(AppBar), findsNothing);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getBool('reduce_transparency'), isTrue);
+
+        await tester.tap(find.text('Reduce transparency'));
+        await settle(tester);
+        expect(
+          find.byKey(const ValueKey('shell-tab-bar-opaque')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('shell-app-bar-opaque')),
+          findsNothing,
+        );
+        expect(find.byType(GlassTabBar), findsOneWidget);
+        expect(find.byType(GlassAppBar), findsOneWidget);
+      },
+    );
   });
 
   group('high contrast', () {

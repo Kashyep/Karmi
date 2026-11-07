@@ -119,7 +119,7 @@ void main() {
 
     await app.settings.setReduceTransparency(true);
     await settle(tester);
-    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(GlassTabBar), findsOneWidget);
     expect(find.text('Keep me'), findsOneWidget);
     expect(find.textContaining('Kept reply'), findsOneWidget);
 

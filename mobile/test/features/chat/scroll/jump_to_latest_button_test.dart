@@ -161,5 +161,59 @@ void main() {
       expect(size.width, greaterThanOrEqualTo(48.0));
       expect(size.height, greaterThanOrEqualTo(48.0));
     });
+
+    testWidgets(
+      'pill sits above the composer with clearance and never covers message text',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: KarmiTheme.of(KarmiTier.ananta, Brightness.light),
+            home: Scaffold(
+              body: Column(
+                children: [
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        const Positioned.fill(
+                          child: Center(child: Text('Message content')),
+                        ),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: KarmiShape.jumpPillGap,
+                            ),
+                            child: JumpToLatestButton(
+                              visible: true,
+                              onTap: () {},
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(
+                    key: ValueKey('chat-composer-dock'),
+                    height: 80,
+                    child: ColoredBox(color: Colors.blue),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final pillRect = tester.getRect(find.byType(JumpToLatestButton));
+        final composerRect = tester.getRect(
+          find.byKey(const ValueKey('chat-composer-dock')),
+        );
+        expect(pillRect.bottom, lessThanOrEqualTo(composerRect.top));
+        expect(
+          composerRect.top - pillRect.bottom,
+          greaterThanOrEqualTo(KarmiShape.jumpPillGap),
+        );
+      },
+    );
   });
 }
