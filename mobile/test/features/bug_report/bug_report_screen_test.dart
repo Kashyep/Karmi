@@ -9,6 +9,24 @@ import 'package:karmi_app/features/bug_report/bug_report_service.dart';
 import 'package:karmi_app/theme/karmi_theme.dart';
 import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:karmi_app/auth/session.dart';
+
+class FakeSession extends ChangeNotifier implements KarmiSession {
+  FakeSession(this._userId);
+
+  String? _userId;
+
+  @override
+  String? get userId => _userId;
+
+  void switchUser(String? newUserId) {
+    _userId = newUserId;
+    notifyListeners();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class MockBugReportService extends BugReportService {
   MockBugReportService({required this.onSubmitting, BugReportQueue? queue})
@@ -277,6 +295,101 @@ void main() {
         expect(find.text('chat'), findsOneWidget);
         expect(find.text('error_code'), findsOneWidget);
         expect(find.text('TIMEOUT_ERR'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'switching owner disables submission and prevents submission to previous owner queue',
+      (tester) async {
+        final session = FakeSession('user-A');
+        var submissionCount = 0;
+        final mockService = MockBugReportService(
+          onSubmitting: (req) async {
+            submissionCount++;
+            return const BugReportSubmissionResult.submitted(
+              ticket: 'KARMI-0042',
+              reportStatus: 'new',
+            );
+          },
+        );
+
+        await tester.pumpWidget(
+          createTestableWidget(
+            child: BugReportScreen(service: mockService, session: session),
+          ),
+        );
+
+        final sendButtonFinder = find.widgetWithText(
+          FilledButton,
+          'Send bug report',
+        );
+
+        // Enter valid description (10+ characters)
+        await tester.enterText(
+          find.byKey(const ValueKey('description-field')),
+          'This is a valid issue description',
+        );
+        await tester.pump();
+
+        // With owner 'user-A', submit is enabled
+        FilledButton button = tester.widget(sendButtonFinder);
+        expect(button.onPressed, isNotNull);
+
+        // Switch owner to 'user-B'
+        session.switchUser('user-B');
+        await tester.pump();
+
+        // Fail-closed: button is disabled, error banner is shown
+        button = tester.widget(sendButtonFinder);
+        expect(button.onPressed, isNull);
+        expect(
+          find.byKey(const ValueKey('submission-error-banner')),
+          findsOneWidget,
+        );
+        expect(find.text('Sign in again to send reports'), findsOneWidget);
+
+        // Verify no submission occurred for previous owner
+        expect(submissionCount, 0);
+        expect(mockService.lastSubmittedRequest, isNull);
+      },
+    );
+
+    testWidgets(
+      'signing out / null owner disables submission and fails closed',
+      (tester) async {
+        final session = FakeSession('user-A');
+        final mockService = MockBugReportService(
+          onSubmitting: (req) async =>
+              const BugReportSubmissionResult.submitted(ticket: 'KARMI-0042'),
+        );
+
+        await tester.pumpWidget(
+          createTestableWidget(
+            child: BugReportScreen(service: mockService, session: session),
+          ),
+        );
+
+        final sendButtonFinder = find.widgetWithText(
+          FilledButton,
+          'Send bug report',
+        );
+
+        await tester.enterText(
+          find.byKey(const ValueKey('description-field')),
+          'This is a valid issue description',
+        );
+        await tester.pump();
+
+        FilledButton button = tester.widget(sendButtonFinder);
+        expect(button.onPressed, isNotNull);
+
+        // Sign out (userId becomes null)
+        session.switchUser(null);
+        await tester.pump();
+
+        button = tester.widget(sendButtonFinder);
+        expect(button.onPressed, isNull);
+        expect(find.text('Sign in again to send reports'), findsOneWidget);
       },
     );
   });
