@@ -83,9 +83,10 @@ Future<bool> launchSsoBrowser({
   }
 }
 
-/// Pure decision helper resolving the post-ssoSignIn launch outcome into a [GoogleSignInResult]
-/// or null if launch succeeded or the sign-in session progressed (transferring
-/// or callback received).
+/// Pure decision helper resolving the post-ssoSignIn launch outcome into a
+/// [GoogleSignInResult] (returning [GoogleSignInSuccess] if signed in) or null
+/// if launch succeeded or the sign-in session progressed (transferring or
+/// callback received).
 Future<GoogleSignInResult?> postSsoSignInLaunchAndDecision({
   required String? redirectUrl,
   required UrlLauncherFunction urlLauncher,
