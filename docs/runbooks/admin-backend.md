@@ -18,6 +18,7 @@ Failure behavior: not allowlisted / not admin -> `403`; wrong code or no code en
 | Variable | Meaning |
 | --- | --- |
 | `ADMIN_CLERK_USER_IDS` | Allowlisted Clerk subjects. Server-side only; never in client bundles. |
+| `DAILY_AGENT_ADMIN_UI_ENABLED` | Gates `/admin` and its static assets (`admin.js`, `admin.css`). Defaults to `true`. When set to `false`, `/admin` and admin assets return 404. |
 | `DAILY_AGENT_CLERK_SECRET_KEY` | Clerk Backend API secret (`sk_...`), server-side only, never logged or shipped to a client. Needed for admin "revoke sessions". Unset means revocation is refused (see below). |
 
 ## Revoking sessions
@@ -90,3 +91,5 @@ Clerk frontend host encoded in the publishable key, `frame-ancestors 'none'`, `o
 `base-uri 'none'`, plus `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`. The Clerk browser bundle
 is pinned to an exact version (`CLERK_JS_VERSION` in `admin.js`, currently `5.125.11`); never use a floating
 major range such as `@5`.
+
+The dashboard page and its assets can be disabled by setting `DAILY_AGENT_ADMIN_UI_ENABLED=false` (or `ADMIN_UI_ENABLED=false`), returning 404. To support authenticated bug report screenshot viewing via blob URLs, `img-src` allows `blob:`.

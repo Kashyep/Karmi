@@ -138,6 +138,11 @@ class Settings(BaseSettings):
         default_factory=list,
         validation_alias=AliasChoices("ADMIN_CLERK_USER_IDS", "DAILY_AGENT_ADMIN_CLERK_USER_IDS"),
     )
+    # Admin web dashboard at /admin and its static assets. Defaults to true.
+    admin_ui_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ADMIN_UI_ENABLED", "DAILY_AGENT_ADMIN_UI_ENABLED"),
+    )
     # Hex Ed25519 public keys whose PolicyBundleV1 signatures Karmi accepts. Empty: none.
     parakh_trusted_public_keys: list[str] = Field(default_factory=list)
 

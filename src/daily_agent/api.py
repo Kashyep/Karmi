@@ -917,19 +917,22 @@ def create_app() -> FastAPI:
 
     @app.get("/admin", include_in_schema=False)
     def admin_page(settings: Settings = Depends(get_settings)) -> HTMLResponse:
+        if not settings.admin_ui_enabled:
+            raise HTTPException(status_code=404, detail="Not found")
         return HTMLResponse(
             render_admin_page(publishable_key=settings.clerk_publishable_key),
             headers=admin_page_headers(publishable_key=settings.clerk_publishable_key),
         )
 
     @app.get("/static/{path:path}", include_in_schema=False)
-    def static_file(path: str) -> FileResponse:
+    def static_file(path: str, settings: Settings = Depends(get_settings)) -> FileResponse:
         static_dir = (Path(__file__).resolve().parent / "web" / "static").resolve()
         target = (static_dir / path).resolve()
         if not target.is_file() or not target.is_relative_to(static_dir):
             raise HTTPException(status_code=404, detail="File not found")
+        if not settings.admin_ui_enabled and path.startswith("admin."):
+            raise HTTPException(status_code=404, detail="File not found")
         return FileResponse(target)
-
     @app.get("/manifest.webmanifest", include_in_schema=False)
     def manifest(tier: str | None = None) -> Response:
         data = build_manifest(tier)
