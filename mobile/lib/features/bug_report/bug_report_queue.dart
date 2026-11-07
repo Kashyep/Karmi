@@ -10,6 +10,7 @@ class BugReportQueueItem {
     required this.clientReportId,
     required this.payload,
     required this.createdAt,
+    this.userId,
     this.retryCount = 0,
     this.retryAfterUntil,
     this.isRejected = false,
@@ -19,6 +20,7 @@ class BugReportQueueItem {
   final String clientReportId;
   final Map<String, dynamic> payload;
   final DateTime createdAt;
+  final String? userId;
   final int retryCount;
   final DateTime? retryAfterUntil;
   final bool isRejected;
@@ -36,6 +38,7 @@ class BugReportQueueItem {
   }
 
   BugReportQueueItem copyWith({
+    String? userId,
     int? retryCount,
     DateTime? retryAfterUntil,
     bool? isRejected,
@@ -45,6 +48,7 @@ class BugReportQueueItem {
       clientReportId: clientReportId,
       payload: payload,
       createdAt: createdAt,
+      userId: userId ?? this.userId,
       retryCount: retryCount ?? this.retryCount,
       retryAfterUntil: retryAfterUntil ?? this.retryAfterUntil,
       isRejected: isRejected ?? this.isRejected,
@@ -56,6 +60,7 @@ class BugReportQueueItem {
     'client_report_id': clientReportId,
     'payload': payload,
     'created_at': createdAt.toIso8601String(),
+    if (userId != null) 'user_id': userId,
     'retry_count': retryCount,
     if (retryAfterUntil != null)
       'retry_after_until': retryAfterUntil!.toIso8601String(),
@@ -68,6 +73,7 @@ class BugReportQueueItem {
       clientReportId: json['client_report_id'] as String,
       payload: Map<String, dynamic>.from(json['payload'] as Map),
       createdAt: DateTime.parse(json['created_at'] as String),
+      userId: json['user_id'] as String?,
       retryCount: json['retry_count'] as int? ?? 0,
       retryAfterUntil: json['retry_after_until'] != null
           ? DateTime.parse(json['retry_after_until'] as String)
@@ -165,7 +171,7 @@ class BugReportQueue {
   /// Guarantees that each queued entry stores the exact payload and client_report_id
   /// without re-generating or altering them. Screenshots are stored under a separate
   /// key to avoid rewriting large base64 blobs on routine queue mutations.
-  Future<void> enqueue(BugReportCreateRequest request) async {
+  Future<void> enqueue(BugReportCreateRequest request, {String? userId}) async {
     return _globalLock.synchronized(() async {
       final prefs = await _getPrefs();
       final items = await _loadAllUnlocked();
@@ -200,6 +206,7 @@ class BugReportQueue {
             clientReportId: request.clientReportId,
             payload: payloadWithoutScreenshot,
             createdAt: DateTime.now().toUtc(),
+            userId: userId ?? existingItem.userId,
           );
           await _saveAllUnlocked(items);
         }
@@ -210,6 +217,7 @@ class BugReportQueue {
           clientReportId: request.clientReportId,
           payload: payloadWithoutScreenshot,
           createdAt: DateTime.now().toUtc(),
+          userId: userId,
         ),
       );
       await _saveAllUnlocked(items);
@@ -217,12 +225,14 @@ class BugReportQueue {
   }
 
   /// Returns items eligible for automatic retrying (not rejected).
-  Future<List<BugReportQueueItem>> getEligibleItems() async {
+  Future<List<BugReportQueueItem>> getEligibleItems({String? userId}) async {
     return _globalLock.synchronized(() async {
       final items = await _loadAllUnlocked();
       final now = DateTime.now().toUtc();
       return items.where((item) {
         if (item.isRejected) return false;
+        if (userId != null && item.userId != userId) return false;
+        if (userId == null && item.userId != null) return false;
         if (item.retryAfterUntil != null && item.retryAfterUntil!.isAfter(now)) {
           return false;
         }
@@ -235,10 +245,15 @@ class BugReportQueue {
   Future<List<BugReportQueueItem>> getAll() => loadAll();
 
   /// Returns all active pending items (not marked as rejected).
-  Future<List<BugReportQueueItem>> getPending() async {
+  Future<List<BugReportQueueItem>> getPending({String? userId}) async {
     return _globalLock.synchronized(() async {
       final items = await _loadAllUnlocked();
-      return items.where((i) => !i.isRejected).toList();
+      return items.where((i) {
+        if (i.isRejected) return false;
+        if (userId != null && i.userId != userId) return false;
+        if (userId == null && i.userId != null) return false;
+        return true;
+      }).toList();
     });
   }
 
@@ -293,6 +308,20 @@ class BugReportQueue {
         );
         await _saveAllUnlocked(items);
       }
+    });
+  }
+
+  /// Clears queued items belonging to a specific user.
+  Future<void> clearUserItems(String userId) async {
+    return _globalLock.synchronized(() async {
+      final prefs = await _getPrefs();
+      final items = await _loadAllUnlocked();
+      final toRemove = items.where((i) => i.userId == userId).toList();
+      for (final item in toRemove) {
+        await prefs.remove(screenshotPrefKey(item.clientReportId));
+      }
+      items.removeWhere((i) => i.userId == userId);
+      await _saveAllUnlocked(items);
     });
   }
 

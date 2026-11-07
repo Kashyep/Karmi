@@ -140,5 +140,49 @@ void main() {
         expect(pending.isEmpty, isTrue);
       },
     );
+
+    test('owner-scoped flush only sends items belonging to the current user session', () async {
+      final submittedPayloads = <Map<String, dynamic>>[];
+      final mockClient = MockClient((request) async {
+        submittedPayloads.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+          '{"id":"rpt-flush","ticket":"KARMI-0100","status":"new","created_at":"2026-11-07T10:00:00Z"}',
+          201,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final queue = BugReportQueue();
+      const reqA = BugReportCreateRequest(
+        clientReportId: '550e8400-e29b-41d4-a716-446655440001',
+        category: BugReportCategory.chat,
+        description: 'Report from user A',
+        diagnostics: BugReportDiagnostics(screen: 'chat'),
+      );
+      const reqB = BugReportCreateRequest(
+        clientReportId: '550e8400-e29b-41d4-a716-446655440002',
+        category: BugReportCategory.settings,
+        description: 'Report from user B',
+        diagnostics: BugReportDiagnostics(screen: 'settings'),
+      );
+
+      await queue.enqueue(reqA, userId: 'user_aaa');
+      await queue.enqueue(reqB, userId: 'user_bbb');
+
+      final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
+      final serviceA = BugReportService(api: api, queue: queue, userId: 'user_aaa');
+
+      final sentCount = await serviceA.flushQueue();
+      expect(sentCount, 1);
+      expect(submittedPayloads.length, 1);
+      expect(submittedPayloads.first['client_report_id'], '550e8400-e29b-41d4-a716-446655440001');
+
+      final pendingA = await queue.getPending(userId: 'user_aaa');
+      expect(pendingA.isEmpty, isTrue);
+
+      final pendingB = await queue.getPending(userId: 'user_bbb');
+      expect(pendingB.length, 1);
+      expect(pendingB.first.clientReportId, '550e8400-e29b-41d4-a716-446655440002');
+    });
   });
 }

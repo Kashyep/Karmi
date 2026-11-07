@@ -169,5 +169,32 @@ void main() {
       await queue.remove(reportId);
       expect((await queue.getAll()).isEmpty, isTrue);
     });
+
+    test('clearUserItems removes only the specified user items and screenshots', () async {
+      final queue = BugReportQueue();
+      const req1 = BugReportCreateRequest(
+        clientReportId: '550e8400-e29b-41d4-a716-446655440010',
+        category: BugReportCategory.chat,
+        description: 'User 1 feedback',
+        diagnostics: BugReportDiagnostics(screen: 'chat'),
+      );
+      const req2 = BugReportCreateRequest(
+        clientReportId: '550e8400-e29b-41d4-a716-446655440020',
+        category: BugReportCategory.chat,
+        description: 'User 2 feedback',
+        diagnostics: BugReportDiagnostics(screen: 'chat'),
+      );
+
+      await queue.enqueue(req1, userId: 'user_1');
+      await queue.enqueue(req2, userId: 'user_2');
+
+      expect((await queue.getAll()).length, 2);
+
+      await queue.clearUserItems('user_1');
+
+      final remaining = await queue.getAll();
+      expect(remaining.length, 1);
+      expect(remaining.first.userId, 'user_2');
+    });
   });
 }

@@ -94,18 +94,20 @@ class BugReportSubmissionResult {
 
 /// Service that coordinates bug report submissions, offline persistence, and retries.
 class BugReportService {
-  BugReportService({required this.api, required this.queue});
+  BugReportService({required this.api, required this.queue, this.userId});
 
   final BugReportsApi api;
   final BugReportQueue queue;
+  final String? userId;
 
   /// Submits a bug report, enqueuing it first to ensure offline durability and idempotency.
   Future<BugReportSubmissionResult> submit(
-    BugReportCreateRequest request,
-  ) async {
+    BugReportCreateRequest request, {
+    String? userId,
+  }) async {
+    final effectiveUserId = userId ?? this.userId;
     // 1. Enqueue exact payload first (with same client_report_id)
-    await queue.enqueue(request);
-
+    await queue.enqueue(request, userId: effectiveUserId);
     // 2. Attempt API submission
     try {
       final created = await api.submitBugReport(request);
@@ -178,11 +180,12 @@ class BugReportService {
     }
   }
 
-  /// Flushes eligible pending reports in the offline queue.
+  /// Flushes eligible pending reports in the offline queue for the active user session.
   /// Returns the number of successfully submitted reports.
-  Future<int> flushQueue() async {
+  Future<int> flushQueue({String? userId}) async {
+    final effectiveUserId = userId ?? this.userId;
     int sentCount = 0;
-    final eligible = await queue.getEligibleItems();
+    final eligible = await queue.getEligibleItems(userId: effectiveUserId);
     for (final item in eligible) {
       final request = await queue.resolveRequest(item);
       try {

@@ -44,12 +44,17 @@ class SettingsScreen extends StatelessWidget {
       BugReportService(
         api: BugReportsApi.fromApi(session.api),
         queue: BugReportQueue(),
+        userId: session.userId,
       ).flushQueue().catchError((_) => 0),
     );
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            BugReportScreen(api: session.api, initialScreen: 'settings'),
+        builder: (_) => BugReportScreen(
+          api: session.api,
+          session: session,
+          userId: session.userId,
+          initialScreen: 'settings',
+        ),
       ),
     );
   }

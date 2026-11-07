@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../api/bug_reports/bug_report_models.dart';
 import '../../api/bug_reports/bug_reports_api.dart';
 import '../../api/karmi_api.dart';
+import '../../auth/session.dart';
 import '../../theme/karmi_colors.dart';
 import '../../widgets/feedback.dart';
 import '../../widgets/karmi_card.dart';
@@ -22,6 +23,8 @@ class BugReportScreen extends StatefulWidget {
     this.api,
     this.queue,
     this.service,
+    this.session,
+    this.userId,
     this.initialCategory,
     this.initialErrorCode,
     this.initialScreen,
@@ -31,9 +34,12 @@ class BugReportScreen extends StatefulWidget {
     Uint8List? initialScreenshotBytes,
     this.onDismiss,
   }) : screenshotBytes = screenshotBytes ?? initialScreenshotBytes;
+
   final KarmiApi? api;
   final BugReportQueue? queue;
   final BugReportService? service;
+  final KarmiSession? session;
+  final String? userId;
   final BugReportCategory? initialCategory;
   final String? initialErrorCode;
   final String? initialScreen;
@@ -72,6 +78,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
     _selectedCategory = widget.initialCategory ?? BugReportCategory.chat;
     _screenshotBytes = widget.screenshotBytes;
 
+    final effectiveUserId = widget.userId ?? widget.session?.userId;
     if (widget.service != null) {
       _service = widget.service!;
     } else {
@@ -79,7 +86,11 @@ class _BugReportScreenState extends State<BugReportScreen> {
       final api = widget.api != null
           ? BugReportsApi.fromApi(widget.api!)
           : BugReportsApi(baseUrl: KarmiApi.defaultBaseUrl);
-      _service = BugReportService(api: api, queue: queue);
+      _service = BugReportService(
+        api: api,
+        queue: queue,
+        userId: effectiveUserId,
+      );
     }
 
     _service.flushQueue();

@@ -6,6 +6,7 @@ import 'package:clerk_flutter/clerk_flutter.dart';
 
 import '../api/karmi_api.dart';
 import '../features/chat/composer/draft_store.dart';
+import '../features/bug_report/bug_report_queue.dart';
 
 /// `--dart-define=KARMI_DEV_AUTH=false` hides the local development sign-in.
 /// Defaults on outside release mode.
@@ -84,8 +85,12 @@ class KarmiSession extends ChangeNotifier {
   void _onClerkChange() {
     final signedIn = clerkAuth?.isSignedIn == true;
     if (_wasClerkSignedIn && !signedIn) {
+      final oldUserId = userId;
       _lastEnd = SessionEnd.signedOut;
       unawaited(SharedPrefsDraftStore.clearAllDrafts(_prefs));
+      if (oldUserId != null && oldUserId.isNotEmpty) {
+        unawaited(BugReportQueue(prefs: _prefs).clearUserItems(oldUserId));
+      }
     }
     _wasClerkSignedIn = signedIn;
     notifyListeners();
@@ -108,11 +113,15 @@ class KarmiSession extends ChangeNotifier {
   }
 
   Future<void> _end(SessionEnd reason) async {
+    final oldUserId = userId;
     api.token = null;
     _lastEnd = reason;
     notifyListeners();
     await _prefs.remove(_key);
     await SharedPrefsDraftStore.clearAllDrafts(_prefs);
+    if (oldUserId != null && oldUserId.isNotEmpty) {
+      await BugReportQueue(prefs: _prefs).clearUserItems(oldUserId);
+    }
     if (clerkAuth?.isSignedIn == true) {
       await clerkAuth!.signOut();
     }
