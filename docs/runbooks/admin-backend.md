@@ -92,4 +92,11 @@ Clerk frontend host encoded in the publishable key, `frame-ancestors 'none'`, `o
 is pinned to an exact version (`CLERK_JS_VERSION` in `admin.js`, currently `5.125.11`); never use a floating
 major range such as `@5`.
 
+When Clerk is configured, `style-src` permits `'self' 'unsafe-inline'`. Clerk's frontend bundle
+(`clerk.mountSignIn`) injects dynamic `<style>` elements and applies inline `style` attributes at runtime.
+Because Clerk's dynamic CSS-in-JS does not support CSP hashes or nonces in vanilla JS mounts,
+`'unsafe-inline'` is the minimum directive required for the sign-in UI to render. Scripts remain strictly
+controlled without `'unsafe-eval'` or wildcard origins (`*`). When no Clerk key is configured, `style-src`
+reverts to strict `'self'`.
+
 The dashboard page and its assets can be disabled by setting `DAILY_AGENT_ADMIN_UI_ENABLED=false` (or `ADMIN_UI_ENABLED=false`), returning 404. To support authenticated bug report screenshot viewing via blob URLs, `img-src` allows `blob:`.

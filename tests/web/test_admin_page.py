@@ -172,6 +172,7 @@ def test_admin_js_user_patch_sends_empty_string_for_cleared_notes_and_tester_lab
     assert "tester_label: $('edit-tester-label').value.trim() || null" not in source
     assert "admin_notes: $('edit-admin-notes').value.trim() || null" not in source
 
+
 def _csp_directives(policy: str) -> dict[str, list[str]]:
     directives: dict[str, list[str]] = {}
     for part in policy.split(";"):
@@ -187,12 +188,17 @@ def test_admin_response_carries_strict_csp_and_framing_headers(client_factory) -
 
     directives = _csp_directives(response.headers["content-security-policy"])
     assert directives["default-src"] == ["'self'"]
-    assert directives["style-src"] == ["'self'"]
+    assert directives["style-src"] == ["'self'", "'unsafe-inline'"]
     assert "'self'" in directives["script-src"]
     assert "https://clerk.example.test" in directives["script-src"]
     assert directives["frame-ancestors"] == ["'none'"]
     assert directives["object-src"] == ["'none'"]
     assert directives["base-uri"] == ["'none'"]
+
+    # Minimum directive allowed: no unsafe-eval, no wildcard origins
+    assert "'unsafe-eval'" not in response.headers["content-security-policy"]
+    assert "*" not in directives["style-src"]
+    assert "*" not in directives["script-src"]
 
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["referrer-policy"] == "no-referrer"
@@ -220,6 +226,11 @@ def test_admin_csp_without_clerk_key_names_no_clerk_hosts(client_factory) -> Non
     assert directives["default-src"] == ["'self'"]
     assert directives["style-src"] == ["'self'"]
     assert directives["script-src"] == ["'self'"]
+    assert "'unsafe-inline'" not in directives["style-src"]
+    assert "'unsafe-eval'" not in policy
+    assert "*" not in directives["style-src"]
+    assert "*" not in directives["script-src"]
+
 
 def test_admin_clerk_js_is_pinned_to_exact_version() -> None:
     source = (STATIC / "admin.js").read_text(encoding="utf-8")
@@ -245,6 +256,7 @@ def test_admin_static_traversal_returns_404_when_admin_disabled(client_factory) 
     assert client_disabled.get("/static/icons%2F..%2Fadmin.js").status_code == 404
     assert client_disabled.get("/static/icons%2F..%2Fadmin.css").status_code == 404
     assert client_disabled.get("/static/karmi-tokens.css").status_code == 200
+
 
 def test_admin_csp_includes_blob_img_src(client_factory) -> None:
     response = client_factory(_publishable_key()).get("/admin")
