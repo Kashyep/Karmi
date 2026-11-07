@@ -60,10 +60,12 @@ def admin_page_headers(*, publishable_key: str | None) -> dict[str, str]:
     challenge_frames = f" {CLERK_CHALLENGE_ORIGIN}" if domain else ""
     csp = "; ".join(
         [
+            "default-src 'self'",
             f"script-src 'self'{clerk_origin}{clerk_protect}",
+            "style-src 'self'",
             "worker-src 'self' blob:",
             f"connect-src 'self'{clerk_origin}",
-            f"img-src 'self' data:{clerk_origin}{clerk_images}",
+            f"img-src 'self' data: blob:{clerk_origin}{clerk_images}",
             f"frame-src 'self'{clerk_origin}{challenge_frames}",
             "object-src 'none'",
             "base-uri 'none'",
@@ -146,6 +148,8 @@ def render_admin_page(*, publishable_key: str | None) -> str:
         <div id="admin-tabs" class="tabs" role="tablist" aria-label="Admin sections">
           <button id="tab-users" class="tab" type="button" role="tab" data-tab="users"
                   aria-controls="panel-users" aria-selected="true" tabindex="0">Users</button>
+          <button id="tab-bugs" class="tab" type="button" role="tab" data-tab="bugs"
+                  aria-controls="panel-bugs" aria-selected="false" tabindex="-1">Bug reports</button>
           <button id="tab-monitor" class="tab" type="button" role="tab" data-tab="monitor"
                   aria-controls="panel-monitor" aria-selected="false" tabindex="-1">Monitor</button>
           <button id="tab-audit" class="tab" type="button" role="tab" data-tab="audit"
@@ -244,11 +248,11 @@ def render_admin_page(*, publishable_key: str | None) -> str:
                 <div class="action-group">
                   <h3>Credits</h3>
                   <div class="inline-field">
-                    <label for="credit-delta">Credit change (USD)</label>
+                    <label for="credit-delta">Credit change (₹)</label>
                     <input id="credit-delta" class="input" type="number" step="0.01" inputmode="decimal">
                   </div>
                   <div class="inline-field">
-                    <label for="credit-budget">Set budget (USD)</label>
+                    <label for="credit-budget">Set budget (₹)</label>
                     <input id="credit-budget" class="input" type="number" step="0.01" min="0" inputmode="decimal">
                   </div>
                   <p class="muted">Enter either a change or a budget, not both.</p>
@@ -265,6 +269,108 @@ def render_admin_page(*, publishable_key: str | None) -> str:
           </div>
         </section>
 
+        <section id="panel-bugs" class="panel" role="tabpanel" aria-labelledby="tab-bugs" hidden>
+          <div class="section-heading">
+            <h2>Bug inbox</h2>
+            <p id="bugs-message" class="message" role="status"></p>
+          </div>
+          <form id="bug-filter-form" class="toolbar" role="search">
+            <div class="field">
+              <label for="bug-status">Status</label>
+              <select id="bug-status" class="input" name="status">
+                <option value="">All statuses</option>
+                <option value="new">New</option>
+                <option value="triaged">Triaged</option>
+                <option value="in_progress">In progress</option>
+                <option value="fixed">Fixed</option>
+                <option value="closed">Closed</option>
+                <option value="duplicate">Duplicate</option>
+                <option value="wontfix">Won't fix</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="bug-category">Category</label>
+              <select id="bug-category" class="input" name="category">
+                <option value="">All categories</option>
+                <option value="crash">Crash</option>
+                <option value="chat">Chat</option>
+                <option value="ui">UI</option>
+                <option value="account">Account</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <button class="button button-primary" type="submit">Filter</button>
+          </form>
+          <div class="split">
+            <div class="list-column">
+              <div class="table-wrap">
+                <table class="data-table" id="bugs-table">
+                  <caption class="sr-only">Bug reports matching current filters</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Ticket</th>
+                      <th scope="col">Category</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Description</th>
+                      <th scope="col">User</th>
+                      <th scope="col">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bugs-body"></tbody>
+                </table>
+              </div>
+              <button id="bugs-more" class="button button-secondary pagination-button" type="button" hidden>Load more</button>
+            </div>
+            <section id="bug-detail" class="card detail" aria-labelledby="bug-detail-heading">
+              <h2 id="bug-detail-heading">Bug report details</h2>
+              <p id="bug-detail-empty" class="muted">Choose a bug report to see details and actions.</p>
+              <div id="bug-detail-body" hidden>
+                <h3>Metadata</h3>
+                <dl id="bug-detail-meta" class="kv"></dl>
+                <h3>Description</h3>
+                <pre id="bug-detail-description" class="bug-pre"></pre>
+                <div id="bug-detail-diagnostics-section" hidden>
+                  <h3>Diagnostics</h3>
+                  <pre id="bug-detail-diagnostics" class="bug-pre"></pre>
+                </div>
+                <div id="bug-detail-screenshot-section">
+                  <h3>Screenshot</h3>
+                  <p id="bug-screenshot-status" class="muted">No screenshot.</p>
+                  <div id="bug-screenshot-wrap" class="screenshot-wrap" hidden>
+                    <img id="bug-screenshot-img" class="screenshot-img" alt="Bug report screenshot">
+                  </div>
+                </div>
+                <form id="bug-update-form" class="action-group">
+                  <h3>Update report</h3>
+                  <div class="field">
+                    <label for="edit-bug-status">Status</label>
+                    <select id="edit-bug-status" class="input" name="status">
+                      <option value="new">New</option>
+                      <option value="triaged">Triaged</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="fixed">Fixed</option>
+                      <option value="closed">Closed</option>
+                      <option value="duplicate">Duplicate</option>
+                      <option value="wontfix">Won't fix</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="edit-bug-notes">Admin notes</label>
+                    <textarea id="edit-bug-notes" class="input" rows="3" maxlength="4000" placeholder="Internal notes"></textarea>
+                  </div>
+                  <div class="field">
+                    <label for="edit-bug-reason">Reason (required)</label>
+                    <input id="edit-bug-reason" class="input" type="text" minlength="3" maxlength="500" placeholder="Reason for this change" required>
+                    <p class="muted">At least 3 characters</p>
+                  </div>
+                  <p id="bug-detail-message" class="message" role="status"></p>
+                  <button id="btn-bug-update" class="button button-primary" type="submit">Save update</button>
+                </form>
+              </div>
+            </section>
+          </div>
+        </section>
+
         <section id="panel-monitor" class="panel" role="tabpanel" aria-labelledby="tab-monitor" hidden>
           <div class="section-heading">
             <h2>Live monitor</h2>
@@ -272,6 +378,23 @@ def render_admin_page(*, publishable_key: str | None) -> str:
           </div>
           <p class="muted">Refreshes every 5 seconds while this tab is visible.</p>
           <dl id="monitor-metrics" class="metrics"></dl>
+          <h3>Model health</h3>
+          <div class="table-wrap">
+            <table class="data-table" id="model-health-table">
+              <caption class="sr-only">Model health over the last 24 hours</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Model</th>
+                  <th scope="col">Provider</th>
+                  <th scope="col">Last success</th>
+                  <th scope="col">Error rate</th>
+                  <th scope="col">p50 latency</th>
+                  <th scope="col">Runs</th>
+                </tr>
+              </thead>
+              <tbody id="model-health-body"></tbody>
+            </table>
+          </div>
           <h3>Provider health</h3>
           <ul id="provider-list" class="provider-list"></ul>
           <p id="monitor-message" class="message" role="status"></p>
