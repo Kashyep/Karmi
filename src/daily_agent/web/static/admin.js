@@ -221,35 +221,18 @@
 
   const root = typeof window !== 'undefined' ? window : globalThis;
   root.KarmiAdmin = Object.freeze({
-    TIERS,
-    USER_STATUSES,
-    clerkFrontendApi,
-    clerkScriptUrl,
-    buildPageQuery,
-    buildUsersQuery,
-    formatIndianInteger,
     formatInr,
     formatInrRupees,
-    formatCount,
-    formatPercent,
-    formatMs,
-    formatTimestamp,
-    displayValue,
-    providerStatus,
-    isExpired,
-    validateCreditInput,
-    canSubmitReason,
-    parseRetryAfter,
-    // Render helpers exposed for automated security, XSS safety, and render testing
-    el,
     setMessage,
     bugRow,
     renderBugDetail,
     renderAuditDetail,
     renderMonitor,
+    renderDetail,
+    clearDetail,
+    clearBugDetail,
+    endAdminSession,
   });
-  root.formatInr = formatInr;
-  root.formatInrRupees = formatInrRupees;
 
   if (typeof document === 'undefined') return;
 
@@ -332,15 +315,19 @@
   }
 
   function detailMessage(payload, fallback) {
-    return payload && typeof payload.detail === 'string' && payload.detail.trim()
-      ? payload.detail
-      : fallback;
-  }
-
-  function sessionInvalid(payload) {
-    if (!payload || typeof payload !== 'object') return false;
-    const detail = typeof payload.detail === 'string' ? payload.detail.toLowerCase() : '';
-    return payload.session_invalid === true || payload.code === 'session_invalid' || detail.includes('session invalid');
+    if (payload && typeof payload === 'object') {
+      const detail = payload.detail;
+      if (typeof detail === 'string' && detail.trim()) {
+        return detail.trim();
+      }
+      if (detail && typeof detail === 'object' && typeof detail.message === 'string' && detail.message.trim()) {
+        return detail.message.trim();
+      }
+      if (typeof payload.message === 'string' && payload.message.trim()) {
+        return payload.message.trim();
+      }
+    }
+    return fallback;
   }
 
   function futureExpiry(value) {
@@ -519,7 +506,7 @@
       const fallback = res.status === 403 ? 'Not allowed.' : messageForStatus(res.status);
       const err = new ApiError(res.status, res.status === 403 ? fallback : detailMessage(payload, fallback), payload);
       err.retryAfter = res.headers.get('Retry-After');
-      if (state.adminToken && (res.status === 401 || (res.status === 403 && sessionInvalid(payload)))) {
+      if (state.adminToken && res.status === 401) {
         endAdminSession('Your admin session ended. Enter the code again.');
       }
       throw err;
@@ -719,7 +706,7 @@
       ['Requests today / Cap', requestsText],
       ['Success rate', successRateText],
       ['Open bug reports', formatCount(source.open_bug_reports)],
-      ['Cost today', formatInrRupees(source.cost_today_inr ?? source.spend_today_inr)],
+      ['Cost today', formatInrRupees(source.cost_today_inr)],
       ['Active users', formatCount(source.active_users)],
       ['Active streams', formatCount(source.active_streams)],
       ['Requests per minute', formatCount(source.req_per_min)],
@@ -860,6 +847,14 @@
     $('detail-body').hidden = true;
     $('detail-empty').hidden = false;
     $('detail-heading').textContent = 'User details';
+    $('detail-profile').replaceChildren();
+    $('detail-usage').replaceChildren();
+    $('detail-plan').textContent = '';
+    $('edit-display-name').value = '';
+    $('edit-tester').checked = false;
+    $('edit-tester-label').value = '';
+    $('edit-admin-notes').value = '';
+    $('detail-expiry').value = '';
     setMessage('detail-message', '', '');
     setMessage('credits-error', '', '');
     highlightSelectedUser();
@@ -1020,6 +1015,9 @@
     $('bug-detail-diagnostics-section').hidden = true;
     $('bug-detail-empty').hidden = false;
     $('bug-detail-body').hidden = true;
+    $('edit-bug-notes').value = '';
+    $('edit-bug-reason').value = '';
+    $('edit-bug-status').value = 'new';
     setMessage('bug-detail-message', '', '');
     highlightSelectedBug();
   }
@@ -1117,6 +1115,8 @@
     if (state.bugScreenshotUrl) {
       URL.revokeObjectURL(state.bugScreenshotUrl);
       state.bugScreenshotUrl = null;
+      const img = $('bug-screenshot-img');
+      if (img) img.removeAttribute('src');
     }
 
     const user = report.user && typeof report.user === 'object' ? report.user : {};
@@ -1282,7 +1282,7 @@
       openConfirm({ title: 'Save profile', summary: `Update profile for ${userLabel(user)}.`, run: async (reason) => {
         await api('PATCH', `/users/${encodeId(user.id)}`, { body: {
           display_name: $('edit-display-name').value.trim() || null, tester: $('edit-tester').checked,
-          tester_label: $('edit-tester-label').value.trim() || null, admin_notes: $('edit-admin-notes').value.trim() || null, reason,
+          tester_label: $('edit-tester-label').value.trim(), admin_notes: $('edit-admin-notes').value.trim(), reason,
         }}); await refreshAfterChange(user.id); return 'Profile saved.';
       }});
     });
@@ -1438,7 +1438,6 @@
         loadBugReports(true).catch(() => {});
       });
     }
-    if ($('btn-clear-bug')) $('btn-clear-bug').addEventListener('click', clearBugDetail);
     $('bug-update-form').addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!state.detailBug) return;

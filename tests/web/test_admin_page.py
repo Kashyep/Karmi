@@ -154,10 +154,23 @@ def test_admin_js_clears_and_caps_selection_and_handles_api_details() -> None:
     assert "state.selectedUserIds.clear()" in source
     assert "at most 100 users" in source
     assert "detailMessage(payload" in source
-    assert "sessionInvalid(payload)" in source
+    assert "sessionInvalid" not in source
+    assert "detail.message" in source
+    assert "$('detail-profile').replaceChildren()" in source
+    assert "$('edit-admin-notes').value = ''" in source
+    assert "$('edit-bug-notes').value = ''" in source
+    assert "$('edit-bug-reason').value = ''" in source
     assert "summary: result.summary" in source
     assert "function wireDetailActions()" in source
 
+
+def test_admin_js_user_patch_sends_empty_string_for_cleared_notes_and_tester_label() -> None:
+    source = (STATIC / "admin.js").read_text(encoding="utf-8")
+    assert "tester_label: $('edit-tester-label').value.trim()," in source
+    assert "admin_notes: $('edit-admin-notes').value.trim()," in source
+    assert "display_name: $('edit-display-name').value.trim() || null," in source
+    assert "tester_label: $('edit-tester-label').value.trim() || null" not in source
+    assert "admin_notes: $('edit-admin-notes').value.trim() || null" not in source
 
 def _csp_directives(policy: str) -> dict[str, list[str]]:
     directives: dict[str, list[str]] = {}
@@ -256,18 +269,14 @@ def test_admin_js_forbids_dangerous_dom_apis() -> None:
 def test_admin_js_inr_formatting_and_xss_safety() -> None:
     """Verify admin.js INR formatting and DOM XSS safety in a Node VM sandbox.
 
-    Toolchain context:
-    Node is NOT part of the repository toolchain (absent from scripts/tasks.py,
-    no package.json, and not explicitly installed in .github/workflows/ci.yml).
-    However, node is commonly available on development workstations and GitHub
-    Actions runners (via ubuntu-latest). If node is absent from PATH, this test
-    skips gracefully with an explicit reason.
+    Node.js is required for the admin.js VM tests. If node is absent from PATH,
+    this test fails loudly.
     """
     import shutil
     import subprocess
 
     if shutil.which("node") is None:
-        pytest.skip("Node.js runtime not found in PATH; skipping admin.js VM tests.")
+        pytest.fail("node is required for the admin.js VM tests; install Node.js (CI must have it)")
 
     js_code = """
     const fs = require('fs');
@@ -383,6 +392,10 @@ def test_admin_js_inr_formatting_and_xss_safety() -> None:
       Node: MockNode,
       URL: { createObjectURL: () => 'blob:mock', revokeObjectURL: () => {} },
       console: console,
+      clearTimeout: () => {},
+      setTimeout: () => {},
+      clearInterval: () => {},
+      setInterval: () => {},
     };
     sandbox.globalThis = sandbox;
     sandbox.self = sandbox;
@@ -400,6 +413,10 @@ def test_admin_js_inr_formatting_and_xss_safety() -> None:
       renderMonitor,
       renderAuditDetail,
       setMessage,
+      renderDetail,
+      clearDetail,
+      clearBugDetail,
+      endAdminSession,
     } = sandbox.window.KarmiAdmin;
 
     // Whole rupees
@@ -539,6 +556,67 @@ def test_admin_js_inr_formatting_and_xss_safety() -> None:
       const foundInValues = [detailNotes.value].some(v => v.includes(str));
       assert(foundInText || foundInValues, 'String must be passed as text/value: ' + str);
     }
+
+    // 6. DOM clearing on clearDetail, clearBugDetail, and endAdminSession (P2-2)
+    renderDetail({
+      id: 'usr_123',
+      email: 'customer@example.com',
+      display_name: 'Customer Name',
+      tier: 'trika',
+      tester: true,
+      tester_label: 'beta-team',
+      admin_notes: 'confidential customer notes',
+      usage: { requests_today: 42 },
+    });
+    assert(getOrCreate('detail-profile').children.length > 0, 'profile dl should be populated');
+    assert.strictEqual(getOrCreate('edit-display-name').value, 'Customer Name');
+    assert.strictEqual(getOrCreate('edit-tester-label').value, 'beta-team');
+    assert.strictEqual(getOrCreate('edit-admin-notes').value, 'confidential customer notes');
+
+    clearDetail();
+    assert.strictEqual(getOrCreate('detail-profile').children.length, 0, 'detail-profile dl must be cleared');
+    assert.strictEqual(getOrCreate('detail-usage').children.length, 0, 'detail-usage dl must be cleared');
+    assert.strictEqual(getOrCreate('detail-plan').textContent, '', 'detail-plan text must be cleared');
+    assert.strictEqual(getOrCreate('edit-display-name').value, '', 'edit-display-name must be empty');
+    assert.strictEqual(getOrCreate('edit-tester-label').value, '', 'edit-tester-label must be empty');
+    assert.strictEqual(getOrCreate('edit-admin-notes').value, '', 'edit-admin-notes must be empty');
+
+    renderBugDetail({
+      id: 'bug_456',
+      ticket: 'BUG-456',
+      status: 'triaged',
+      admin_notes: 'internal bug note',
+      description: 'bug desc',
+    });
+    getOrCreate('edit-bug-reason').value = 'fixing bug';
+    assert.strictEqual(getOrCreate('edit-bug-notes').value, 'internal bug note');
+    assert.strictEqual(getOrCreate('edit-bug-reason').value, 'fixing bug');
+
+    clearBugDetail();
+    assert.strictEqual(getOrCreate('edit-bug-notes').value, '', 'edit-bug-notes must be cleared');
+    assert.strictEqual(getOrCreate('edit-bug-reason').value, '', 'edit-bug-reason must be cleared');
+    assert.strictEqual(getOrCreate('bug-detail-meta').children.length, 0, 'bug-detail-meta must be cleared');
+
+    // Populate both and verify endAdminSession clears all
+    renderDetail({
+      id: 'usr_789',
+      display_name: 'Sensitive User',
+      tester_label: 'vip',
+      admin_notes: 'secret note',
+    });
+    renderBugDetail({
+      id: 'bug_789',
+      admin_notes: 'secret bug note',
+    });
+    getOrCreate('edit-bug-reason').value = 'secret reason';
+    endAdminSession();
+    assert.strictEqual(getOrCreate('detail-profile').children.length, 0);
+    assert.strictEqual(getOrCreate('detail-usage').children.length, 0);
+    assert.strictEqual(getOrCreate('edit-display-name').value, '');
+    assert.strictEqual(getOrCreate('edit-tester-label').value, '');
+    assert.strictEqual(getOrCreate('edit-admin-notes').value, '');
+    assert.strictEqual(getOrCreate('edit-bug-notes').value, '');
+    assert.strictEqual(getOrCreate('edit-bug-reason').value, '');
     """
 
     js_file = STATIC / "admin.js"
