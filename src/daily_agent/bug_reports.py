@@ -26,13 +26,16 @@ def compute_bug_report_hash(
     description: str,
     diagnostics: dict[str, Any],
     screenshot_b64: str | None,
+    screenshot_content_type: str | None = None,
 ) -> str:
-    payload = {
+    payload: dict[str, Any] = {
         "category": category,
         "description": description.strip(),
         "diagnostics": diagnostics,
         "screenshot": screenshot_b64,
     }
+    if screenshot_b64 is not None:
+        payload["screenshot_content_type"] = screenshot_content_type
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -50,11 +53,13 @@ def create_bug_report(
     body: BugReportCreate,
 ) -> tuple[BugReport, bool]:
     screenshot_b64 = body.screenshot.data_base64 if body.screenshot else None
+    screenshot_content_type = body.screenshot.content_type if body.screenshot else None
     request_hash = compute_bug_report_hash(
         body.category,
         body.description,
         body.diagnostics.model_dump(),
         screenshot_b64,
+        screenshot_content_type,
     )
     # 1. Acquire per-user serialization point
     session.execute(select(User.id).where(User.id == principal.user_id).with_for_update())
