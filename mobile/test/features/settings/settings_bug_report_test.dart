@@ -17,6 +17,19 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  Future<void> pumpUntilBugReportOpened(WidgetTester tester) async {
+    for (var i = 0; i < 20; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      if (find.byType(BugReportScreen).evaluate().isNotEmpty) {
+        break;
+      }
+    }
+    await tester.pumpAndSettle();
+  }
+
   testWidgets(
     'SettingsScreen has Report a bug entry that opens BugReportScreen',
     (tester) async {
@@ -48,7 +61,7 @@ void main() {
 
       // Tap tile opens BugReportScreen
       await tester.tap(tileFinder);
-      await tester.pumpAndSettle();
+      await pumpUntilBugReportOpened(tester);
 
       expect(find.byType(BugReportScreen), findsOneWidget);
       final BugReportScreen screen = tester.widget(
@@ -82,7 +95,7 @@ void main() {
 
     final tileFinder = find.byKey(const ValueKey('report_bug_tile'));
     await tester.tap(tileFinder);
-    await tester.pumpAndSettle();
+    await pumpUntilBugReportOpened(tester);
 
     expect(find.byType(BugReportScreen), findsOneWidget);
   });
