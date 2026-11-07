@@ -22,7 +22,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import Callable, Mapping
-from typing import Protocol
+from typing import Any, Protocol
 
 import redis
 
@@ -159,9 +159,11 @@ def build_limiter(
 _REDACTIONS = (
     (re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 [REDACTED]"),
     (re.compile(r"\bsk-[A-Za-z0-9_-]{8,}"), "[REDACTED_KEY]"),
+    (re.compile(r"\bsk_(?:live|test)_[A-Za-z0-9_-]{8,}"), "[REDACTED_KEY]"),
+    (re.compile(r"\bAIza[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-])"), "[REDACTED_KEY]"),
     (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"), "[REDACTED_JWT]"),
     (
-        re.compile(r"(?i)\b([A-Z_]*(?:API_KEY|SECRET|TOKEN|PASSWORD))=\S+"),
+        re.compile(r"(?i)\b([A-Z_-]*(?:API_KEY|API-KEY|APIKEY|SECRET|TOKEN|PASSWORD))=\S+"),
         r"\1=[REDACTED]",
     ),
     (re.compile(r"(?i)(postgres(?:ql)?(?:\+\w+)?://[^:/\s]+:)[^@\s]+@"), r"\1[REDACTED]@"),
@@ -194,10 +196,30 @@ def install_log_redaction() -> None:
         if not record.args and isinstance(record.msg, str):
             record.msg = redact(record.msg)
         elif isinstance(record.args, Mapping):
-            record.args = {k: redact(v) if isinstance(v, str) else v for k, v in record.args.items()}
+            record.args = {
+                k: redact(v) if isinstance(v, str) else v for k, v in record.args.items()
+            }
         elif isinstance(record.args, tuple):
             record.args = tuple(redact(a) if isinstance(a, str) else a for a in record.args)
         return record
 
     logging.setLogRecordFactory(factory)
+
+    previous_format = logging.Formatter.format
+    previous_format_exception = logging.Formatter.formatException
+
+    def format_exception(self: logging.Formatter, ei: Any) -> str:
+        formatted = previous_format_exception(self, ei)
+        return redact(formatted)
+
+    def format_record(self: logging.Formatter, record: logging.LogRecord) -> str:
+        if record.exc_text:
+            record.exc_text = redact(record.exc_text)
+        result = previous_format(self, record)
+        if record.exc_text:
+            record.exc_text = redact(record.exc_text)
+        return result
+
+    logging.Formatter.format = format_record
+    logging.Formatter.formatException = format_exception
     _installed = True
