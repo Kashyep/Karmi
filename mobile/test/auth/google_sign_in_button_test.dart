@@ -42,7 +42,10 @@ void main() {
       final semantics = tester.getSemantics(finder);
       expect(semantics.flagsCollection.isButton, isTrue);
       expect(semantics.flagsCollection.isEnabled, ui.Tristate.isTrue);
-      expect(semantics.hasAction(ui.SemanticsAction.tap), isTrue);
+      expect(
+        semantics.getSemanticsData().hasAction(ui.SemanticsAction.tap),
+        isTrue,
+      );
       // Google logo painter is present
       expect(find.byType(CustomPaint), findsWidgets);
       expect(
@@ -91,7 +94,10 @@ void main() {
       expect(finder, findsOneWidget);
       final semantics = tester.getSemantics(finder);
       expect(semantics.flagsCollection.isEnabled, ui.Tristate.isFalse);
-      expect(semantics.hasAction(ui.SemanticsAction.tap), isFalse);
+      expect(
+        semantics.getSemanticsData().hasAction(ui.SemanticsAction.tap),
+        isFalse,
+      );
       final inkWell = tester.widget<InkWell>(find.byType(InkWell));
       expect(inkWell.onTap, isNull);
       handle.dispose();
@@ -127,7 +133,10 @@ void main() {
       expect(finder, findsOneWidget);
       final semantics = tester.getSemantics(finder);
       expect(semantics.flagsCollection.isEnabled, ui.Tristate.isFalse);
-      expect(semantics.hasAction(ui.SemanticsAction.tap), isFalse);
+      expect(
+        semantics.getSemanticsData().hasAction(ui.SemanticsAction.tap),
+        isFalse,
+      );
       final inkWell = tester.widget<InkWell>(find.byType(InkWell));
       expect(inkWell.onTap, isNull);
 
