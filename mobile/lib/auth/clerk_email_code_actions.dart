@@ -3,11 +3,16 @@ import 'dart:async';
 import 'package:clerk_auth/clerk_auth.dart' as clerk;
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'account_rules.dart';
 import 'clerk_sso.dart';
 
 typedef ClerkFlowErrorHandler = void Function(Object error);
+typedef UrlLauncherFunction = Future<bool> Function(
+  Uri url, {
+  LaunchMode mode,
+});
 
 /// Result of a Google SSO attempt.
 sealed class GoogleSignInResult {
@@ -94,11 +99,16 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     this.auth,
     this.context, {
     Stream<Uri>? callbackLinks,
-  }) : _callbackLinks = callbackLinks;
+    UrlLauncherFunction? urlLauncher,
+  })  : _callbackLinks = callbackLinks,
+        _urlLauncher = urlLauncher ??
+            ((url, {mode = LaunchMode.platformDefault}) =>
+                launchUrl(url, mode: mode));
 
   final ClerkAuthState auth;
   final BuildContext context;
   final Stream<Uri>? _callbackLinks;
+  final UrlLauncherFunction _urlLauncher;
 
   @override
   bool get isSignedIn => auth.isSignedIn;
@@ -321,15 +331,38 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
       finish(GoogleSignInError(issue.message));
     });
 
+    bool launchSuccess = false;
     try {
-      await auth.ssoSignIn(
+      final redirect = auth.config.redirectionGenerator?.call(
+            context,
+            clerk.Strategy.oauthGoogle,
+          ) ??
+          kClerkOAuthRedirectUri;
+      await auth.safelyCall(
         context,
-        clerk.Strategy.oauthGoogle,
+        () => auth.oauthSignIn(
+          strategy: clerk.Strategy.oauthGoogle,
+          redirect: redirect,
+        ),
         onError: (error) {
           final issue = issueFromClerkError(error);
           finish(GoogleSignInError(issue.message));
         },
       );
+
+      final redirectUrl = auth
+          .signIn
+          ?.firstFactorVerification
+          ?.externalVerificationRedirectUrl;
+      if (redirectUrl != null && redirectUrl.isNotEmpty) {
+        try {
+          final uri = Uri.parse(redirectUrl);
+          final mode = auth.config.defaultLaunchMode;
+          launchSuccess = await _urlLauncher(uri, mode: mode);
+        } catch (_) {
+          launchSuccess = false;
+        }
+      }
     } catch (e) {
       finish(GoogleSignInError(issueFromClerkError(e).message));
     }
@@ -337,22 +370,14 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     if (!completer.isCompleted) {
       if (auth.isSignedIn) {
         finish(const GoogleSignInSuccess());
-      } else {
-        final redirectUrl = auth
-            .signIn
-            ?.firstFactorVerification
-            ?.externalVerificationRedirectUrl;
-        final redirectStarted = redirectUrl is String && redirectUrl.isNotEmpty;
-        if (!redirectStarted && !isTransferring && !ssoCallbackReceived) {
-          finish(
-            const GoogleSignInError(
-              'Google sign-in could not start. Please try again.',
-            ),
-          );
-        }
+      } else if (!launchSuccess && !isTransferring && !ssoCallbackReceived) {
+        finish(
+          const GoogleSignInError(
+            'Google sign-in could not start. Please try again.',
+          ),
+        );
       }
     }
-
     try {
       final result = await completer.future;
       return result;
