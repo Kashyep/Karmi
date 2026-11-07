@@ -53,7 +53,7 @@ def create_bug_report(
     body: BugReportCreate,
 ) -> tuple[BugReport, bool]:
     screenshot_b64 = body.screenshot.data_base64 if body.screenshot else None
-    screenshot_content_type = body.screenshot.content_type if body.screenshot else None
+    screenshot_content_type: str | None = body.screenshot.content_type if body.screenshot else None
     request_hash = compute_bug_report_hash(
         body.category,
         body.description,
@@ -77,7 +77,6 @@ def create_bug_report(
         raise _idempotency_conflict()
     # 3. Screenshot validation
     raw_screenshot: bytes | None = None
-    screenshot_content_type: str | None = None
     if body.screenshot is not None:
         ct = body.screenshot.content_type.strip().lower()
         if ct not in ("image/png", "image/jpeg"):
