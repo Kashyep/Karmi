@@ -324,6 +324,25 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
       finish(GoogleSignInError(issueFromClerkError(e).message));
     }
 
+    if (!completer.isCompleted) {
+      if (auth.isSignedIn) {
+        finish(const GoogleSignInSuccess());
+      } else {
+        final redirectUrl = auth
+            .signIn
+            ?.firstFactorVerification
+            ?.externalVerificationRedirectUrl;
+        final redirectStarted = redirectUrl is String && redirectUrl.isNotEmpty;
+        if (!redirectStarted) {
+          finish(
+            const GoogleSignInError(
+              'Google sign-in could not start. Please try again.',
+            ),
+          );
+        }
+      }
+    }
+
     try {
       final result = await completer.future;
       return result;

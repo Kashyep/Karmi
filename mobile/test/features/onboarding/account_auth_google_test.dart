@@ -292,6 +292,46 @@ void main() {
       );
       expect(passwordWidget.enabled, isTrue);
     });
+
+    testWidgets(
+      'Google sign-in start failure displays retry message and re-enables actions',
+      (tester) async {
+        final fake = FakeClerkEmailCodeActions();
+        fake.nextGoogleResult = const GoogleSignInError(
+          'Google sign-in could not start. Please try again.',
+        );
+
+        await _pumpAuthStep(tester, actions: fake);
+
+        final googleButton = find.byKey(
+          const ValueKey('onboarding_google_button'),
+        );
+        await tester.tap(googleButton);
+        await settle(tester);
+
+        expect(fake.calls, contains('signInWithGoogle'));
+        expect(
+          find.text('Google sign-in could not start. Please try again.'),
+          findsOneWidget,
+        );
+
+        // Actions and form remain interactive
+        final buttonWidget = tester.widget<GoogleSignInButton>(googleButton);
+        expect(buttonWidget.isLoading, isFalse);
+        expect(buttonWidget.onPressed, isNotNull);
+
+        final ctaWidget = tester.widget<PillCta>(
+          find.byKey(const ValueKey('onboarding_auth_continue')),
+        );
+        expect(ctaWidget.isLoading, isFalse);
+        expect(ctaWidget.onPressed, isNotNull);
+
+        final passwordWidget = tester.widget<TextField>(
+          find.byKey(const ValueKey('onboarding_password_field')),
+        );
+        expect(passwordWidget.enabled, isTrue);
+      },
+    );
     testWidgets('hidden when actions is null (Clerk not configured)', (
       tester,
     ) async {
