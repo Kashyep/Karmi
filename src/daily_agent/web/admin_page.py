@@ -52,17 +52,24 @@ def admin_page_headers(*, publishable_key: str | None) -> dict[str, str]:
     workers and frames its challenge widget, so ``worker-src`` and ``frame-src`` are listed.
     ``connect-src`` and ``img-src`` name the Clerk hosts too. Framing and plugin content are
     refused outright.
+
+    Clerk's frontend component (``clerk.mountSignIn``) injects runtime <style> elements and
+    applies inline style attributes for UI components. Because Clerk's dynamic CSS-in-JS
+    cannot be hashed ahead of time and does not support style nonces in vanilla JS mounts,
+    ``style-src`` includes ``'unsafe-inline'`` when Clerk is configured. Scripts remain
+    strictly locked down without ``'unsafe-eval'``.
     """
     domain = clerk_frontend_domain(publishable_key)
     clerk_origin = f" https://{domain}" if domain else ""
     clerk_protect = f" {CLERK_PROTECT_ORIGIN}" if domain else ""
     clerk_images = f" {CLERK_IMAGE_ORIGIN}" if domain else ""
+    clerk_styles = " 'unsafe-inline'" if domain else ""
     challenge_frames = f" {CLERK_CHALLENGE_ORIGIN}" if domain else ""
     csp = "; ".join(
         [
             "default-src 'self'",
             f"script-src 'self'{clerk_origin}{clerk_protect}",
-            "style-src 'self'",
+            f"style-src 'self'{clerk_styles}",
             "worker-src 'self' blob:",
             f"connect-src 'self'{clerk_origin}",
             f"img-src 'self' data: blob:{clerk_origin}{clerk_images}",

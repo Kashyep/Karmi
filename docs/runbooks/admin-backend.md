@@ -92,4 +92,31 @@ Clerk frontend host encoded in the publishable key, `frame-ancestors 'none'`, `o
 is pinned to an exact version (`CLERK_JS_VERSION` in `admin.js`, currently `5.125.11`); never use a floating
 major range such as `@5`.
 
+When Clerk is configured, `style-src` permits `'self' 'unsafe-inline'`. Clerk's frontend bundle
+(`clerk.mountSignIn`) injects dynamic `<style>` elements and applies inline `style` attributes at runtime.
+Because Clerk's dynamic CSS-in-JS does not support CSP hashes or nonces in vanilla JS mounts,
+`'unsafe-inline'` is the minimum directive required for the sign-in UI to render. Scripts remain strictly
+controlled without `'unsafe-eval'` or wildcard origins (`*`). When no Clerk key is configured, `style-src`
+reverts to strict `'self'`.
+
 The dashboard page and its assets can be disabled by setting `DAILY_AGENT_ADMIN_UI_ENABLED=false` (or `ADMIN_UI_ENABLED=false`), returning 404. To support authenticated bug report screenshot viewing via blob URLs, `img-src` allows `blob:`.
+
+## Access-log redaction (F-05)
+
+The server access log (`uvicorn.access`) records the client address, HTTP method, request path
+(including query strings), protocol version, and HTTP status code (along with response timing).
+
+Sensitive credentials and headers are protected from log leakage:
+- **Tokens and credentials:** `install_log_redaction()` installs a custom `LogRecordFactory`
+  (`src/daily_agent/ratelimit.py`) that filters log messages and string arguments at record creation
+  time. It automatically redacts Bearer tokens (`bearer <token>`), secret API keys (`sk-...`),
+  JWTs (`eyJ...`), secret parameters (`TOKEN=...`, `API_KEY=...`, `PASSWORD=...`, `SECRET=...`),
+  and database credentials in connection strings.
+- **Headers:** Request headers—including `Authorization`, `Cookie`, `X-Admin-Session`, and
+  `X-Admin-Reason`—are omitted from access log lines by default.
+- **Reason values:** Operator reasons (e.g. for `GET /v1/admin/users/{uid}/export`) are passed
+  exclusively in the `X-Admin-Reason` header rather than query strings. Because headers are not logged
+  by access formatters, private justification notes do not leak into access logs.
+
+Request paths (excluding headers), HTTP response status codes, and request timing are not redacted and
+remain available for operational monitoring and debugging.
