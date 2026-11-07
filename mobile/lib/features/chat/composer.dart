@@ -74,6 +74,7 @@ class Composer extends StatefulWidget {
 class _ComposerState extends State<Composer> {
   final _controller = TextEditingController();
   late final FocusNode _focusNode;
+  late final ValueNotifier<bool> _canSendNotifier;
   late DraftStore _draftStore;
   final _fallbackDrafts = MemoryDraftStore();
 
@@ -90,9 +91,10 @@ class _ComposerState extends State<Composer> {
     super.initState();
     _draftStore = widget.draftStore ?? _fallbackDrafts;
     _focusNode = FocusNode(
-      debugLabel: 'ComposerTextFieldFocus',
+      debugLabel: 'ChatInputFocus',
       onKeyEvent: _handleKeyEvent,
     );
+    _canSendNotifier = ValueNotifier<bool>(_canSend);
     _focusNode.addListener(_onFocusChanged);
     widget.refocus?.addListener(_onRefocus);
     _controller.addListener(_onTextChanged);
@@ -118,6 +120,7 @@ class _ComposerState extends State<Composer> {
         _controller.selection =
             fill?.selection ?? TextSelection.collapsed(offset: text.length);
       });
+      _canSendNotifier.value = _canSend;
       _focusNode.requestFocus();
       _scheduleDraftSave();
     }
@@ -145,6 +148,9 @@ class _ComposerState extends State<Composer> {
   @override
   void didUpdateWidget(Composer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.busy != widget.busy) {
+      _canSendNotifier.value = _canSend;
+    }
     if (oldWidget.refocus != widget.refocus) {
       oldWidget.refocus?.removeListener(_onRefocus);
       widget.refocus?.addListener(_onRefocus);
@@ -170,6 +176,7 @@ class _ComposerState extends State<Composer> {
     _debounceTimer?.cancel();
     _saveDraft(widget.draftKey, _controller.text);
     _controller.dispose();
+    _canSendNotifier.dispose();
     _focusNode.removeListener(_onFocusChanged);
     widget.refocus?.removeListener(_onRefocus);
     _focusNode.dispose();
@@ -186,6 +193,7 @@ class _ComposerState extends State<Composer> {
         _previousText = draft;
         _controller.selection = TextSelection.collapsed(offset: draft.length);
       });
+      _canSendNotifier.value = _canSend;
     }
   }
 
@@ -235,6 +243,7 @@ class _ComposerState extends State<Composer> {
         );
         _previousText = remaining;
         _isHandlingPaste = false;
+        _canSendNotifier.value = _canSend;
         setState(() {});
         _scheduleDraftSave();
         return;
@@ -243,7 +252,7 @@ class _ComposerState extends State<Composer> {
     }
 
     _previousText = newText;
-    setState(() {});
+    _canSendNotifier.value = _canSend;
     _scheduleDraftSave();
   }
 
@@ -277,6 +286,7 @@ class _ComposerState extends State<Composer> {
       _attachments.addAll(picked);
       _limitError = null;
     });
+    _canSendNotifier.value = _canSend;
   }
 
   void _send() {
@@ -297,7 +307,8 @@ class _ComposerState extends State<Composer> {
     final attachments = List<TextAttachment>.unmodifiable(_attachments);
 
     final submission = ComposerSubmit(text: fullText, attachments: attachments);
-
+    final hadChipsOrAttachments =
+        _pasteChips.isNotEmpty || _attachments.isNotEmpty;
     // Optimistic send: clear state immediately
     _controller.clear();
     _previousText = '';
@@ -306,8 +317,10 @@ class _ComposerState extends State<Composer> {
     _limitError = null;
     _debounceTimer?.cancel();
     _draftStore.clear(widget.draftKey);
-    setState(() {});
-
+    _canSendNotifier.value = _canSend;
+    if (hadChipsOrAttachments) {
+      setState(() {});
+    }
     // Sending dismisses the keyboard; a failed send brings focus back via [refocus].
     _focusNode.unfocus();
     widget.onSubmit(submission);
@@ -421,9 +434,10 @@ class _ComposerState extends State<Composer> {
                                         ),
                                         child: AttachmentChip(
                                           attachment: _attachments[i],
-                                          onRemove: () => setState(
-                                            () => _attachments.removeAt(i),
-                                          ),
+                                          onRemove: () => setState(() {
+                                            _attachments.removeAt(i);
+                                            _canSendNotifier.value = _canSend;
+                                          }),
                                         ),
                                       ),
                                     for (int i = 0; i < _pasteChips.length; i++)
@@ -433,14 +447,15 @@ class _ComposerState extends State<Composer> {
                                         ),
                                         child: PasteChip(
                                           text: _pasteChips[i],
-                                          onRemove: () => setState(
-                                            () => _pasteChips.removeAt(i),
-                                          ),
+                                          onRemove: () => setState(() {
+                                            _pasteChips.removeAt(i);
+                                            _canSendNotifier.value = _canSend;
+                                          }),
                                         ),
                                       ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
                               const SizedBox(height: 6),
                               Container(height: 1, color: colors.hairline),
                               const SizedBox(height: 6),
@@ -516,50 +531,56 @@ class _ComposerState extends State<Composer> {
                                   ),
                                 ),
                                 clipBehavior: Clip.antiAlias,
-                                child: IconButton.filled(
-                                  key: const ValueKey('composer-send-button'),
-                                  tooltip: actionLabel,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints.tightFor(
-                                    width: 34,
-                                    height: 34,
-                                  ),
-                                  style:
-                                      IconButton.styleFrom(
-                                        backgroundColor: colors.primary,
-                                        foregroundColor:
-                                            colors.primaryForeground,
-                                        disabledBackgroundColor: colors.muted,
-                                        disabledForegroundColor:
-                                            colors.mutedForeground,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            widget.busy ? 8 : 17,
-                                          ),
-                                        ),
-                                        minimumSize: const Size(34, 34),
-                                        fixedSize: const Size(34, 34),
-                                        padding: EdgeInsets.zero,
-                                      ).copyWith(
-                                        side: WidgetStateProperty.resolveWith(
-                                          (states) =>
-                                              states.contains(
-                                                WidgetState.focused,
-                                              )
-                                              ? BorderSide(
-                                                  color:
-                                                      colors.primaryForeground,
-                                                  width: KarmiShape.of(
-                                                    context,
-                                                  ).focusRingWidth,
-                                                )
-                                              : null,
-                                        ),
+                                child: ValueListenableBuilder<bool>(
+                                  valueListenable: _canSendNotifier,
+                                  builder: (context, canSend, child) {
+                                    return IconButton.filled(
+                                      key: const ValueKey('composer-send-button'),
+                                      tooltip: actionLabel,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints.tightFor(
+                                        width: 34,
+                                        height: 34,
                                       ),
-                                  onPressed: widget.busy
-                                      ? widget.onStop
-                                      : (_canSend ? _send : null),
-                                  icon: AnimatedSwitcher(
+                                      style:
+                                          IconButton.styleFrom(
+                                            backgroundColor: colors.primary,
+                                            foregroundColor:
+                                                colors.primaryForeground,
+                                            disabledBackgroundColor: colors.muted,
+                                            disabledForegroundColor:
+                                                colors.mutedForeground,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(
+                                                widget.busy ? 8 : 17,
+                                              ),
+                                            ),
+                                            minimumSize: const Size(34, 34),
+                                            fixedSize: const Size(34, 34),
+                                            padding: EdgeInsets.zero,
+                                          ).copyWith(
+                                            side: WidgetStateProperty.resolveWith(
+                                              (states) =>
+                                                  states.contains(
+                                                    WidgetState.focused,
+                                                  )
+                                                  ? BorderSide(
+                                                      color:
+                                                          colors.primaryForeground,
+                                                      width: KarmiShape.of(
+                                                        context,
+                                                      ).focusRingWidth,
+                                                    )
+                                                  : null,
+                                            ),
+                                          ),
+                                      onPressed: widget.busy
+                                          ? widget.onStop
+                                          : (canSend ? _send : null),
+                                      icon: child!,
+                                    );
+                                  },
+                                  child: AnimatedSwitcher(
                                     duration: KarmiMotion.duration(
                                       context,
                                       KarmiMotion.composerDuration,

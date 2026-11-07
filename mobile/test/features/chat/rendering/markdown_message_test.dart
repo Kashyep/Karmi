@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:karmi_app/features/chat/rendering/citation_chip.dart';
 import 'package:karmi_app/features/chat/rendering/file_chip.dart';
 import 'package:karmi_app/features/chat/rendering/markdown_message.dart';
@@ -247,5 +248,106 @@ void main() {
       _host(MarkdownMessage(text: long, streaming: true)),
     );
     expect(find.text('Show more'), findsNothing);
+  });
+
+  group('ParsedMarkdownCache', () {
+    test('caches parsed AST and reports hit on identical key', () {
+      final cache = ParsedMarkdownCache(capacity: 5);
+      var parseCount = 0;
+      List<md.Node> parse(String t) {
+        parseCount++;
+        return [md.Text(t)];
+      }
+
+      final first = cache.getOrParse('msg-1:hello', () => parse('hello'));
+      expect(parseCount, 1);
+      expect(cache.hits, 0);
+      expect(cache.misses, 1);
+
+      final second = cache.getOrParse('msg-1:hello', () => parse('hello'));
+      expect(parseCount, 1);
+      expect(cache.hits, 1);
+      expect(cache.misses, 1);
+      expect(identical(first, second), isTrue);
+    });
+
+    test('invalidates on content change (streaming updates)', () {
+      final cache = ParsedMarkdownCache(capacity: 5);
+      var parseCount = 0;
+
+      cache.getOrParse('msg-1:tok1', () {
+        parseCount++;
+        return [md.Text('tok1')];
+      });
+      expect(parseCount, 1);
+
+      // Content changes -> new key, parses new revision
+      cache.getOrParse('msg-1:tok1 tok2', () {
+        parseCount++;
+        return [md.Text('tok1 tok2')];
+      });
+      expect(parseCount, 2);
+      expect(cache.hits, 0);
+      expect(cache.misses, 2);
+    });
+
+    test('bounds cache size and evicts least recently used', () {
+      final cache = ParsedMarkdownCache(capacity: 2);
+      cache.getOrParse('a', () => [md.Text('a')]);
+      cache.getOrParse('b', () => [md.Text('b')]);
+      expect(cache.size, 2);
+      expect(cache.containsKey('a'), isTrue);
+
+      // Adding 'c' evicts 'a'
+      cache.getOrParse('c', () => [md.Text('c')]);
+      expect(cache.size, 2);
+      expect(cache.containsKey('a'), isFalse);
+      expect(cache.containsKey('b'), isTrue);
+      expect(cache.containsKey('c'), isTrue);
+    });
+  });
+
+  testWidgets('MarkdownMessage uses cache and updates on streaming change', (tester) async {
+    final cache = ParsedMarkdownCache(capacity: 10);
+    await tester.pumpWidget(
+      _host(
+        MarkdownMessage(
+          messageId: 'm1',
+          text: 'Initial text',
+          streaming: true,
+          cache: cache,
+        ),
+      ),
+    );
+    expect(cache.misses, 1);
+    expect(cache.hits, 0);
+
+    // Rebuilding with identical messageId and text hits cache
+    await tester.pumpWidget(
+      _host(
+        MarkdownMessage(
+          messageId: 'm1',
+          text: 'Initial text',
+          streaming: true,
+          cache: cache,
+        ),
+      ),
+    );
+    expect(cache.misses, 1);
+    expect(cache.hits, 1);
+
+    // Streaming content update invalidates and parses new text
+    await tester.pumpWidget(
+      _host(
+        MarkdownMessage(
+          messageId: 'm1',
+          text: 'Initial text with delta',
+          streaming: true,
+          cache: cache,
+        ),
+      ),
+    );
+    expect(cache.misses, 2);
+    expect(cache.hits, 1);
   });
 }

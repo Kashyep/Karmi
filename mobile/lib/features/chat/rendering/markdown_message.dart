@@ -1,5 +1,5 @@
+import 'dart:collection';
 import 'dart:convert';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -49,6 +49,49 @@ class CitationSyntax extends md.InlineSyntax {
   }
 }
 
+/// Bounded LRU cache of parsed Markdown AST nodes.
+class ParsedMarkdownCache {
+  ParsedMarkdownCache({this.capacity = 100});
+
+  final int capacity;
+  final LinkedHashMap<String, List<md.Node>> _cache =
+      LinkedHashMap<String, List<md.Node>>();
+
+  int _hits = 0;
+  int _misses = 0;
+
+  int get hits => _hits;
+  int get misses => _misses;
+  int get size => _cache.length;
+
+  /// Cache key can be a messageId+content or the content string itself.
+  List<md.Node> getOrParse(String key, List<md.Node> Function() parse) {
+    final cached = _cache.remove(key);
+    if (cached != null) {
+      _hits++;
+      _cache[key] = cached;
+      return cached;
+    }
+    _misses++;
+    final parsed = parse();
+    if (_cache.length >= capacity) {
+      _cache.remove(_cache.keys.first);
+    }
+    _cache[key] = parsed;
+    return parsed;
+  }
+
+  bool containsKey(String key) => _cache.containsKey(key);
+
+  void clear() {
+    _cache.clear();
+    _hits = 0;
+    _misses = 0;
+  }
+}
+
+final ParsedMarkdownCache defaultMarkdownCache = ParsedMarkdownCache();
+
 /// Rich rendering widget for markdown assistant messages.
 ///
 /// Converts markdown AST into Flutter widgets, handling headings, lists,
@@ -59,34 +102,38 @@ class MarkdownMessage extends StatefulWidget {
     required this.text,
     required this.streaming,
     this.allowCollapse = true,
+    this.messageId,
+    this.cache,
   });
 
   final String text;
   final bool streaming;
   final bool allowCollapse;
+  final String? messageId;
+  final ParsedMarkdownCache? cache;
 
   @override
   State<MarkdownMessage> createState() => _MarkdownMessageState();
 }
 
 class _MarkdownMessageState extends State<MarkdownMessage> {
-  String? _cachedText;
-  List<md.Node>? _cachedNodes;
   final List<TapGestureRecognizer> _recognizers = [];
 
+  ParsedMarkdownCache get _cache => widget.cache ?? defaultMarkdownCache;
+
   List<md.Node> _getNodes() {
-    if (_cachedText == widget.text && _cachedNodes != null) {
-      return _cachedNodes!;
-    }
-    final document = md.Document(
-      extensionSet: md.ExtensionSet.gitHubWeb,
-      encodeHtml: true,
-      inlineSyntaxes: [CitationSyntax(), SoftLineBreakSyntax()],
-    );
-    final lines = const LineSplitter().convert(widget.text);
-    _cachedText = widget.text;
-    _cachedNodes = document.parseLines(lines);
-    return _cachedNodes!;
+    final key = widget.messageId != null
+        ? '${widget.messageId}:${widget.text}'
+        : widget.text;
+    return _cache.getOrParse(key, () {
+      final document = md.Document(
+        extensionSet: md.ExtensionSet.gitHubWeb,
+        encodeHtml: true,
+        inlineSyntaxes: [CitationSyntax(), SoftLineBreakSyntax()],
+      );
+      final lines = const LineSplitter().convert(widget.text);
+      return document.parseLines(lines);
+    });
   }
 
   void _disposeRecognizers() {
