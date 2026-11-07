@@ -930,7 +930,7 @@ def create_app() -> FastAPI:
         target = (static_dir / path).resolve()
         if not target.is_file() or not target.is_relative_to(static_dir):
             raise HTTPException(status_code=404, detail="File not found")
-        if not settings.admin_ui_enabled and path.startswith("admin."):
+        if not settings.admin_ui_enabled and target.name.startswith("admin."):
             raise HTTPException(status_code=404, detail="File not found")
         return FileResponse(target)
 

@@ -223,6 +223,12 @@ def test_admin_ui_disabled_returns_404(client_factory) -> None:
     assert client_enabled.get("/static/admin.css").status_code == 200
 
 
+def test_admin_static_traversal_returns_404_when_admin_disabled(client_factory) -> None:
+    client_disabled = client_factory(None, admin_ui_enabled=False)
+    assert client_disabled.get("/static/icons%2F..%2Fadmin.js").status_code == 404
+    assert client_disabled.get("/static/icons%2F..%2Fadmin.css").status_code == 404
+    assert client_disabled.get("/static/karmi-tokens.css").status_code == 200
+
 def test_admin_csp_includes_blob_img_src(client_factory) -> None:
     response = client_factory(_publishable_key()).get("/admin")
     directives = _csp_directives(response.headers["content-security-policy"])
