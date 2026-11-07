@@ -4,6 +4,7 @@ import base64
 import http.server
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -221,7 +222,45 @@ class MockAdminHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(content)
 
 
+def _resolve_chromium_path() -> str:
+    env_path = os.environ.get("KARMI_CHROMIUM_PATH")
+    if env_path:
+        p = Path(env_path)
+        if not p.is_file():
+            raise FileNotFoundError(f"KARMI_CHROMIUM_PATH does not point to a valid file: {env_path}")
+        return str(p.resolve())
+    for candidate in ("chromium", "chromium-browser", "google-chrome", "chrome"):
+        discovered = shutil.which(candidate)
+        if discovered:
+            return discovered
+    raise RuntimeError(
+        "Chromium binary not found. Set KARMI_CHROMIUM_PATH to your Chromium or Chrome executable."
+    )
+
+
+def _resolve_node_modules() -> str:
+    env_path = os.environ.get("KARMI_NODE_MODULES") or os.environ.get("NODE_PATH")
+    if env_path:
+        p = Path(env_path)
+        if not p.is_dir():
+            raise FileNotFoundError(f"KARMI_NODE_MODULES does not point to a valid directory: {env_path}")
+        return str(p.resolve())
+    check = subprocess.run(  # noqa: S603, S607
+        ["node", "-e", "require.resolve('playwright')"],
+        capture_output=True,
+        text=True,
+    )
+    if check.returncode == 0:
+        return ""
+    raise RuntimeError(
+        "Playwright node module not found. Set KARMI_NODE_MODULES to the directory containing playwright "
+        "(e.g. /path/to/node_modules)."
+    )
+
+
 def run_screenshots(port: int = 8917) -> None:
+    chromium_path = _resolve_chromium_path()
+    node_modules = _resolve_node_modules()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     server = http.server.HTTPServer(("127.0.0.1", port), MockAdminHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -232,7 +271,7 @@ def run_screenshots(port: int = 8917) -> None:
     const pw = require('playwright');
     (async () => {{
       const browser = await pw.chromium.launch({{
-        executablePath: '/home/rosso/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
+        executablePath: {json.dumps(chromium_path)},
         args: ['--no-sandbox', '--disable-gpu']
       }});
 
@@ -284,7 +323,8 @@ def run_screenshots(port: int = 8917) -> None:
     """
 
     env = dict(os.environ)
-    env["NODE_PATH"] = "/home/rosso/Projects/AxiomFrontend/node_modules"
+    if node_modules:
+        env["NODE_PATH"] = node_modules
     res = subprocess.run(  # noqa: S603
         ["node", "-e", js_runner],  # noqa: S607
         env=env,
