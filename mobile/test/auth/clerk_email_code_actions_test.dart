@@ -235,7 +235,7 @@ void main() {
       );
       expect(failure, isA<GoogleSignInError>());
       expect(
-        failure?.message,
+        (failure as GoogleSignInError?)?.message,
         'Google sign-in could not start. Please try again.',
       );
     });
@@ -248,7 +248,7 @@ void main() {
       );
       expect(failure, isA<GoogleSignInError>());
       expect(
-        failure?.message,
+        (failure as GoogleSignInError?)?.message,
         'Google sign-in could not start. Please try again.',
       );
     });
@@ -260,7 +260,7 @@ void main() {
       );
       expect(failure, isA<GoogleSignInError>());
       expect(
-        failure?.message,
+        (failure as GoogleSignInError?)?.message,
         'Google sign-in could not start. Please try again.',
       );
     });
@@ -272,7 +272,7 @@ void main() {
       );
       expect(failure, isA<GoogleSignInError>());
       expect(
-        failure?.message,
+        (failure as GoogleSignInError?)?.message,
         'Google sign-in could not start. Please try again.',
       );
     });
@@ -285,13 +285,13 @@ void main() {
       expect(failure, isNull);
     });
 
-    test('returns null when user is already signed in', () async {
-      final failure = await postSsoSignInLaunchAndDecision(
+    test('returns GoogleSignInSuccess when user is already signed in', () async {
+      final result = await postSsoSignInLaunchAndDecision(
         redirectUrl: null,
         urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => false,
         isSignedIn: true,
       );
-      expect(failure, isNull);
+      expect(result, isA<GoogleSignInSuccess>());
     });
 
     test('returns null when transfer is active', () async {

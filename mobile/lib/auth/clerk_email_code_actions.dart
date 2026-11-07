@@ -83,10 +83,10 @@ Future<bool> launchSsoBrowser({
   }
 }
 
-/// Pure decision helper resolving the post-ssoSignIn launch outcome into a [GoogleSignInError]
-/// or null if launch succeeded or the sign-in session progressed (signed in, transferring,
+/// Pure decision helper resolving the post-ssoSignIn launch outcome into a [GoogleSignInResult]
+/// or null if launch succeeded or the sign-in session progressed (transferring
 /// or callback received).
-Future<GoogleSignInError?> postSsoSignInLaunchAndDecision({
+Future<GoogleSignInResult?> postSsoSignInLaunchAndDecision({
   required String? redirectUrl,
   required UrlLauncherFunction urlLauncher,
   LaunchMode mode = LaunchMode.platformDefault,
@@ -99,6 +99,9 @@ Future<GoogleSignInError?> postSsoSignInLaunchAndDecision({
     urlLauncher: urlLauncher,
     mode: mode,
   );
+  if (isSignedIn) {
+    return const GoogleSignInSuccess();
+  }
   return ssoStartFailureOrNull(
     launched: launched,
     isSignedIn: isSignedIn,
@@ -428,7 +431,6 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
       finish(GoogleSignInError(issue.message));
     });
 
-    bool launchSuccess = false;
     try {
       final redirect = auth.config.redirectionGenerator?.call(
             context,
@@ -446,33 +448,25 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
           finish(GoogleSignInError(issue.message));
         },
       );
-
-      final redirectUrl = auth
-          .signIn
-          ?.firstFactorVerification
-          ?.externalVerificationRedirectUrl;
-      launchSuccess = await launchSsoBrowser(
-        redirectUrl: redirectUrl,
-        urlLauncher: _urlLauncher,
-        mode: auth.config.defaultLaunchMode,
-      );
     } catch (e) {
       finish(GoogleSignInError(issueFromClerkError(e).message));
     }
 
     if (!completer.isCompleted) {
-      if (auth.isSignedIn) {
-        finish(const GoogleSignInSuccess());
-      } else {
-        final failure = ssoStartFailureOrNull(
-          launched: launchSuccess,
-          isSignedIn: auth.isSignedIn,
-          isTransferring: isTransferring,
-          ssoCallbackReceived: ssoCallbackReceived,
-        );
-        if (failure != null) {
-          finish(failure);
-        }
+      final redirectUrl = auth
+          .signIn
+          ?.firstFactorVerification
+          ?.externalVerificationRedirectUrl;
+      final decision = await postSsoSignInLaunchAndDecision(
+        redirectUrl: redirectUrl,
+        urlLauncher: _urlLauncher,
+        mode: auth.config.defaultLaunchMode,
+        isSignedIn: auth.isSignedIn,
+        isTransferring: isTransferring,
+        ssoCallbackReceived: ssoCallbackReceived,
+      );
+      if (decision != null) {
+        finish(decision);
       }
     }
     try {
