@@ -232,5 +232,85 @@ void main() {
       expect(remaining.length, 1);
       expect(remaining.first.userId, 'user_2');
     });
+
+    test('legacy rejected item is dropped on load and unpersisted', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final legacyRejectedJson = jsonEncode({
+        'client_report_id': 'legacy-rejected-001',
+        'payload': {
+          'client_report_id': 'legacy-rejected-001',
+          'category': 'chat',
+          'description': 'Rejected error report',
+        },
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'user_id': 'user_legacy',
+        'is_rejected': true,
+        'rejection_reason': 'Server rejected 422',
+      });
+      final validJson = jsonEncode({
+        'client_report_id': 'valid-item-001',
+        'payload': {
+          'client_report_id': 'valid-item-001',
+          'category': 'chat',
+          'description': 'Valid report',
+        },
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'user_id': 'user_legacy',
+        'is_rejected': false,
+      });
+      await prefs.setStringList(BugReportQueue.prefKey, [legacyRejectedJson, validJson]);
+
+      final queue = BugReportQueue();
+      final items = await queue.loadAll();
+
+      expect(items.length, 1);
+      expect(items.first.clientReportId, 'valid-item-001');
+
+      // Idempotency: verify prefs list was cleaned in place
+      final persisted = prefs.getStringList(BugReportQueue.prefKey)!;
+      expect(persisted.length, 1);
+      expect(persisted.first.contains('legacy-rejected-001'), isFalse);
+    });
+
+    test('legacy inline screenshot is migrated to separate storage and stripped from queue entry', () async {
+      final prefs = await SharedPreferences.getInstance();
+      const screenshotData = {
+        'bytes_base64': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'width': 1,
+        'height': 1,
+      };
+      final legacyInlineJson = jsonEncode({
+        'client_report_id': 'legacy-inline-001',
+        'payload': {
+          'client_report_id': 'legacy-inline-001',
+          'category': 'chat',
+          'description': 'Report with inline screenshot',
+          'screenshot': screenshotData,
+        },
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'user_id': 'user_owner',
+        'is_rejected': false,
+      });
+      await prefs.setStringList(BugReportQueue.prefKey, [legacyInlineJson]);
+
+      final queue = BugReportQueue();
+      final items = await queue.loadAll();
+      expect(items.length, 1);
+      expect(items.first.payload.containsKey('screenshot'), isFalse);
+
+      // Stored separately in keyed screenshot storage
+      final scKey = BugReportQueue.screenshotPrefKey('legacy-inline-001');
+      expect(prefs.containsKey(scKey), isTrue);
+
+      // Resolves properly with screenshot restored
+      final resolved = await queue.resolveRequest(items.first);
+      expect(resolved.screenshot, isNotNull);
+      expect(resolved.screenshot!.width, 1);
+
+      // Persisted queue entry no longer has inline screenshot
+      final persisted = prefs.getStringList(BugReportQueue.prefKey)!;
+      final decoded = jsonDecode(persisted.first) as Map<String, dynamic>;
+      expect((decoded['payload'] as Map).containsKey('screenshot'), isFalse);
+    });
   });
 }

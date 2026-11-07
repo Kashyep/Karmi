@@ -133,11 +133,51 @@ class BugReportQueue {
     final prefs = await _getPrefs();
     final rawList = prefs.getStringList(prefKey) ?? [];
     final items = <BugReportQueueItem>[];
+    bool migrated = false;
+
     for (final raw in rawList) {
       try {
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
+        final isRejected = decoded['is_rejected'] == true;
+        final clientReportId = decoded['client_report_id'] as String?;
+        if (isRejected) {
+          if (clientReportId != null && clientReportId.isNotEmpty) {
+            await prefs.remove(screenshotPrefKey(clientReportId));
+          }
+          migrated = true;
+          continue;
+        }
+
+        final payload = decoded['payload'];
+        if (payload is Map<String, dynamic> && payload.containsKey('screenshot')) {
+          final inlineScreenshot = payload['screenshot'];
+          final userId = decoded['user_id'] as String?;
+          if (clientReportId != null &&
+              clientReportId.isNotEmpty &&
+              userId != null &&
+              userId.isNotEmpty &&
+              inlineScreenshot != null) {
+            final scKey = screenshotPrefKey(clientReportId);
+            if (!prefs.containsKey(scKey)) {
+              await prefs.setString(scKey, jsonEncode(inlineScreenshot));
+            }
+          } else if (clientReportId != null && clientReportId.isNotEmpty) {
+            await prefs.remove(screenshotPrefKey(clientReportId));
+          }
+          final newPayload = Map<String, dynamic>.from(payload);
+          newPayload.remove('screenshot');
+          decoded['payload'] = newPayload;
+          migrated = true;
+        }
+
         items.add(BugReportQueueItem.fromJson(decoded));
-      } catch (_) {}
+      } catch (_) {
+        migrated = true;
+      }
+    }
+
+    if (migrated) {
+      await _saveAllUnlocked(items);
     }
     return items;
   }
