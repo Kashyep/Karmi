@@ -933,6 +933,7 @@ def create_app() -> FastAPI:
         if not settings.admin_ui_enabled and path.startswith("admin."):
             raise HTTPException(status_code=404, detail="File not found")
         return FileResponse(target)
+
     @app.get("/manifest.webmanifest", include_in_schema=False)
     def manifest(tier: str | None = None) -> Response:
         data = build_manifest(tier)

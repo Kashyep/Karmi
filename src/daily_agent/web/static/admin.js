@@ -240,6 +240,13 @@
     validateCreditInput,
     canSubmitReason,
     parseRetryAfter,
+    // Render helpers exposed for automated security, XSS safety, and render testing
+    el,
+    setMessage,
+    bugRow,
+    renderBugDetail,
+    renderAuditDetail,
+    renderMonitor,
   });
   root.formatInr = formatInr;
   root.formatInrRupees = formatInrRupees;

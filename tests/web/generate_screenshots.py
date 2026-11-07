@@ -59,120 +59,128 @@ class MockAdminHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({"items": [{"user_id": "usr_dev_admin", "email": "admin@example.com"}]})
             return
         if path == "/v1/admin/monitor":
-            self._send_json({
-                "generated_at": "2026-11-07T12:00:00Z",
-                "requests_today": 1420,
-                "daily_request_cap": 5000,
-                "success_rate": 0.998,
-                "open_bug_reports": 7,
-                "cost_today_inr": 12450.50,
-                "spend_today_inr": 12450.50,
-                "platform_budget_inr": 100000.00,
-                "active_users": 182,
-                "active_streams": 3,
-                "req_per_min": 24,
-                "error_rate": 0.002,
-                "p95_latency_ms": 320,
-                "model_health": [
-                    {
-                        "model": "claude-3-5-sonnet",
-                        "provider": "anthropic",
-                        "last_success_at": "2026-11-07T11:59:00Z",
-                        "error_rate": 0.001,
-                        "p50_latency_ms": 280,
-                        "runs": 850,
-                    },
-                    {
-                        "model": "gemini-1.5-pro",
-                        "provider": "google",
-                        "last_success_at": "2026-11-07T11:58:30Z",
-                        "error_rate": 0.003,
-                        "p50_latency_ms": 310,
-                        "runs": 570,
-                    },
-                ],
-                "provider_health": [
-                    {"provider": "anthropic", "status": "ok"},
-                    {"provider": "google", "status": "ok"},
-                ],
-            })
+            self._send_json(
+                {
+                    "generated_at": "2026-11-07T12:00:00Z",
+                    "requests_today": 1420,
+                    "daily_request_cap": 5000,
+                    "success_rate": 0.998,
+                    "open_bug_reports": 7,
+                    "cost_today_inr": 12450.50,
+                    "spend_today_inr": 12450.50,
+                    "platform_budget_inr": 100000.00,
+                    "active_users": 182,
+                    "active_streams": 3,
+                    "req_per_min": 24,
+                    "error_rate": 0.002,
+                    "p95_latency_ms": 320,
+                    "model_health": [
+                        {
+                            "model": "claude-3-5-sonnet",
+                            "provider": "anthropic",
+                            "last_success_at": "2026-11-07T11:59:00Z",
+                            "error_rate": 0.001,
+                            "p50_latency_ms": 280,
+                            "runs": 850,
+                        },
+                        {
+                            "model": "gemini-1.5-pro",
+                            "provider": "google",
+                            "last_success_at": "2026-11-07T11:58:30Z",
+                            "error_rate": 0.003,
+                            "p50_latency_ms": 310,
+                            "runs": 570,
+                        },
+                    ],
+                    "provider_health": [
+                        {"provider": "anthropic", "status": "ok"},
+                        {"provider": "google", "status": "ok"},
+                    ],
+                }
+            )
             return
 
         if path == "/v1/admin/users":
-            self._send_json({
-                "items": [
-                    {
-                        "id": "usr_1",
-                        "email": "user1@example.com",
-                        "display_name": "Aarav Sharma",
-                        "tier": "parth",
-                        "effective_plan": "parth",
-                        "disabled": False,
-                        "open_bug_reports": 1,
-                        "created_at": "2026-10-01T00:00:00Z",
-                    }
-                ],
-                "next_cursor": None,
-            })
+            self._send_json(
+                {
+                    "items": [
+                        {
+                            "id": "usr_1",
+                            "email": "user1@example.com",
+                            "display_name": "Aarav Sharma",
+                            "tier": "parth",
+                            "effective_plan": "parth",
+                            "disabled": False,
+                            "open_bug_reports": 1,
+                            "created_at": "2026-10-01T00:00:00Z",
+                        }
+                    ],
+                    "next_cursor": None,
+                }
+            )
             return
 
         if path == "/v1/admin/bug-reports":
-            self._send_json({
-                "items": [
-                    {
-                        "id": "br_001",
-                        "ticket": "TICK-101",
-                        "category": "ui",
-                        "status": "new",
-                        "description_preview": "Header bar misaligned on mobile viewport after rotation",
-                        "user_id": "usr_99",
-                        "user_display_name": "Aarav Sharma",
-                        "has_screenshot": True,
-                        "created_at": "2026-11-07T08:30:00Z",
-                        "updated_at": "2026-11-07T08:30:00Z",
-                    },
-                    {
-                        "id": "br_002",
-                        "ticket": "TICK-102",
-                        "category": "latency",
-                        "status": "in_progress",
-                        "description_preview": "High latency during peak evening hours in stream session",
-                        "user_id": "usr_88",
-                        "user_display_name": "Priya Patel",
-                        "has_screenshot": False,
-                        "created_at": "2026-11-07T07:15:00Z",
-                        "updated_at": "2026-11-07T09:00:00Z",
-                    },
-                ],
-                "next_cursor": None,
-            })
+            self._send_json(
+                {
+                    "items": [
+                        {
+                            "id": "br_001",
+                            "ticket": "KARMI-0101",
+                            "category": "ui",
+                            "status": "new",
+                            "description_preview": "Header bar misaligned on mobile viewport after rotation",
+                            "user_id": "usr_99",
+                            "user_display_name": "Aarav Sharma",
+                            "has_screenshot": True,
+                            "created_at": "2026-11-07T08:30:00Z",
+                            "updated_at": "2026-11-07T08:30:00Z",
+                        },
+                        {
+                            "id": "br_002",
+                            "ticket": "KARMI-0102",
+                            "category": "latency",
+                            "status": "in_progress",
+                            "description_preview": "High latency during peak evening hours in stream session",
+                            "user_id": "usr_88",
+                            "user_display_name": "Priya Patel",
+                            "has_screenshot": False,
+                            "created_at": "2026-11-07T07:15:00Z",
+                            "updated_at": "2026-11-07T09:00:00Z",
+                        },
+                    ],
+                    "next_cursor": None,
+                }
+            )
             return
 
         if path == "/v1/admin/bug-reports/br_001":
-            self._send_json({
-                "id": "br_001",
-                "ticket": "TICK-101",
-                "category": "ui",
-                "status": "new",
-                "description": "Header bar misaligned on mobile viewport after rotation. The header overlaps the first message in the chat thread.",
-                "diagnostics": {
-                    "device": "Pixel 8",
-                    "os": "Android 14",
-                    "app_version": "1.4.0",
-                    "screen_density": 2.75,
-                },
-                "user": {
-                    "id": "usr_99",
-                    "display_name": "Aarav Sharma",
-                    "plan": "yanta",
-                },
-                "has_screenshot": True,
-                "admin_notes": "Needs reproduction on emulator.",
-                "created_at": "2026-11-07T08:30:00Z",
-                "updated_at": "2026-11-07T08:30:00Z",
-                "triaged_at": None,
-                "resolved_at": None,
-            })
+            self._send_json(
+                {
+                    "id": "br_001",
+                    "ticket": "KARMI-0101",
+                    "category": "ui",
+                    "status": "new",
+                    "description": "Header bar misaligned on mobile viewport after rotation. The header overlaps the first message in the chat thread.",
+                    "diagnostics": {
+                        "device": "Pixel 8",
+                        "os": "Android 14",
+                        "app_version": "1.4.0",
+                        "screen_density": 2.75,
+                    },
+                    "user": {
+                        "id": "usr_99",
+                        "display_name": "Aarav Sharma",
+                        "plan": "yanta",
+                    },
+                    "has_screenshot": True,
+                    "admin_notes": "Needs reproduction on emulator.",
+                    "created_at": "2026-11-07T08:30:00Z",
+                    "updated_at": "2026-11-07T08:30:00Z",
+                    "triaged_at": None,
+                    "resolved_at": None,
+                }
+            )
             return
 
         if path == "/v1/admin/bug-reports/br_001/screenshot":
@@ -197,7 +205,9 @@ class MockAdminHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({"token": "dev_token_123"})
             return
         if path == "/v1/admin/session":
-            self._send_json({"admin_session_token": "sess_123", "expires_at": "2035-01-01T00:00:00Z"})
+            self._send_json(
+                {"admin_session_token": "sess_123", "expires_at": "2035-01-01T00:00:00Z"}
+            )
             return
         self.send_response(404)
         self.end_headers()
@@ -276,7 +286,10 @@ def run_screenshots(port: int = 8917) -> None:
     env = dict(os.environ)
     env["NODE_PATH"] = "/home/rosso/Projects/AxiomFrontend/node_modules"
     res = subprocess.run(  # noqa: S603
-        ["node", "-e", js_runner], env=env, capture_output=True, text=True  # noqa: S607
+        ["node", "-e", js_runner],  # noqa: S607
+        env=env,
+        capture_output=True,
+        text=True,
     )
     if res.returncode != 0:
         raise RuntimeError(f"Playwright screenshot failed: {res.stderr}\n{res.stdout}")

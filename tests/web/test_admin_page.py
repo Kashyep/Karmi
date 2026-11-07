@@ -13,7 +13,15 @@ from daily_agent.web import render_admin_page
 
 STATIC = Path(__file__).resolve().parents[2] / "src" / "daily_agent" / "web" / "static"
 HEX_LITERAL = re.compile(r"#[0-9a-fA-F]{3,8}\b")
-FORBIDDEN_JS = ("innerHTML", "insertAdjacentHTML", "document.write", "localStorage", "sessionStorage", "document.cookie")
+FORBIDDEN_JS = (
+    "innerHTML",
+    "insertAdjacentHTML",
+    "document.write",
+    "localStorage",
+    "sessionStorage",
+    "document.cookie",
+)
+
 
 def _publishable_key(domain: str = "clerk.example.test") -> str:
     encoded = base64.b64encode(f"{domain}$".encode()).decode().rstrip("=")
@@ -236,27 +244,67 @@ def test_admin_js_forbids_dangerous_dom_apis() -> None:
 
 
 def test_admin_js_inr_formatting_and_xss_safety() -> None:
+    """Verify admin.js INR formatting and DOM XSS safety in a Node VM sandbox.
+
+    Toolchain context:
+    Node is NOT part of the repository toolchain (absent from scripts/tasks.py,
+    no package.json, and not explicitly installed in .github/workflows/ci.yml).
+    However, node is commonly available on development workstations and GitHub
+    Actions runners (via ubuntu-latest). If node is absent from PATH, this test
+    skips gracefully with an explicit reason.
+    """
+    import shutil
     import subprocess
+
+    if shutil.which("node") is None:
+        pytest.skip("Node.js runtime not found in PATH; skipping admin.js VM tests.")
 
     js_code = """
     const fs = require('fs');
     const path = require('path');
     const vm = require('vm');
+    const assert = require('assert');
 
-    // Mock minimal browser globals for testing formatters and DOM helper
+    const recordedInnerHTML = [];
+    const createdElements = [];
+    const recordedTextNodes = [];
+
     class MockNode {
       constructor(type, text = '') {
         this.nodeType = type;
-        this.textContent = text;
         this.children = [];
         this.attrs = {};
+        if (type === 3) {
+          this._textContent = String(text);
+          recordedTextNodes.push(String(text));
+        }
+      }
+      get textContent() {
+        if (this.nodeType === 3) return this._textContent;
+        return this.children.map(c => c.textContent).join('');
+      }
+      set textContent(text) {
+        if (this.nodeType === 3) {
+          this._textContent = String(text);
+          recordedTextNodes.push(String(text));
+        } else {
+          this.children = [];
+          if (text !== '') {
+            const tn = new MockTextNode(String(text));
+            this.children.push(tn);
+          }
+        }
       }
       append(...children) {
         for (const c of children) {
-          this.children.push(c);
+          if (c instanceof MockNode) this.children.push(c);
+          else if (c !== null && c !== undefined && c !== false) {
+            this.children.push(new MockTextNode(String(c)));
+          }
         }
       }
       setAttribute(k, v) { this.attrs[k] = String(v); }
+      getAttribute(k) { return this.attrs[k]; }
       removeAttribute(k) { delete this.attrs[k]; }
     }
 
@@ -265,18 +313,49 @@ def test_admin_js_inr_formatting_and_xss_safety() -> None:
         super(1);
         this.tagName = tag.toUpperCase();
         this.dataset = {};
+        this.value = '';
+        this.hidden = false;
+        this.className = '';
+        this.classList = {
+          add: (c) => { this.className = (this.className ? this.className + ' ' : '') + c; },
+          remove: (c) => {},
+          toggle: (c, force) => {},
+        };
+        createdElements.push(this);
       }
+      get innerHTML() { return ''; }
+      set innerHTML(val) { recordedInnerHTML.push(String(val)); }
+      insertAdjacentHTML() { throw new Error('insertAdjacentHTML is forbidden'); }
       addEventListener() {}
       focus() {}
       querySelector() { return new MockElement('input'); }
       querySelectorAll() { return []; }
       closest() { return null; }
-      replaceChildren() {}
+      replaceChildren(...children) {
+        this.children = [];
+        for (const c of children) {
+          if (c instanceof MockNode) this.children.push(c);
+          else if (c !== null && c !== undefined && c !== false) {
+            this.children.push(new MockTextNode(String(c)));
+          }
+        }
+      }
     }
+
     class MockTextNode extends MockNode {
       constructor(text) {
         super(3, text);
       }
+    }
+
+    const elements = new Map();
+    function getOrCreate(id) {
+      if (!elements.has(id)) {
+        const el = new MockElement('div');
+        el.id = id;
+        elements.set(id, el);
+      }
+      return elements.get(id);
     }
 
     const sandbox = {
@@ -288,7 +367,7 @@ def test_admin_js_inr_formatting_and_xss_safety() -> None:
         documentElement: new MockElement('html'),
         createElement: (tag) => new MockElement(tag),
         createTextNode: (text) => new MockTextNode(text),
-        getElementById: () => new MockElement('div'),
+        getElementById: (id) => getOrCreate(id),
         addEventListener: () => {},
       },
       Node: MockNode,
@@ -298,15 +377,20 @@ def test_admin_js_inr_formatting_and_xss_safety() -> None:
     sandbox.globalThis = sandbox;
     sandbox.self = sandbox;
 
-    // Read admin.js and inject test probe
+    // Read admin.js and execute in sandbox
     const adminSrc = fs.readFileSync(process.argv[1], 'utf-8');
-    // Extract helper functions
     vm.createContext(sandbox);
-    // Execute admin.js in sandbox
     vm.runInContext(adminSrc, sandbox);
 
-    const { formatInr, formatInrRupees } = sandbox.window.KarmiAdmin;
-    const assert = require('assert');
+    const {
+      formatInr,
+      formatInrRupees,
+      bugRow,
+      renderBugDetail,
+      renderMonitor,
+      renderAuditDetail,
+      setMessage,
+    } = sandbox.window.KarmiAdmin;
 
     // Whole rupees
     assert.strictEqual(formatInr(0), '₹0');
@@ -345,13 +429,106 @@ def test_admin_js_inr_formatting_and_xss_safety() -> None:
     assert.strictEqual(formatInrRupees(null), 'Unavailable');
     assert.strictEqual(formatInrRupees(undefined), 'Unavailable');
 
-    // Behavioural XSS check
-    const malicious = '<img src=x onerror=alert(1)>';
-    // In admin.js, text prop sets textContent, never innerHTML
-    // Verify that malicious string is preserved as text, not markup
-    const maliciousTextNode = sandbox.document.createTextNode(malicious);
-    assert.strictEqual(maliciousTextNode.textContent, malicious);
-    assert.strictEqual(maliciousTextNode.nodeType, 3);
+    // Behavioural XSS check driving actual render paths
+    const xssTicket = '<img src=x onerror=alert(1)>';
+    const xssDescPreview = '<svg onload=alert(2)>';
+    const xssUser = '<img src=x onerror=alert(3)>';
+    const xssDesc = '<svg onload=alert(4)>';
+    const xssAdminNotes = '<img src=x onerror=alert(5)>';
+    const xssModel = '<svg onload=alert(6)>';
+    const xssProvider = '<img src=x onerror=alert(7)>';
+    const xssAuditKey = '<img src=x onerror=alert(8)>';
+    const xssAuditVal = '<svg onload=alert(9)>';
+    const xssMsg = '<img src=x onerror=alert(10)>';
+
+    // 1. Bug inbox list row
+    const row = bugRow({
+      id: 'br_xss_1',
+      ticket: xssTicket,
+      category: 'ui',
+      status: 'new',
+      description_preview: xssDescPreview,
+      user_display_name: xssUser,
+      created_at: '2026-11-07T12:00:00Z',
+    });
+    assert.strictEqual(row.tagName, 'TR');
+    assert(row.textContent.includes(xssTicket), 'row must contain ticket as text');
+    assert(row.textContent.includes(xssDescPreview), 'row must contain description_preview as text');
+    assert(row.textContent.includes(xssUser), 'row must contain user_display_name as text');
+
+    // 2. Bug detail
+    renderBugDetail({
+      id: 'br_xss_2',
+      ticket: xssTicket,
+      category: 'ui',
+      status: 'new',
+      user: { id: 'usr_1', display_name: xssUser, plan: 'parth' },
+      description: xssDesc,
+      admin_notes: xssAdminNotes,
+      created_at: '2026-11-07T12:00:00Z',
+      updated_at: '2026-11-07T12:00:00Z',
+      has_screenshot: false,
+    });
+    const detailDesc = getOrCreate('bug-detail-description');
+    assert.strictEqual(detailDesc.textContent, xssDesc);
+    const detailNotes = getOrCreate('edit-bug-notes');
+    assert.strictEqual(detailNotes.value, xssAdminNotes);
+    const detailMeta = getOrCreate('bug-detail-meta');
+    assert(detailMeta.textContent.includes(xssTicket));
+    assert(detailMeta.textContent.includes(xssUser));
+
+    // 3. Overview model_health table
+    renderMonitor({
+      generated_at: '2026-11-07T12:00:00Z',
+      requests_today: 100,
+      daily_request_cap: 1000,
+      model_health: [
+        {
+          model: xssModel,
+          provider: xssProvider,
+          last_success_at: '2026-11-07T11:59:00Z',
+          error_rate: 0.01,
+          p50_latency_ms: 150,
+          runs: 42,
+        }
+      ],
+    });
+    const modelHealthBody = getOrCreate('model-health-body');
+    assert(modelHealthBody.textContent.includes(xssModel));
+    assert(modelHealthBody.textContent.includes(xssProvider));
+
+    // 4. Audit detail rows
+    const auditDiv = renderAuditDetail({ [xssAuditKey]: xssAuditVal });
+    assert.strictEqual(auditDiv.tagName, 'DIV');
+    assert(auditDiv.textContent.includes(xssAuditKey));
+    assert(auditDiv.textContent.includes(xssAuditVal));
+
+    // 5. Error/notice message display
+    setMessage('test-notice', xssMsg, 'error');
+    const msgNode = getOrCreate('test-notice');
+    assert.strictEqual(msgNode.textContent, xssMsg);
+
+    // Safety assertions
+    assert.strictEqual(recordedInnerHTML.length, 0, 'No innerHTML assignments must occur');
+
+    // Check that no element was created from markup
+    for (const el of createdElements) {
+      assert(!el.tagName.includes('<'), 'Element tag must not contain markup: ' + el.tagName);
+      assert(el.tagName !== 'IMG', 'No IMG element should be created from strings');
+      assert(el.tagName !== 'SVG', 'No SVG element should be created from strings');
+      assert(el.tagName !== 'SCRIPT', 'No SCRIPT element should be created');
+    }
+
+    // All malicious strings must be present in recorded text/value
+    const allMalicious = [
+      xssTicket, xssDescPreview, xssUser, xssDesc, xssAdminNotes,
+      xssModel, xssProvider, xssAuditKey, xssAuditVal, xssMsg
+    ];
+    for (const str of allMalicious) {
+      const foundInText = recordedTextNodes.some(t => t.includes(str));
+      const foundInValues = [detailNotes.value].some(v => v.includes(str));
+      assert(foundInText || foundInValues, 'String must be passed as text/value: ' + str);
+    }
     """
 
     js_file = STATIC / "admin.js"
