@@ -1,5 +1,30 @@
 # Daily Agent implementation memory
 
+## Release 1 final — release-prep state (2026-11-08)
+
+Release-prep agent did not run gates; all statuses are repo-evidence-based until the main agent runs the gates.
+
+- Release preparation branch `r1f/release` in worktree `/home/rosso/Projects/Karmi-release/final-rel`, base `314afa4` (`release1/final`).
+- Commits in this release preparation sequence:
+  - `26aac94` `chore(release): bump mobile version to 0.1.0+5` (version bump)
+  - `256a6e9` `docs(release): add changelog, release notes, sha256 and signing recipe` (release documentation round 1)
+  - `a955b91` `docs(release): owner runbook for deploy, migration, SSO, and scrub decisions` (owner runbook `docs/release1/OWNER_STEPS.md`)
+  - `cbae565` `docs(release): PR draft and memory state for release 1 final` (`docs/release1/PR_DRAFT.md`, `Memory.md`)
+- Version verification: `mobile/pubspec.yaml` verified on disk as `0.1.0+5`.
+- Release scope items 1–9 verification state:
+  - **Item 1 (Admin backend additions & controls)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep) (Backend) / Web UI NOT MERGED. Backend endpoints and monitoring metrics test files exist in `tests/unit/test_admin_bug_reports.py`, `tests/unit/test_admin_api.py`, `tests/e2e/test_admin_api.py` (commits `ac3d16e`, `64a70dc`, `e629d57`); not re-run for this commit. Web admin dashboard UI remains on branch `r1f/webadmin`. Device/browser check: NOT VERIFIED (device testing paused by owner).
+  - **Item 2 (Measured optimization)**: NOT VERIFIED. Optimization work remains on branch `r1f/perf` and is NOT MERGED into `314afa4`. Baseline recorded in `docs/release1/perf/BASELINE.md`. Device timing: NOT VERIFIED (device testing paused by owner).
+  - **Item 3 (Loading motif & skeletons)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). `KarmiTypingDots` and `KarmiSkeleton` test files exist in `mobile/test/widgets/karmi_typing_dots_test.dart` and `mobile/test/widgets/karmi_skeleton_test.dart` (commit `5db031e`, `ec578d6`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 4 (Google Sign-in / SSO via Clerk OAuth)**: PARTIALLY VERIFIED. Mobile UI and deep-link handling test files exist in `mobile/test/auth/google_sign_in_button_test.dart`, `mobile/test/auth/clerk_sso_test.dart`, `mobile/test/auth/account_auth_google_test.dart`; backend identity mapping test file exists in `tests/e2e/test_clerk_sso_identity.py` (commits `a7479ef`, `65a79a2`; runbook in `docs/release1/GOOGLE_SSO.md`); not re-run for this commit. Real Google sign-in and device testing: NOT VERIFIED (device testing paused by owner).
+  - **Item 5 (Money & INR representation)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). Decimal/sub-micro formatting and INR plan pricing test files exist in `mobile/test/widgets/money_test.dart`, `tests/unit/test_money.py`, `tests/unit/test_plans.py` (commits `ac3d16e`, `6a5a7f2`, `b8bfc83`, `55a2bfe`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 6 (Bug reporting system)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). Database migration `a5b6c7d8e9f0` (`migrations/versions/a5b6c7d8e9f0_bug_reports.py`), backend test files (`tests/unit/test_bug_reports.py`, `tests/integration/test_bug_reports_pg.py`), and mobile client queue/UI test files (`mobile/test/features/bug_report/`, `mobile/test/features/chat/error_card_bug_report_test.dart`) exist (commits `ac3d16e`, `6a5a7f2`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 7 (Unified shell layout)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). Single layout tree and shell parity test files exist in `mobile/test/shell/shell_parity_test.dart` (commit `f6617d0`, `66e0253`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 8 (Error card copy rewrite & jump pill)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). Plain single-sentence copy and jump-to-latest pill test files exist in `mobile/test/features/chat/empty_state_test.dart` and `mobile/test/features/chat/jump_pill_test.dart` (commit `f6617d0`, `3cbc0b0`, `bcd3967`, `c322f17`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 9 (Web admin dashboard additions)**: PARTIALLY VERIFIED. web admin UI (overview tiles, bug inbox, screenshot viewer) NOT MERGED to 314afa4 — backend routes and CSP hardening only. Backend test file exists in `tests/e2e/test_admin_api.py` (commit `2a37177`); not re-run for this commit. Device and browser testing: NOT VERIFIED (device testing paused by owner).
+- Pending integrations and reconciliation items: See `docs/release1/PR_DRAFT.md` section `## RECONCILE (supervisor)` for the list of unmerged branches (`r1f/webadmin`, `r1f/perf`, `r1f/release`).
+- Owner decisions still open (deploy, migration `a5b6c7d8e9f0`, Clerk Google SSO configuration, PR #34, issues #39–41, public repo scrub, Pixel release reinstall): See runbook `docs/release1/OWNER_STEPS.md`.
+- Constraints adhered to: No push, no PR creation, no live migrations or deployments executed; no secrets, IPs, Clerk IDs, or keystore material recorded.
+
 ## Active Release 1 chat redesign resume (2026-10-23)
 
 - Integration checkout `/tmp/wt2-int`, branch `release1/integration`, HEAD `eedb13b`.
