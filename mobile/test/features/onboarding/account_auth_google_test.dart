@@ -221,7 +221,9 @@ void main() {
           find.byKey(const ValueKey('onboarding_password_field')),
           'ValidPassword123!',
         );
-        await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
+        await tester.tap(
+          find.byKey(const ValueKey('onboarding_auth_continue')),
+        );
         await settle(tester);
 
         // Now tap Google sign-in
@@ -432,93 +434,98 @@ void main() {
       },
     );
 
-    testWidgets(
-      'code verification and resend are blocked while busy',
-      (tester) async {
-        final fake = DelayedFakeClerkActions();
-        fake.requireSecondFactor = true;
-        fake.verifyCompleter = Completer<void>();
+    testWidgets('code verification and resend are blocked while busy', (
+      tester,
+    ) async {
+      final fake = DelayedFakeClerkActions();
+      fake.requireSecondFactor = true;
+      fake.verifyCompleter = Completer<void>();
 
-        await _pumpAuthStep(tester, actions: fake);
+      await _pumpAuthStep(tester, actions: fake);
 
-        await tester.enterText(
-          find.byKey(const ValueKey('onboarding_first_name_field')),
-          'Ada',
-        );
-        await tester.enterText(
-          find.byKey(const ValueKey('onboarding_email_field')),
-          'ada@example.com',
-        );
-        await tester.enterText(
-          find.byKey(const ValueKey('onboarding_username_field')),
-          'adalovelace',
-        );
-        await tester.enterText(
-          find.byKey(const ValueKey('onboarding_password_field')),
-          'ValidPassword123!',
-        );
-        await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
-        await settle(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_first_name_field')),
+        'Ada',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_email_field')),
+        'ada@example.com',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_username_field')),
+        'adalovelace',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_password_field')),
+        'ValidPassword123!',
+      );
+      await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
+      await settle(tester);
 
-        expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
-        expect(fake.calls, contains('signUp'));
+      expect(
+        find.byKey(const ValueKey('onboarding_otp_field')),
+        findsOneWidget,
+      );
+      expect(fake.calls, contains('signUp'));
 
-        // Enter 6-digit code to trigger verification
-        await tester.enterText(
-          find.byKey(const ValueKey('onboarding_otp_field')),
-          '123456',
-        );
-        await tester.pump();
+      // Enter 6-digit code to trigger verification
+      await tester.enterText(
+        find.byKey(const ValueKey('onboarding_otp_field')),
+        '123456',
+      );
+      await tester.pump();
 
-        expect(fake.verifyCalls, 1);
+      expect(fake.verifyCalls, 1);
 
-        // While verify is in flight, _busy is true:
-        // 1. OtpField is wrapped in IgnorePointer(ignoring: true)
-        final ignorePointer = tester.widget<IgnorePointer>(
-          find.byKey(const ValueKey('onboarding_otp_ignore')),
-        );
-        expect(ignorePointer.ignoring, isTrue);
+      // While verify is in flight, _busy is true:
+      // 1. OtpField is wrapped in IgnorePointer(ignoring: true)
+      final ignorePointer = tester.widget<IgnorePointer>(
+        find.byKey(const ValueKey('onboarding_otp_ignore')),
+      );
+      expect(ignorePointer.ignoring, isTrue);
 
-        // 2. Resend and Change details buttons are disabled
-        final resendButton = tester.widget<TextButton>(
-          find.byKey(const ValueKey('onboarding_resend_code')),
-        );
-        expect(resendButton.onPressed, isNull);
+      // 2. Resend and Change details buttons are disabled
+      final resendButton = tester.widget<TextButton>(
+        find.byKey(const ValueKey('onboarding_resend_code')),
+      );
+      expect(resendButton.onPressed, isNull);
 
-        final changeButton = tester.widget<TextButton>(
-          find.byKey(const ValueKey('onboarding_change_details')),
-        );
-        expect(changeButton.onPressed, isNull);
+      final changeButton = tester.widget<TextButton>(
+        find.byKey(const ValueKey('onboarding_change_details')),
+      );
+      expect(changeButton.onPressed, isNull);
 
-        // 3. Continue button shows loading and is disabled
-        final ctaWidget = tester.widget<PillCta>(
-          find.byKey(const ValueKey('onboarding_auth_continue')),
-        );
-        expect(ctaWidget.isLoading, isTrue);
-        expect(ctaWidget.onPressed, isNull);
+      // 3. Continue button shows loading and is disabled
+      final ctaWidget = tester.widget<PillCta>(
+        find.byKey(const ValueKey('onboarding_auth_continue')),
+      );
+      expect(ctaWidget.isLoading, isTrue);
+      expect(ctaWidget.onPressed, isNull);
 
-        // 4. Repeated submissions/taps are ignored and do not increase verifyCalls
-        await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
-        await tester.pump();
-        expect(fake.verifyCalls, 1);
+      // 4. Repeated submissions/taps are ignored and do not increase verifyCalls
+      await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
+      await tester.pump();
+      expect(fake.verifyCalls, 1);
 
-        // 5. Direct invocations to _verifyCode and _changeDetails early-return while busy
-        final state = tester.state<AccountAuthStepState>(
-          find.byType(AccountAuthStep),
-        );
-        await state.verifyCodeForTesting();
-        expect(fake.verifyCalls, 1);
+      // 5. Direct invocations to _verifyCode and _changeDetails early-return while busy
+      final state = tester.state<AccountAuthStepState>(
+        find.byType(AccountAuthStep),
+      );
+      await state.verifyCodeForTesting();
+      expect(fake.verifyCalls, 1);
 
-        state.changeDetailsForTesting();
-        await tester.pump();
-        expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
-        // Complete the in-flight verification
-        fake.verifyCompleter!.complete();
-        await settle(tester);
+      state.changeDetailsForTesting();
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('onboarding_otp_field')),
+        findsOneWidget,
+      );
+      // Complete the in-flight verification
+      fake.verifyCompleter!.complete();
+      await settle(tester);
 
-        expect(fake.isSignedIn, isTrue);
-      },
-    );
+      expect(fake.isSignedIn, isTrue);
+    });
     testWidgets('hidden when actions is null (Clerk not configured)', (
       tester,
     ) async {

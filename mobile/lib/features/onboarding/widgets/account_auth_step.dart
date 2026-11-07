@@ -308,6 +308,7 @@ class AccountAuthStepState extends State<AccountAuthStep> {
       _cooldown = 0;
     });
   }
+
   @visibleForTesting
   Future<void> verifyCodeForTesting() => _verifyCode();
 

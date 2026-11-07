@@ -42,7 +42,10 @@ void main() {
       final semantics = tester.getSemantics(finder);
       expect(semantics.flagsCollection.isButton, isTrue);
       expect(semantics.flagsCollection.isEnabled, ui.Tristate.isTrue);
-      expect(semantics.hasAction(ui.SemanticsAction.tap), isTrue);
+      expect(
+        semantics.getSemanticsData().hasAction(ui.SemanticsAction.tap),
+        isTrue,
+      );
       // Google logo painter is present
       expect(find.byType(CustomPaint), findsWidgets);
       expect(
@@ -62,18 +65,13 @@ void main() {
     testWidgets(
       'excludes child semantics to avoid duplicate TalkBack announcement',
       (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            GoogleSignInButton(
-              onPressed: () {},
-            ),
-          ),
-        );
+        await tester.pumpWidget(_wrap(GoogleSignInButton(onPressed: () {})));
 
         final semanticsFinder = find.descendant(
           of: find.byType(GoogleSignInButton),
           matching: find.byWidgetPredicate(
-            (w) => w is Semantics && w.properties.label == 'Continue with Google',
+            (w) =>
+                w is Semantics && w.properties.label == 'Continue with Google',
           ),
         );
         expect(semanticsFinder, findsOneWidget);
@@ -91,7 +89,10 @@ void main() {
       expect(finder, findsOneWidget);
       final semantics = tester.getSemantics(finder);
       expect(semantics.flagsCollection.isEnabled, ui.Tristate.isFalse);
-      expect(semantics.hasAction(ui.SemanticsAction.tap), isFalse);
+      expect(
+        semantics.getSemanticsData().hasAction(ui.SemanticsAction.tap),
+        isFalse,
+      );
       final inkWell = tester.widget<InkWell>(find.byType(InkWell));
       expect(inkWell.onTap, isNull);
       handle.dispose();
@@ -127,7 +128,10 @@ void main() {
       expect(finder, findsOneWidget);
       final semantics = tester.getSemantics(finder);
       expect(semantics.flagsCollection.isEnabled, ui.Tristate.isFalse);
-      expect(semantics.hasAction(ui.SemanticsAction.tap), isFalse);
+      expect(
+        semantics.getSemanticsData().hasAction(ui.SemanticsAction.tap),
+        isFalse,
+      );
       final inkWell = tester.widget<InkWell>(find.byType(InkWell));
       expect(inkWell.onTap, isNull);
 
