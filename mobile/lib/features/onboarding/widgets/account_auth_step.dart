@@ -139,6 +139,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
     setState(() {
       _busy = true;
       _googleLoading = true;
+      _pendingDetails = null;
       _clearErrors();
     });
     try {
@@ -146,7 +147,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
       if (!mounted) return;
       switch (result) {
         case GoogleSignInSuccess():
-          widget.onSignedIn(_mode == _Mode.create ? _pendingDetails : null);
+          widget.onSignedIn(null);
         case GoogleSignInCancelled():
           setState(() {
             _errors[AccountField.form] = 'Google sign-in was cancelled.';

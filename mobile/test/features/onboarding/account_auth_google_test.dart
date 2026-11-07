@@ -184,6 +184,58 @@ void main() {
       },
     );
 
+    testWidgets(
+      'Google sign-up clears pending email details and passes null to onSignedIn',
+      (tester) async {
+        final fake = FakeClerkEmailCodeActions();
+        fake.nextGoogleResult = const GoogleSignInResult.success();
+        fake.nextError = 'Clerk error';
+
+        AccountDetails? receivedDetails;
+        var onSignedInCalled = false;
+
+        await _pumpAuthStep(
+          tester,
+          actions: fake,
+          startInSignIn: false,
+          onSignedIn: (details) {
+            onSignedInCalled = true;
+            receivedDetails = details;
+          },
+        );
+
+        // Fill email form and submit to set _pendingDetails
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_first_name_field')),
+          'Ada',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_email_field')),
+          'ada@example.com',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_username_field')),
+          'adalovelace',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_password_field')),
+          'ValidPassword123!',
+        );
+        await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
+        await settle(tester);
+
+        // Now tap Google sign-in
+        final googleButton = find.byKey(
+          const ValueKey('onboarding_google_button'),
+        );
+        await tester.tap(googleButton);
+        await settle(tester);
+
+        expect(onSignedInCalled, isTrue);
+        expect(receivedDetails, isNull);
+      },
+    );
+
     testWidgets('loading state disables all auth actions and inputs', (
       tester,
     ) async {
