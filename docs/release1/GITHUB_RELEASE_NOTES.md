@@ -17,7 +17,18 @@ Karmi v0.1.0 is a tester release of the redesigned chat experience. It is distri
 3. On Android, allow installation from the source used to obtain the APK, then sideload it.
 4. Open Karmi, read and accept the tester notice, and sign in with the email code from Clerk.
 
-The documented tester builds are debug-signed APKs, so an update must use a compatible signature; the exact APK filename, checksum, and signing status for this v0.1.0 artifact are **PENDING**.
+## Downloads
+
+- `karmi-v0.1.0-arm64-v8a.apk` (arm64-v8a, most phones; versionCode 2005)
+- `karmi-v0.1.0-armeabi-v7a.apk` (armeabi-v7a; versionCode 1005)
+- `karmi-v0.1.0-x86_64.apk` (x86_64; versionCode 4005)
+
+All builds have versionName `0.1.0` and are release-signed with cert SHA-256:
+`14a65fffbc383685c3460aee7ad9df03ac58d628427b87e606cfd90c12f88ba1`
+
+Verify integrity with `sha256sum -c SHA256SUMS`.
+
+**Upgrade note:** this release-signed build cannot update over an earlier debug-signed tester install. Uninstall first; local app data is lost.
 
 ## Known limits
 
