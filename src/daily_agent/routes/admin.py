@@ -52,7 +52,9 @@ class TierBody(ReasonBody):
     @model_validator(mode="after")
     def future_expiry(self) -> TierBody:
         if self.expires_at is not None:
-            expiry = self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=UTC)
+            expiry = (
+                self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=UTC)
+            )
             if expiry <= datetime.now(UTC):
                 raise ValueError("expires_at must be in the future")
             self.expires_at = expiry
@@ -74,6 +76,7 @@ class UserEditBody(ReasonBody):
 
 class BulkTierBody(TierBody):
     user_ids: list[str] = Field(min_length=1, max_length=100)
+
 
 class CreditsBody(ReasonBody):
     delta_inr: float | None = Field(default=None, ge=-1_000_000, le=1_000_000)
@@ -121,7 +124,10 @@ def read_session(
     x_admin_session: str | None = Header(default=None),
 ) -> dict[str, Any]:
     row = find_session(session, user.id, x_admin_session)
-    return {"valid": row is not None, "expires_at": as_utc(row.expires_at).isoformat() if row else None}
+    return {
+        "valid": row is not None,
+        "expires_at": as_utc(row.expires_at).isoformat() if row else None,
+    }
 
 
 @router.delete("/session")
@@ -152,8 +158,15 @@ def users(
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     return svc.list_users(
-        session, q=q, tier=tier, state=status_filter, tester_label=tester_label,
-        suspended=suspended, plan_expiring_before=plan_expiring_before, limit=limit, cursor=cursor
+        session,
+        q=q,
+        tier=tier,
+        state=status_filter,
+        tester_label=tester_label,
+        suspended=suspended,
+        plan_expiring_before=plan_expiring_before,
+        limit=limit,
+        cursor=cursor,
     )
 
 
@@ -165,6 +178,8 @@ def user_detail(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     return svc.user_detail(session, settings, admin.user.id, user_id)
+
+
 @router.patch("/users/{user_id}")
 def edit_user(
     user_id: str,
@@ -174,9 +189,15 @@ def edit_user(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     return svc.edit_user(
-        session, settings, admin.user.id, user_id,
-        display_name=body.display_name, tester=body.tester,
-        tester_label=body.tester_label, admin_notes=body.admin_notes, reason=body.reason,
+        session,
+        settings,
+        admin.user.id,
+        user_id,
+        display_name=body.display_name,
+        tester=body.tester,
+        tester_label=body.tester_label,
+        admin_notes=body.admin_notes,
+        reason=body.reason,
     )
 
 
@@ -222,7 +243,9 @@ def set_user_tier(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    return svc.change_tier(session, settings, admin.user.id, user_id, body.tier, body.reason, body.expires_at)
+    return svc.change_tier(
+        session, settings, admin.user.id, user_id, body.tier, body.reason, body.expires_at
+    )
 
 
 @router.post("/users/bulk-tier")
@@ -232,7 +255,9 @@ def bulk_tier(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    return svc.bulk_change_tier(session, settings, admin.user.id, body.user_ids, body.tier, body.reason, body.expires_at)
+    return svc.bulk_change_tier(
+        session, settings, admin.user.id, body.user_ids, body.tier, body.reason, body.expires_at
+    )
 
 
 @router.post("/users/{user_id}/credits")
@@ -319,17 +344,42 @@ def runs(
     return svc.list_runs(session, limit=limit, cursor=cursor)
 
 
+AdminBugReportStatusFilter = Literal[
+    "",
+    "new",
+    "triaged",
+    "in_progress",
+    "fixed",
+    "closed",
+    "duplicate",
+    "wontfix",
+]
+
+AdminBugReportCategoryFilter = Literal[
+    "",
+    "crash",
+    "chat",
+    "ui",
+    "account",
+    "other",
+]
+
+
 @router.get("/bug-reports")
 def list_bug_reports(
-    status: str | None = Query(default=None),
-    category: str | None = Query(default=None),
+    status: AdminBugReportStatusFilter | None = Query(default=None),
+    category: AdminBugReportCategoryFilter | None = Query(default=None),
     limit: int = Query(default=25, ge=1, le=100),
     cursor: str | None = Query(default=None),
     _admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     return svc.list_bug_reports(
-        session, status=status, category=category, limit=limit, cursor=cursor
+        session,
+        status=status or None,
+        category=category or None,
+        limit=limit,
+        cursor=cursor,
     )
 
 
