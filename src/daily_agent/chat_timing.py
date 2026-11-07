@@ -7,12 +7,12 @@ Never logs prompts, replies, user tokens, message text, or secrets.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, MutableMapping
-from datetime import UTC, datetime
 import logging
 import os
 import re
 import time
+from collections.abc import Awaitable, Callable, MutableMapping
+from datetime import UTC, datetime
 from typing import Any
 
 Scope = MutableMapping[str, Any]
@@ -27,8 +27,16 @@ logger = logging.getLogger("daily_agent.chat_timing")
 _CHAT_ROUTES: list[tuple[str, re.Pattern[str], str]] = [
     ("POST", re.compile(r"^/v1/chat/stream/?$"), "/v1/chat/stream"),
     ("POST", re.compile(r"^/v1/messages/?$"), "/v1/messages"),
-    ("POST", re.compile(r"^/v1/messages/[^/]+/continue/?$"), "/v1/messages/{assistant_message_id}/continue"),
-    ("POST", re.compile(r"^/v1/messages/[^/]+/regenerate/?$"), "/v1/messages/{assistant_message_id}/regenerate"),
+    (
+        "POST",
+        re.compile(r"^/v1/messages/[^/]+/continue/?$"),
+        "/v1/messages/{assistant_message_id}/continue",
+    ),
+    (
+        "POST",
+        re.compile(r"^/v1/messages/[^/]+/regenerate/?$"),
+        "/v1/messages/{assistant_message_id}/regenerate",
+    ),
     ("POST", re.compile(r"^/v1/runs/[^/]+/stop/?$"), "/v1/runs/{run_id}/stop"),
     ("GET", re.compile(r"^/v1/runs/[^/]+/events/?$"), "/v1/runs/{run_id}/events"),
 ]

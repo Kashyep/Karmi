@@ -86,9 +86,7 @@ def validate_port_allowed(port: int, label: str) -> None:
         )
 
 
-def wait_for_url(
-    url: str, timeout_s: float = 15.0, check_status: bool = False
-) -> bool:
+def wait_for_url(url: str, timeout_s: float = 15.0, check_status: bool = False) -> bool:
     deadline = time.perf_counter() + timeout_s
     while time.perf_counter() < deadline:
         try:
@@ -137,9 +135,7 @@ def parse_server_timing_logs(
     durations: list[float] = []
     overheads: list[float] = []
     lines: list[str] = []
-    chat_pattern = re.compile(
-        r"chat\.(?:request\.)?(?:timing|end)[^\n]*duration_ms=([0-9.]+)"
-    )
+    chat_pattern = re.compile(r"chat\.(?:request\.)?(?:timing|end)[^\n]*duration_ms=([0-9.]+)")
     overhead_pattern = re.compile(r"overhead_ms=([0-9.]+)")
     for line in log_content.splitlines():
         m = chat_pattern.search(line)
@@ -210,123 +206,133 @@ def run_single_pass(
     backend_env["DAILY_AGENT_CHAT_TIMING_ENABLED"] = "true" if timing else "false"
     backend_env["LOAD_APP_LOG_LEVEL"] = "INFO"
 
-    log_file = open(log_path, "w", encoding="utf-8")
     backend_proc: subprocess.Popen[str] | None = None
     client_latencies: list[float] = []
 
     try:
-        backend_proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "uvicorn",
-                "load_app:app",
-                "--app-dir",
-                str(ROOT / "scripts"),
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(backend_port),
-                "--log-level",
-                "info",
-                "--no-access-log",
-            ],
-            cwd=str(ROOT),
-            env=backend_env,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-
-        if not wait_for_url(
-            f"{backend_base_url}/health", timeout_s=15.0, check_status=True
-        ):
-            log_file.flush()
-            err_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
-            raise RuntimeError(f"Backend failed to start / ready check timed out. Backend log:\n{err_text}")
-
-        # Issue dev token
-        with httpx.Client(base_url=backend_base_url, timeout=10.0) as client:
-            token_res = client.post("/dev/token?role=customer")
-            token_res.raise_for_status()
-            token = token_res.json()["token"]
-
-            headers = {
-                "Authorization": f"Bearer {token}",
-            }
-            if endpoint == "/v1/chat/stream":
-                headers["Accept"] = "text/event-stream"
-            else:
-                headers["Content-Type"] = "application/json"
-
-            def issue_one(index: int) -> float:
-                msg_id = f"bench-{stamp}-{index}"
-                payload = {
-                    "text": text,
-                    "clientMessageId": msg_id,
-                }
-                t0 = time.perf_counter()
-                if endpoint == "/v1/chat/stream":
-                    parser = SSEParser()
-                    with client.stream(
-                        "POST",
-                        "/v1/chat/stream",
-                        json=payload,
-                        headers=headers,
-                        timeout=30.0,
-                    ) as resp:
-                        resp.raise_for_status()
-                        for chunk in resp.iter_bytes():
-                            frames = parser.feed(chunk)
-                            terminal = any(
-                                ev in ("run.finished", "run.error")
-                                for ev, _ in frames
-                            )
-                            if terminal:
-                                break
-                else:
-                    res = client.post(
-                        endpoint,
-                        json=payload,
-                        headers=headers,
-                        timeout=30.0,
-                    )
-                    res.raise_for_status()
-                t1 = time.perf_counter()
-                return (t1 - t0) * 1000.0
-
-            if warmup > 0:
-                print(f"[{label}] Warming up ({warmup} requests)...")
-                for i in range(warmup):
-                    issue_one(i)
-                    if i == 0:
-                        import sqlite3
-                        with sqlite3.connect(str(db_path)) as conn:
-                            conn.execute("UPDATE subscriptions SET plan_id = 'parth'")
-                            conn.execute(
-                                "UPDATE usage_windows SET everyday_limit = 1000000, "
-                                "spend_limit_micro = 1000000000, token_limit = 1000000000"
-                            )
-                            conn.execute("UPDATE usage_periods SET spend_limit_micro = 1000000000")
-                            conn.execute("UPDATE platform_budgets SET spend_limit_micro = 1000000000")
-
-            print(f"[{label}] Running {requests} sequential requests...")
-            for i in range(requests):
-                lat = issue_one(warmup + i)
-                client_latencies.append(lat)
-                if (i + 1) % 50 == 0 or (i + 1) == requests:
-                    print(f"  [{label}] [{i + 1}/{requests}] latest: {lat:.1f} ms")
-
-    finally:
-        if backend_proc is not None:
-            backend_proc.send_signal(signal.SIGINT)
+        with open(log_path, "w", encoding="utf-8") as log_file:
             try:
-                backend_proc.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                backend_proc.kill()
-                backend_proc.wait()
-            log_file.close()
+                backend_proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+                    [
+                        sys.executable,
+                        "-m",
+                        "uvicorn",
+                        "load_app:app",
+                        "--app-dir",
+                        str(ROOT / "scripts"),
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(backend_port),
+                        "--log-level",
+                        "info",
+                        "--no-access-log",
+                    ],
+                    cwd=str(ROOT),
+                    env=backend_env,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
 
+                if not wait_for_url(
+                    f"{backend_base_url}/health", timeout_s=15.0, check_status=True
+                ):
+                    log_file.flush()
+                    err_text = (
+                        log_path.read_text(encoding="utf-8", errors="replace")
+                        if log_path.exists()
+                        else ""
+                    )
+                    raise RuntimeError(
+                        f"Backend failed to start / ready check timed out. Backend log:\n{err_text}"
+                    )
+
+                # Issue dev token
+                with httpx.Client(base_url=backend_base_url, timeout=10.0) as client:
+                    token_res = client.post("/dev/token?role=customer")
+                    token_res.raise_for_status()
+                    token = token_res.json()["token"]
+
+                    headers = {
+                        "Authorization": f"Bearer {token}",
+                    }
+                    if endpoint == "/v1/chat/stream":
+                        headers["Accept"] = "text/event-stream"
+                    else:
+                        headers["Content-Type"] = "application/json"
+
+                    def issue_one(index: int) -> float:
+                        msg_id = f"bench-{stamp}-{index}"
+                        payload = {
+                            "text": text,
+                            "clientMessageId": msg_id,
+                        }
+                        t0 = time.perf_counter()
+                        if endpoint == "/v1/chat/stream":
+                            parser = SSEParser()
+                            with client.stream(
+                                "POST",
+                                "/v1/chat/stream",
+                                json=payload,
+                                headers=headers,
+                                timeout=30.0,
+                            ) as resp:
+                                resp.raise_for_status()
+                                for chunk in resp.iter_bytes():
+                                    frames = parser.feed(chunk)
+                                    terminal = any(
+                                        ev in ("run.finished", "run.error") for ev, _ in frames
+                                    )
+                                    if terminal:
+                                        break
+                        else:
+                            res = client.post(
+                                endpoint,
+                                json=payload,
+                                headers=headers,
+                                timeout=30.0,
+                            )
+                            res.raise_for_status()
+                        t1 = time.perf_counter()
+                        return (t1 - t0) * 1000.0
+
+                    if warmup > 0:
+                        print(f"[{label}] Warming up ({warmup} requests)...")
+                        for i in range(warmup):
+                            issue_one(i)
+                            if i == 0:
+                                import sqlite3
+
+                                with sqlite3.connect(str(db_path)) as conn:
+                                    conn.execute("UPDATE subscriptions SET plan_id = 'parth'")
+                                    conn.execute(
+                                        "UPDATE usage_windows SET everyday_limit = 1000000, "
+                                        "spend_limit_micro = 1000000000, token_limit = 1000000000"
+                                    )
+                                    conn.execute(
+                                        "UPDATE usage_periods SET spend_limit_micro = 1000000000"
+                                    )
+                                    conn.execute(
+                                        "UPDATE platform_budgets SET spend_limit_micro = 1000000000"
+                                    )
+
+                    print(f"[{label}] Running {requests} sequential requests...")
+                    for i in range(requests):
+                        lat = issue_one(warmup + i)
+                        client_latencies.append(lat)
+                        if (i + 1) % 50 == 0 or (i + 1) == requests:
+                            print(f"  [{label}] [{i + 1}/{requests}] latest: {lat:.1f} ms")
+
+            finally:
+                if backend_proc is not None:
+                    backend_proc.send_signal(signal.SIGINT)
+                    try:
+                        backend_proc.wait(timeout=5.0)
+                    except subprocess.TimeoutExpired:
+                        backend_proc.kill()
+                        backend_proc.wait()
+    finally:
         if db_path.exists():
             db_path.unlink(missing_ok=True)
 
@@ -343,10 +349,7 @@ def run_single_pass(
         server_durations = all_durations
         display_lines = sample_lines
 
-    if len(all_overheads) > requests:
-        server_overheads = all_overheads[-requests:]
-    else:
-        server_overheads = all_overheads
+    server_overheads = all_overheads[-requests:] if len(all_overheads) > requests else all_overheads
 
     return client_latencies, server_durations, server_overheads, display_lines
 
@@ -398,7 +401,7 @@ def run_benchmark(
             print(f"Starting local fake provider on port {fake_port}...")
             fake_env = dict(os.environ)
             fake_env["FAKE_TOKEN_DELAY"] = str(token_delay)
-            fake_proc = subprocess.Popen(
+            fake_proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
                 [
                     sys.executable,
                     str(ROOT / "scripts" / "dev_fake_provider.py"),
@@ -413,9 +416,10 @@ def run_benchmark(
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            if not wait_for_url(f"{fake_base_url}/models", timeout_s=5.0):
-                if not wait_for_url(f"http://127.0.0.1:{fake_port}/", timeout_s=5.0):
-                    raise RuntimeError("Fake provider failed to start")
+            if not wait_for_url(f"{fake_base_url}/models", timeout_s=5.0) and not wait_for_url(
+                f"http://127.0.0.1:{fake_port}/", timeout_s=5.0
+            ):
+                raise RuntimeError("Fake provider failed to start")
             print("Fake provider is ready.")
         else:
             print(f"Fake provider already running on port {fake_port}.")
@@ -519,24 +523,26 @@ def run_benchmark(
                 timing=True,
                 label=f"R{r}-AFTER",
             )
-            round_results.append({
-                "round": r,
-                "before": {
-                    "client": calc_stats(b_client),
-                    "server": calc_stats(b_server),
-                    "client_latencies": b_client,
-                    "server_durations": b_server,
-                },
-                "after": {
-                    "client": calc_stats(a_client),
-                    "server": calc_stats(a_server),
-                    "overhead": calc_stats(a_overhead),
-                    "client_latencies": a_client,
-                    "server_durations": a_server,
-                    "server_overheads": a_overhead,
-                    "samples": a_samples[:3],
-                },
-            })
+            round_results.append(
+                {
+                    "round": r,
+                    "before": {
+                        "client": calc_stats(b_client),
+                        "server": calc_stats(b_server),
+                        "client_latencies": b_client,
+                        "server_durations": b_server,
+                    },
+                    "after": {
+                        "client": calc_stats(a_client),
+                        "server": calc_stats(a_server),
+                        "overhead": calc_stats(a_overhead),
+                        "client_latencies": a_client,
+                        "server_durations": a_server,
+                        "server_overheads": a_overhead,
+                        "samples": a_samples[:3],
+                    },
+                }
+            )
 
         print("\n" + "=" * 65)
         print("A/B COMPARISON ROUND-BY-ROUND RESULTS")
@@ -548,21 +554,63 @@ def run_benchmark(
             asv = rr["after"]["server"]
             aov = rr["after"]["overhead"]
             print(f"\nRound {r}:")
-            print(f"  BEFORE: Client p50={bc['p50']} ms, p95={bc['p95']} ms | Server: N/A (middleware disabled)")
-            print(f"  AFTER:  Client p50={ac['p50']} ms, p95={ac['p95']} ms | Server p50={asv['p50']} ms, p95={asv['p95']} ms")
+            print(
+                f"  BEFORE: Client p50={bc['p50']} ms, p95={bc['p95']} ms | Server: N/A (middleware disabled)"
+            )
+            print(
+                f"  AFTER:  Client p50={ac['p50']} ms, p95={ac['p95']} ms | Server p50={asv['p50']} ms, p95={asv['p95']} ms"
+            )
             if aov["count"] > 0:
-                print(f"  Direct Middleware Overhead: p50={aov['p50']} ms, p95={aov['p95']} ms, mean={aov['mean']} ms")
+                print(
+                    f"  Direct Middleware Overhead: p50={aov['p50']} ms, p95={aov['p95']} ms, mean={aov['mean']} ms"
+                )
 
         # Median calculations
-        b_c_p50s = [rr["before"]["client"]["p50"] for rr in round_results if rr["before"]["client"]["p50"] is not None]
-        b_c_p95s = [rr["before"]["client"]["p95"] for rr in round_results if rr["before"]["client"]["p95"] is not None]
-        a_c_p50s = [rr["after"]["client"]["p50"] for rr in round_results if rr["after"]["client"]["p50"] is not None]
-        a_c_p95s = [rr["after"]["client"]["p95"] for rr in round_results if rr["after"]["client"]["p95"] is not None]
-        a_s_p50s = [rr["after"]["server"]["p50"] for rr in round_results if rr["after"]["server"]["p50"] is not None]
-        a_s_p95s = [rr["after"]["server"]["p95"] for rr in round_results if rr["after"]["server"]["p95"] is not None]
-        a_o_p50s = [rr["after"]["overhead"]["p50"] for rr in round_results if rr["after"]["overhead"]["p50"] is not None]
-        a_o_p95s = [rr["after"]["overhead"]["p95"] for rr in round_results if rr["after"]["overhead"]["p95"] is not None]
-        a_o_means = [rr["after"]["overhead"]["mean"] for rr in round_results if rr["after"]["overhead"]["mean"] is not None]
+        b_c_p50s = [
+            rr["before"]["client"]["p50"]
+            for rr in round_results
+            if rr["before"]["client"]["p50"] is not None
+        ]
+        b_c_p95s = [
+            rr["before"]["client"]["p95"]
+            for rr in round_results
+            if rr["before"]["client"]["p95"] is not None
+        ]
+        a_c_p50s = [
+            rr["after"]["client"]["p50"]
+            for rr in round_results
+            if rr["after"]["client"]["p50"] is not None
+        ]
+        a_c_p95s = [
+            rr["after"]["client"]["p95"]
+            for rr in round_results
+            if rr["after"]["client"]["p95"] is not None
+        ]
+        a_s_p50s = [
+            rr["after"]["server"]["p50"]
+            for rr in round_results
+            if rr["after"]["server"]["p50"] is not None
+        ]
+        a_s_p95s = [
+            rr["after"]["server"]["p95"]
+            for rr in round_results
+            if rr["after"]["server"]["p95"] is not None
+        ]
+        a_o_p50s = [
+            rr["after"]["overhead"]["p50"]
+            for rr in round_results
+            if rr["after"]["overhead"]["p50"] is not None
+        ]
+        a_o_p95s = [
+            rr["after"]["overhead"]["p95"]
+            for rr in round_results
+            if rr["after"]["overhead"]["p95"] is not None
+        ]
+        a_o_means = [
+            rr["after"]["overhead"]["mean"]
+            for rr in round_results
+            if rr["after"]["overhead"]["mean"] is not None
+        ]
 
         med_b_c_p50 = round(statistics.median(b_c_p50s), 2) if b_c_p50s else None
         med_b_c_p95 = round(statistics.median(b_c_p95s), 2) if b_c_p95s else None
