@@ -532,7 +532,7 @@ void composerTests() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('The model service had a problem.'), findsOneWidget);
+        expect(find.text("Karmi couldn't finish this reply."), findsOneWidget);
         expect(find.text('Working…'), findsNothing);
         expect(h.controller.messages.last.status, MessageStatus.failed);
 
@@ -563,7 +563,7 @@ void composerTests() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('The model service had a problem.'), findsOneWidget);
+      expect(find.text("Karmi couldn't finish this reply."), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
       expect(h.controller.phase, ChatRunPhase.error);
 
@@ -583,7 +583,7 @@ void composerTests() {
       );
       await tester.pumpAndSettle(const Duration(seconds: 10));
 
-      expect(find.text('Karmi is taking too long, try again'), findsOneWidget);
+      expect(find.text('Karmi took too long to respond.'), findsOneWidget);
       expect(find.text('You appear to be offline.'), findsNothing);
 
       await _unmount(tester, h);
