@@ -370,7 +370,7 @@ def list_bug_reports(
     status: AdminBugReportStatusFilter | None = Query(default=None),
     category: AdminBugReportCategoryFilter | None = Query(default=None),
     limit: int = Query(default=25, ge=1, le=100),
-    cursor: str | None = Query(default=None),
+    cursor: str | None = Query(default=None, max_length=128),
     _admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:

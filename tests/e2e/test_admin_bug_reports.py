@@ -71,3 +71,15 @@ def test_admin_bug_reports_empty_and_absent_filters(env: Env) -> None:
     r_empty = env.client.get("/v1/admin/bug-reports?status=&category=", headers=headers)
     assert r_empty.status_code == 200
     assert "items" in r_empty.json()
+
+
+def test_admin_bug_reports_cursor_length_bound(env: Env) -> None:
+    headers = env.headers()
+    oversized_cursor = "a" * 129
+    r_toolong = env.client.get(f"/v1/admin/bug-reports?cursor={oversized_cursor}", headers=headers)
+    assert r_toolong.status_code == 422
+
+    valid_cursor = "2026-11-08T00:00:00.000000Z|test-id"
+    r_valid = env.client.get(f"/v1/admin/bug-reports?cursor={valid_cursor}", headers=headers)
+    assert r_valid.status_code == 200
+    assert "items" in r_valid.json()
