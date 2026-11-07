@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/api/bug_reports/bug_report_models.dart';
 import 'package:karmi_app/features/bug_report/bug_report_queue.dart';
@@ -118,9 +119,9 @@ void main() {
           description: 'Original text',
           diagnostics: const BugReportDiagnostics(screen: 'chat'),
           screenshot: const BugReportScreenshot(
-            bytesBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-            width: 1,
-            height: 1,
+            contentType: 'image/png',
+            dataBase64:
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
           ),
         );
 
@@ -218,33 +219,35 @@ void main() {
       expect(() => queue.enqueue(request, userId: ''), throwsArgumentError);
     });
 
+    test(
+      'clearUserItems removes only the specified user items and screenshots',
+      () async {
+        final queue = BugReportQueue();
+        final req1 = BugReportCreateRequest(
+          clientReportId: '550e8400-e29b-41d4-a716-446655440010',
+          category: BugReportCategory.chat,
+          description: 'User 1 feedback',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
+        );
+        final req2 = BugReportCreateRequest(
+          clientReportId: '550e8400-e29b-41d4-a716-446655440020',
+          category: BugReportCategory.chat,
+          description: 'User 2 feedback',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
+        );
 
-    test('clearUserItems removes only the specified user items and screenshots', () async {
-      final queue = BugReportQueue();
-      const req1 = BugReportCreateRequest(
-        clientReportId: '550e8400-e29b-41d4-a716-446655440010',
-        category: BugReportCategory.chat,
-        description: 'User 1 feedback',
-        diagnostics: BugReportDiagnostics(screen: 'chat'),
-      );
-      const req2 = BugReportCreateRequest(
-        clientReportId: '550e8400-e29b-41d4-a716-446655440020',
-        category: BugReportCategory.chat,
-        description: 'User 2 feedback',
-        diagnostics: BugReportDiagnostics(screen: 'chat'),
-      );
+        await queue.enqueue(req1, userId: 'user_1');
+        await queue.enqueue(req2, userId: 'user_2');
 
-      await queue.enqueue(req1, userId: 'user_1');
-      await queue.enqueue(req2, userId: 'user_2');
+        expect((await queue.getAll()).length, 2);
 
-      expect((await queue.getAll()).length, 2);
+        await queue.clearUserItems('user_1');
 
-      await queue.clearUserItems('user_1');
-
-      final remaining = await queue.getAll();
-      expect(remaining.length, 1);
-      expect(remaining.first.userId, 'user_2');
-    });
+        final remaining = await queue.getAll();
+        expect(remaining.length, 1);
+        expect(remaining.first.userId, 'user_2');
+      },
+    );
 
     test('legacy rejected item is dropped on load and unpersisted', () async {
       final prefs = await SharedPreferences.getInstance();
@@ -270,7 +273,10 @@ void main() {
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'user_id': 'user_legacy',
       });
-      await prefs.setStringList(BugReportQueue.prefKey, [legacyRejectedJson, validJson]);
+      await prefs.setStringList(BugReportQueue.prefKey, [
+        legacyRejectedJson,
+        validJson,
+      ]);
 
       final queue = BugReportQueue();
       final items = await queue.loadAll();
@@ -284,82 +290,95 @@ void main() {
       expect(persisted.first.contains('legacy-rejected-001'), isFalse);
     });
 
-    test('legacy ownerless item is dropped on load and its screenshot unpersisted', () async {
-      final prefs = await SharedPreferences.getInstance();
-      const scKey = 'bug_report_screenshot_legacy-ownerless-001';
-      await prefs.setString(scKey, '{"bytes_base64":"abc","width":1,"height":1}');
+    test(
+      'legacy ownerless item is dropped on load and its screenshot unpersisted',
+      () async {
+        final prefs = await SharedPreferences.getInstance();
+        final scKey = BugReportQueue.screenshotPrefKey('legacy-ownerless-001');
+        await prefs.setString(
+          scKey,
+          '{"content_type":"image/png","data_base64":"abc"}',
+        );
 
-      final legacyOwnerlessJson = jsonEncode({
-        'client_report_id': 'legacy-ownerless-001',
-        'payload': {
+        final legacyOwnerlessJson = jsonEncode({
           'client_report_id': 'legacy-ownerless-001',
-          'category': 'chat',
-          'description': 'Ownerless report',
-        },
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      });
-      final validJson = jsonEncode({
-        'client_report_id': 'valid-item-002',
-        'payload': {
+          'payload': {
+            'client_report_id': 'legacy-ownerless-001',
+            'category': 'chat',
+            'description': 'Ownerless report',
+          },
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        });
+        final validJson = jsonEncode({
           'client_report_id': 'valid-item-002',
-          'category': 'chat',
-          'description': 'Valid report with owner',
-        },
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-        'user_id': 'user_owner',
-      });
-      await prefs.setStringList(BugReportQueue.prefKey, [legacyOwnerlessJson, validJson]);
+          'payload': {
+            'client_report_id': 'valid-item-002',
+            'category': 'chat',
+            'description': 'Valid report with owner',
+          },
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+          'user_id': 'user_owner',
+        });
+        await prefs.setStringList(BugReportQueue.prefKey, [
+          legacyOwnerlessJson,
+          validJson,
+        ]);
 
-      final queue = BugReportQueue();
-      final items = await queue.loadAll();
+        final queue = BugReportQueue();
+        final items = await queue.loadAll();
 
-      expect(items.length, 1);
-      expect(items.first.clientReportId, 'valid-item-002');
-      expect(prefs.containsKey(scKey), isFalse);
+        expect(items.length, 1);
+        expect(items.first.clientReportId, 'valid-item-002');
+        expect(prefs.containsKey(scKey), isFalse);
 
-      final persisted = prefs.getStringList(BugReportQueue.prefKey)!;
-      expect(persisted.length, 1);
-      expect(persisted.first.contains('legacy-ownerless-001'), isFalse);
-    });
+        final persisted = prefs.getStringList(BugReportQueue.prefKey)!;
+        expect(persisted.length, 1);
+        expect(persisted.first.contains('legacy-ownerless-001'), isFalse);
+      },
+    );
 
-    test('legacy inline screenshot is migrated to separate storage and stripped from queue entry', () async {
-      final prefs = await SharedPreferences.getInstance();
-      const screenshotData = {
-        'bytes_base64': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-        'width': 1,
-        'height': 1,
-      };
-      final legacyInlineJson = jsonEncode({
-        'client_report_id': 'legacy-inline-001',
-        'payload': {
+    test(
+      'legacy inline screenshot is migrated to separate storage and stripped from queue entry',
+      () async {
+        final prefs = await SharedPreferences.getInstance();
+        const screenshotData = {
+          'content_type': 'image/png',
+          'data_base64':
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        };
+        final legacyInlineJson = jsonEncode({
           'client_report_id': 'legacy-inline-001',
-          'category': 'chat',
-          'description': 'Report with inline screenshot',
-          'screenshot': screenshotData,
-        },
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-        'user_id': 'user_owner',
-      });
-      await prefs.setStringList(BugReportQueue.prefKey, [legacyInlineJson]);
+          'payload': {
+            'client_report_id': 'legacy-inline-001',
+            'category': 'chat',
+            'description': 'Report with inline screenshot',
+            'diagnostics': {'screen': 'chat'},
+            'screenshot': screenshotData,
+          },
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+          'user_id': 'user_owner',
+        });
+        await prefs.setStringList(BugReportQueue.prefKey, [legacyInlineJson]);
 
-      final queue = BugReportQueue();
-      final items = await queue.loadAll();
-      expect(items.length, 1);
-      expect(items.first.payload.containsKey('screenshot'), isFalse);
+        final queue = BugReportQueue();
+        final items = await queue.loadAll();
+        expect(items.length, 1);
+        expect(items.first.payload.containsKey('screenshot'), isFalse);
 
-      // Stored separately in keyed screenshot storage
-      final scKey = BugReportQueue.screenshotPrefKey('legacy-inline-001');
-      expect(prefs.containsKey(scKey), isTrue);
+        // Stored separately in keyed screenshot storage
+        final scKey = BugReportQueue.screenshotPrefKey('legacy-inline-001');
+        expect(prefs.containsKey(scKey), isTrue);
 
-      // Resolves properly with screenshot restored
-      final resolved = await queue.resolveRequest(items.first);
-      expect(resolved.screenshot, isNotNull);
-      expect(resolved.screenshot!.width, 1);
-
-      // Persisted queue entry no longer has inline screenshot
-      final persisted = prefs.getStringList(BugReportQueue.prefKey)!;
-      final decoded = jsonDecode(persisted.first) as Map<String, dynamic>;
-      expect((decoded['payload'] as Map).containsKey('screenshot'), isFalse);
-    });
+        // Resolves properly with screenshot restored
+        final resolved = await queue.resolveRequest(items.first);
+        expect(resolved.screenshot, isNotNull);
+        expect(resolved.screenshot!.contentType, 'image/png');
+        expect(resolved.screenshot!.dataBase64, isNotEmpty);
+        // Persisted queue entry no longer has inline screenshot
+        final persisted = prefs.getStringList(BugReportQueue.prefKey)!;
+        final decoded = jsonDecode(persisted.first) as Map<String, dynamic>;
+        expect((decoded['payload'] as Map).containsKey('screenshot'), isFalse);
+      },
+    );
   });
 }

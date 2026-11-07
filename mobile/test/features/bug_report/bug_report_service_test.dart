@@ -37,7 +37,11 @@ void main() {
 
       final queue = BugReportQueue();
       final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final service = BugReportService(api: api, queue: queue, userId: 'test_user');
+      final service = BugReportService(
+        api: api,
+        queue: queue,
+        userId: 'test_user',
+      );
 
       final result = await service.submit(testRequest);
       expect(result.status, BugReportSubmissionStatus.submitted);
@@ -56,7 +60,11 @@ void main() {
 
       final queue = BugReportQueue();
       final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final service = BugReportService(api: api, queue: queue, userId: 'test_user');
+      final service = BugReportService(
+        api: api,
+        queue: queue,
+        userId: 'test_user',
+      );
 
       final result = await service.submit(testRequest);
       expect(result.status, BugReportSubmissionStatus.queued);
@@ -79,7 +87,11 @@ void main() {
 
       final queue = BugReportQueue();
       final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final service = BugReportService(api: api, queue: queue, userId: 'test_user');
+      final service = BugReportService(
+        api: api,
+        queue: queue,
+        userId: 'test_user',
+      );
 
       final result = await service.submit(testRequest);
       expect(result.status, BugReportSubmissionStatus.rateLimited);
@@ -99,7 +111,11 @@ void main() {
 
         final queue = BugReportQueue();
         final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final service = BugReportService(api: api, queue: queue, userId: 'test_user');
+        final service = BugReportService(
+          api: api,
+          queue: queue,
+          userId: 'test_user',
+        );
 
         final result = await service.submit(testRequest);
         expect(result.status, BugReportSubmissionStatus.rejected);
@@ -131,7 +147,11 @@ void main() {
         await queue.enqueue(testRequest, userId: 'test_user');
 
         final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-        final service = BugReportService(api: api, queue: queue, userId: 'test_user');
+        final service = BugReportService(
+          api: api,
+          queue: queue,
+          userId: 'test_user',
+        );
 
         final sentCount = await service.flushQueue();
         expect(sentCount, 1);
@@ -157,146 +177,186 @@ void main() {
       expect(all.isEmpty, isTrue);
     });
 
+    test(
+      'owner-scoped flush only sends items belonging to the current user session',
+      () async {
+        final submittedPayloads = <Map<String, dynamic>>[];
+        final mockClient = MockClient((request) async {
+          submittedPayloads.add(
+            jsonDecode(request.body) as Map<String, dynamic>,
+          );
+          return http.Response(
+            '{"id":"rpt-flush","ticket":"KARMI-0100","status":"new","created_at":"2026-11-07T10:00:00Z"}',
+            201,
+            headers: {'content-type': 'application/json'},
+          );
+        });
 
-    test('owner-scoped flush only sends items belonging to the current user session', () async {
-      final submittedPayloads = <Map<String, dynamic>>[];
-      final mockClient = MockClient((request) async {
-        submittedPayloads.add(jsonDecode(request.body) as Map<String, dynamic>);
-        return http.Response(
-          '{"id":"rpt-flush","ticket":"KARMI-0100","status":"new","created_at":"2026-11-07T10:00:00Z"}',
-          201,
-          headers: {'content-type': 'application/json'},
+        final queue = BugReportQueue();
+        final reqA = BugReportCreateRequest(
+          clientReportId: '550e8400-e29b-41d4-a716-446655440001',
+          category: BugReportCategory.chat,
+          description: 'Report from user A',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
         );
-      });
-
-      final queue = BugReportQueue();
-      const reqA = BugReportCreateRequest(
-        clientReportId: '550e8400-e29b-41d4-a716-446655440001',
-        category: BugReportCategory.chat,
-        description: 'Report from user A',
-        diagnostics: BugReportDiagnostics(screen: 'chat'),
-      );
-      const reqB = BugReportCreateRequest(
-        clientReportId: '550e8400-e29b-41d4-a716-446655440002',
-        category: BugReportCategory.settings,
-        description: 'Report from user B',
-        diagnostics: BugReportDiagnostics(screen: 'settings'),
-      );
-
-      await queue.enqueue(reqA, userId: 'user_aaa');
-      await queue.enqueue(reqB, userId: 'user_bbb');
-
-      final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final serviceA = BugReportService(api: api, queue: queue, userId: 'user_aaa');
-
-      final sentCount = await serviceA.flushQueue();
-      expect(sentCount, 1);
-      expect(submittedPayloads.length, 1);
-      expect(submittedPayloads.first['client_report_id'], '550e8400-e29b-41d4-a716-446655440001');
-
-      final pendingA = await queue.getPending(userId: 'user_aaa');
-      expect(pendingA.isEmpty, isTrue);
-
-      final pendingB = await queue.getPending(userId: 'user_bbb');
-      expect(pendingB.length, 1);
-      expect(pendingB.first.clientReportId, '550e8400-e29b-41d4-a716-446655440002');
-    });
-
-    test('malformed stored item during flush is quarantined and valid item still flushes', () async {
-      final submittedPayloads = <Map<String, dynamic>>[];
-      final mockClient = MockClient((request) async {
-        submittedPayloads.add(jsonDecode(request.body) as Map<String, dynamic>);
-        return http.Response(
-          '{"id":"rpt-flush-ok","ticket":"KARMI-0101","status":"new","created_at":"2026-11-07T10:00:00Z"}',
-          201,
-          headers: {'content-type': 'application/json'},
+        final reqB = BugReportCreateRequest(
+          clientReportId: '550e8400-e29b-41d4-a716-446655440002',
+          category: BugReportCategory.other,
+          description: 'Report from user B',
+          diagnostics: const BugReportDiagnostics(screen: 'settings'),
         );
-      });
 
-      final queue = BugReportQueue();
-      const validReq = BugReportCreateRequest(
-        clientReportId: '550e8400-e29b-41d4-a716-446655440003',
-        category: BugReportCategory.chat,
-        description: 'Valid report text',
-        diagnostics: BugReportDiagnostics(screen: 'chat'),
-      );
-      await queue.enqueue(validReq, userId: 'user_test');
+        await queue.enqueue(reqA, userId: 'user_aaa');
+        await queue.enqueue(reqB, userId: 'user_bbb');
 
-      // Inject a malformed queue item directly into prefs
-      final prefs = await SharedPreferences.getInstance();
-      final items = prefs.getStringList(BugReportQueue.prefKey) ?? [];
-      final malformedItemJson = jsonEncode({
-        'client_report_id': 'malformed-id-999',
-        'payload': {
-          'category': 12345, // invalid type; BugReportCreateRequest.fromJson throws TypeError
-          'description': 'Corrupted payload',
-        },
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-        'user_id': 'user_test',
-      });
-      // Insert malformed item before valid item to verify it does not block subsequent items
-      await prefs.setStringList(BugReportQueue.prefKey, [malformedItemJson, ...items]);
+        final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
+        final serviceA = BugReportService(
+          api: api,
+          queue: queue,
+          userId: 'user_aaa',
+        );
 
-      final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final service = BugReportService(api: api, queue: queue, userId: 'user_test');
+        final sentCount = await serviceA.flushQueue();
+        expect(sentCount, 1);
+        expect(submittedPayloads.length, 1);
+        expect(
+          submittedPayloads.first['client_report_id'],
+          '550e8400-e29b-41d4-a716-446655440001',
+        );
 
-      final sentCount = await service.flushQueue();
-      expect(sentCount, 1);
-      expect(submittedPayloads.length, 1);
-      expect(submittedPayloads.first['client_report_id'], '550e8400-e29b-41d4-a716-446655440003');
+        final pendingA = await queue.getPending(userId: 'user_aaa');
+        expect(pendingA.isEmpty, isTrue);
 
-      final pending = await queue.getPending(userId: 'user_test');
-      expect(pending.isEmpty, isTrue);
-    });
+        final pendingB = await queue.getPending(userId: 'user_bbb');
+        expect(pendingB.length, 1);
+        expect(
+          pendingB.first.clientReportId,
+          '550e8400-e29b-41d4-a716-446655440002',
+        );
+      },
+    );
 
-    test('flushQueue records Retry-After and breaks early on 429 rate limit', () async {
-      int requestCount = 0;
-      final mockClient = MockClient((request) async {
-        requestCount++;
-        return http.Response(
-          '{"error":"Rate limit exceeded"}',
-          429,
-          headers: {
-            'content-type': 'application/json',
-            'retry-after': '3600',
+    test(
+      'malformed stored item during flush is quarantined and valid item still flushes',
+      () async {
+        final submittedPayloads = <Map<String, dynamic>>[];
+        final mockClient = MockClient((request) async {
+          submittedPayloads.add(
+            jsonDecode(request.body) as Map<String, dynamic>,
+          );
+          return http.Response(
+            '{"id":"rpt-flush-ok","ticket":"KARMI-0101","status":"new","created_at":"2026-11-07T10:00:00Z"}',
+            201,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+
+        final queue = BugReportQueue();
+        final validReq = BugReportCreateRequest(
+          clientReportId: '550e8400-e29b-41d4-a716-446655440003',
+          category: BugReportCategory.chat,
+          description: 'Valid report text',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
+        );
+        await queue.enqueue(validReq, userId: 'user_test');
+
+        // Inject a malformed queue item directly into prefs
+        final prefs = await SharedPreferences.getInstance();
+        final items = prefs.getStringList(BugReportQueue.prefKey) ?? [];
+        final malformedItemJson = jsonEncode({
+          'client_report_id': 'malformed-id-999',
+          'payload': {
+            'category':
+                12345, // invalid type; BugReportCreateRequest.fromJson throws TypeError
+            'description': 'Corrupted payload',
           },
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+          'user_id': 'user_test',
+        });
+        // Insert malformed item before valid item to verify it does not block subsequent items
+        await prefs.setStringList(BugReportQueue.prefKey, [
+          malformedItemJson,
+          ...items,
+        ]);
+
+        final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
+        final service = BugReportService(
+          api: api,
+          queue: queue,
+          userId: 'user_test',
         );
-      });
 
-      final queue = BugReportQueue();
-      const req1 = BugReportCreateRequest(
-        clientReportId: '550e8400-e29b-41d4-a716-446655440011',
-        category: BugReportCategory.chat,
-        description: 'First report',
-        diagnostics: BugReportDiagnostics(screen: 'chat'),
-      );
-      const req2 = BugReportCreateRequest(
-        clientReportId: '550e8400-e29b-41d4-a716-446655440022',
-        category: BugReportCategory.chat,
-        description: 'Second report',
-        diagnostics: BugReportDiagnostics(screen: 'chat'),
-      );
-      await queue.enqueue(req1, userId: 'user_test');
-      await queue.enqueue(req2, userId: 'user_test');
+        final sentCount = await service.flushQueue();
+        expect(sentCount, 1);
+        expect(submittedPayloads.length, 1);
+        expect(
+          submittedPayloads.first['client_report_id'],
+          '550e8400-e29b-41d4-a716-446655440003',
+        );
 
-      final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final service = BugReportService(api: api, queue: queue, userId: 'user_test');
+        final pending = await queue.getPending(userId: 'user_test');
+        expect(pending.isEmpty, isTrue);
+      },
+    );
 
-      final sentCount = await service.flushQueue();
-      expect(sentCount, 0);
-      expect(requestCount, 1);
+    test(
+      'flushQueue records Retry-After and breaks early on 429 rate limit',
+      () async {
+        int requestCount = 0;
+        final mockClient = MockClient((request) async {
+          requestCount++;
+          return http.Response(
+            '{"error":"Rate limit exceeded"}',
+            429,
+            headers: {
+              'content-type': 'application/json',
+              'retry-after': '3600',
+            },
+          );
+        });
 
-      final all = await queue.getAll();
-      expect(all.length, 2);
-      final firstItem = all.firstWhere(
-        (i) => i.clientReportId == '550e8400-e29b-41d4-a716-446655440011',
-      );
-      expect(firstItem.retryAfterUntil, isNotNull);
-      expect(firstItem.isRateLimited, isTrue);
+        final queue = BugReportQueue();
+        final req1 = BugReportCreateRequest(
+          clientReportId: '550e8400-e29b-41d4-a716-446655440011',
+          category: BugReportCategory.chat,
+          description: 'First report',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
+        );
+        final req2 = BugReportCreateRequest(
+          clientReportId: '550e8400-e29b-41d4-a716-446655440022',
+          category: BugReportCategory.chat,
+          description: 'Second report',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
+        );
+        await queue.enqueue(req1, userId: 'user_test');
+        await queue.enqueue(req2, userId: 'user_test');
 
-      final eligible = await queue.getEligibleItems(userId: 'user_test');
-      expect(eligible.length, 1);
-      expect(eligible.first.clientReportId, '550e8400-e29b-41d4-a716-446655440022');
-    });
+        final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
+        final service = BugReportService(
+          api: api,
+          queue: queue,
+          userId: 'user_test',
+        );
+
+        final sentCount = await service.flushQueue();
+        expect(sentCount, 0);
+        expect(requestCount, 1);
+
+        final all = await queue.getAll();
+        expect(all.length, 2);
+        final firstItem = all.firstWhere(
+          (i) => i.clientReportId == '550e8400-e29b-41d4-a716-446655440011',
+        );
+        expect(firstItem.retryAfterUntil, isNotNull);
+        expect(firstItem.isRateLimited, isTrue);
+
+        final eligible = await queue.getEligibleItems(userId: 'user_test');
+        expect(eligible.length, 1);
+        expect(
+          eligible.first.clientReportId,
+          '550e8400-e29b-41d4-a716-446655440022',
+        );
+      },
+    );
   });
 }
