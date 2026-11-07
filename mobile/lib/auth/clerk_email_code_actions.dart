@@ -35,6 +35,49 @@ class GoogleSignInError extends GoogleSignInResult {
   const GoogleSignInError(this.message);
   final String message;
 }
+/// Formats a user-facing message describing missing Clerk sign-up fields after SSO transfer.
+String missingFieldsMessage(Iterable<String> fieldNames) {
+  final fields = fieldNames.join(', ');
+  return 'Clerk still needs: $fields.';
+}
+
+/// Pure decision helper returning a [GoogleSignInError] if the SSO browser launch
+/// could not start and no completion, transfer, or callback link is active.
+GoogleSignInError? ssoStartFailureOrNull({
+  required bool launched,
+  bool isSignedIn = false,
+  bool isTransferring = false,
+  bool ssoCallbackReceived = false,
+}) {
+  if (isSignedIn || isTransferring || ssoCallbackReceived) {
+    return null;
+  }
+  if (!launched) {
+    return const GoogleSignInError(
+      'Google sign-in could not start. Please try again.',
+    );
+  }
+  return null;
+}
+
+/// Pure decision helper deciding whether to ignore an app resume event.
+bool shouldIgnoreResume({
+  required bool isCompleted,
+  required bool ssoCallbackReceived,
+}) {
+  return isCompleted || ssoCallbackReceived;
+}
+
+/// Pure decision helper deciding whether to cancel the Google SSO sign-in on app resume.
+bool shouldCancelOnResume({
+  required bool isCompleted,
+  required bool ssoCallbackReceived,
+  required bool isSignedIn,
+  required bool isTransferring,
+}) {
+  return !isCompleted && !ssoCallbackReceived && !isSignedIn && !isTransferring;
+}
+
 
 /// Seam between Karmi's account form and Clerk. Identity, verification and
 /// session state stay with Clerk; the form only asks for what Clerk needs.
@@ -266,8 +309,8 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
           }
           final missing = auth.signUp?.missingFields ?? const [];
           if (missing.isNotEmpty) {
-            final fields = missing.map((f) => f.name).join(', ');
-            finish(GoogleSignInError('Clerk still needs: $fields.'));
+            final message = missingFieldsMessage(missing.map((f) => f.name));
+            finish(GoogleSignInError(message));
             return;
           }
         } catch (e) {
@@ -306,19 +349,27 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     AppLifecycleListener? lifecycleListener;
     lifecycleListener = AppLifecycleListener(
       onResume: () {
-        if (completer.isCompleted || ssoCallbackReceived) {
+        if (shouldIgnoreResume(
+          isCompleted: completer.isCompleted,
+          ssoCallbackReceived: ssoCallbackReceived,
+        )) {
           return;
         }
         cancelTimer?.cancel();
         cancelTimer = Timer(const Duration(milliseconds: 750), () async {
-          if (completer.isCompleted || ssoCallbackReceived) {
+          if (shouldIgnoreResume(
+            isCompleted: completer.isCompleted,
+            ssoCallbackReceived: ssoCallbackReceived,
+          )) {
             return;
           }
           await checkState();
-          if (!completer.isCompleted &&
-              !ssoCallbackReceived &&
-              !auth.isSignedIn &&
-              !isTransferring) {
+          if (shouldCancelOnResume(
+            isCompleted: completer.isCompleted,
+            ssoCallbackReceived: ssoCallbackReceived,
+            isSignedIn: auth.isSignedIn,
+            isTransferring: isTransferring,
+          )) {
             finish(const GoogleSignInCancelled());
           }
         });
@@ -370,12 +421,16 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     if (!completer.isCompleted) {
       if (auth.isSignedIn) {
         finish(const GoogleSignInSuccess());
-      } else if (!launchSuccess && !isTransferring && !ssoCallbackReceived) {
-        finish(
-          const GoogleSignInError(
-            'Google sign-in could not start. Please try again.',
-          ),
+      } else {
+        final failure = ssoStartFailureOrNull(
+          launched: launchSuccess,
+          isSignedIn: auth.isSignedIn,
+          isTransferring: isTransferring,
+          ssoCallbackReceived: ssoCallbackReceived,
         );
+        if (failure != null) {
+          finish(failure);
+        }
       }
     }
     try {
