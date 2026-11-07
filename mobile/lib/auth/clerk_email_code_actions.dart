@@ -35,6 +35,7 @@ class GoogleSignInError extends GoogleSignInResult {
   const GoogleSignInError(this.message);
   final String message;
 }
+
 /// Formats a user-facing message describing missing Clerk sign-up fields after SSO transfer.
 String missingFieldsMessage(Iterable<String> fieldNames) {
   final fields = fieldNames.join(', ');
@@ -77,7 +78,6 @@ bool shouldCancelOnResume({
 }) {
   return !isCompleted && !ssoCallbackReceived && !isSignedIn && !isTransferring;
 }
-
 
 /// Seam between Karmi's account form and Clerk. Identity, verification and
 /// session state stay with Clerk; the form only asks for what Clerk needs.
