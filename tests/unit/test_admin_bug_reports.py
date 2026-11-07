@@ -26,9 +26,7 @@ def test_customers_get_403_on_every_new_admin_route(env: Env) -> None:
     rep_id = "test-bug-id-403"
 
     # GET /v1/admin/bug-reports
-    assert (
-        env.client.get("/v1/admin/bug-reports", headers=customer_bearer).status_code == 403
-    )
+    assert env.client.get("/v1/admin/bug-reports", headers=customer_bearer).status_code == 403
 
     # GET /v1/admin/bug-reports/{id}
     assert (
@@ -74,7 +72,22 @@ def test_admin_bug_report_detail_and_screenshot_and_audited(env: Env) -> None:
             screenshot_content_type="image/png",
             status="new",
         )
+        report_no_shot = BugReport(
+            id="bug-detail-no-shot",
+            account_id=c_acc,
+            user_id=c_uid,
+            ticket_number=43,
+            client_report_id="client-rep-02",
+            request_hash="hash02",
+            category="ui",
+            description="Detail without screenshot.",
+            diagnostics={"os": "android"},
+            screenshot=None,
+            screenshot_content_type=None,
+            status="new",
+        )
         session.add(report)
+        session.add(report_no_shot)
         session.commit()
 
     # GET detail
@@ -89,11 +102,15 @@ def test_admin_bug_report_detail_and_screenshot_and_audited(env: Env) -> None:
     assert data["user"]["id"] == c_uid
     assert data["user"]["display_name"] == "reporter-customer"
 
+    # GET detail for report without screenshot -> has_screenshot is False
+    resp_no_shot = env.client.get("/v1/admin/bug-reports/bug-detail-no-shot", headers=headers)
+    assert resp_no_shot.status_code == 200
+    assert resp_no_shot.json()["has_screenshot"] is False
     # Detail writes audit row: action="bug_report.read"
     audit_read = env.audit("bug_report.read")
-    assert len(audit_read) == 1
-    assert audit_read[0].target_user_id == c_uid
-    assert audit_read[0].admin_user_id == env.root_id
+    assert len(audit_read) == 2
+    assert all(a.target_user_id == c_uid for a in audit_read)
+    assert all(a.admin_user_id == env.root_id for a in audit_read)
 
     # GET screenshot
     s_resp = env.client.get("/v1/admin/bug-reports/bug-detail-01/screenshot", headers=headers)
@@ -172,7 +189,11 @@ def test_admin_bug_report_patch_transitions_and_audit(env: Env) -> None:
     r_triaged = env.client.patch(
         "/v1/admin/bug-reports/bug-patch-01",
         headers=headers,
-        json={"status": "triaged", "admin_notes": "Reviewed and triaged.", "reason": "First triage pass"},
+        json={
+            "status": "triaged",
+            "admin_notes": "Reviewed and triaged.",
+            "reason": "First triage pass",
+        },
     )
     assert r_triaged.status_code == 200
     assert r_triaged.json()["status"] == "triaged"

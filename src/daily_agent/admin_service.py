@@ -158,11 +158,17 @@ def list_users(
     cursor: str | None,
 ) -> dict[str, Any]:
     limit = max(1, min(limit, MAX_PAGE))
-    stmt = select(User, Subscription).outerjoin(Subscription, Subscription.account_id == User.account_id)
+    stmt = select(User, Subscription).outerjoin(
+        Subscription, Subscription.account_id == User.account_id
+    )
     if q:
         needle = f"%{_escape_like(q.strip().lower())}%"
         stmt = stmt.where(
-            or_(func.lower(User.email).like(needle, escape="\\"), func.lower(User.display_name).like(needle, escape="\\"), User.id == q.strip())
+            or_(
+                func.lower(User.email).like(needle, escape="\\"),
+                func.lower(User.display_name).like(needle, escape="\\"),
+                User.id == q.strip(),
+            )
         )
     if tier:
         parse_tier(tier)
@@ -175,7 +181,10 @@ def list_users(
     if tester_label is not None:
         stmt = stmt.where(User.tester_label == tester_label)
     if plan_expiring_before is not None:
-        stmt = stmt.where(Subscription.tier_expires_at.is_not(None), Subscription.tier_expires_at <= plan_expiring_before)
+        stmt = stmt.where(
+            Subscription.tier_expires_at.is_not(None),
+            Subscription.tier_expires_at <= plan_expiring_before,
+        )
     if cursor:
         stmt = stmt.where(User.id > cursor)
     rows = session.execute(stmt.order_by(User.id).limit(limit + 1)).all()
@@ -231,7 +240,9 @@ def usage_summary(session: Session, settings: Settings, user: User) -> dict[str,
     }
 
 
-def user_detail(session: Session, settings: Settings, admin_id: str, user_id: str) -> dict[str, Any]:
+def user_detail(
+    session: Session, settings: Settings, admin_id: str, user_id: str
+) -> dict[str, Any]:
     user = _load_user(session, user_id)
     open_reports = (
         session.scalar(
@@ -301,7 +312,9 @@ def suspend(
     return user_item(user, _subscription(session, user.account_id))
 
 
-def unsuspend(session: Session, settings: Settings, admin_id: str, user_id: str, reason: str) -> dict[str, Any]:
+def unsuspend(
+    session: Session, settings: Settings, admin_id: str, user_id: str, reason: str
+) -> dict[str, Any]:
     user = _load_user(session, user_id)
     _refuse_admin_target(session, settings, admin_id, user, "user.unsuspend", reason)
     before = user.disabled
@@ -363,6 +376,8 @@ def revoke_sessions(
         "token_version": user.token_version,
         "clerk_sessions_revoked": clerk_revoked,
     }
+
+
 def edit_user(
     session: Session,
     settings: Settings,
@@ -377,7 +392,12 @@ def edit_user(
 ) -> dict[str, Any]:
     user = _load_user(session, user_id)
     _refuse_admin_target(session, settings, admin_id, user, "user.edit", reason)
-    before = {"display_name": user.display_name, "tester": user.tester, "tester_label": user.tester_label, "admin_notes": user.admin_notes}
+    before = {
+        "display_name": user.display_name,
+        "tester": user.tester,
+        "tester_label": user.tester_label,
+        "admin_notes": user.admin_notes,
+    }
     if display_name is not None:
         user.display_name = display_name.strip()
     if tester is not None:
@@ -386,11 +406,24 @@ def edit_user(
         user.tester_label = tester_label or None
     if admin_notes is not None:
         user.admin_notes = admin_notes or None
-    after = {"display_name": user.display_name, "tester": user.tester, "tester_label": user.tester_label, "admin_notes": user.admin_notes}
-    append_audit(session, admin_user_id=admin_id, action="user.edit", target_user_id=user.id, reason=reason, detail={"before": before, "after": after})
+    after = {
+        "display_name": user.display_name,
+        "tester": user.tester,
+        "tester_label": user.tester_label,
+        "admin_notes": user.admin_notes,
+    }
+    append_audit(
+        session,
+        admin_user_id=admin_id,
+        action="user.edit",
+        target_user_id=user.id,
+        reason=reason,
+        detail={"before": before, "after": after},
+    )
     session.commit()
-    return user_item(user, _subscription(session, user.account_id)) | {"admin_notes": user.admin_notes}
-
+    return user_item(user, _subscription(session, user.account_id)) | {
+        "admin_notes": user.admin_notes
+    }
 
 
 def change_tier(
@@ -454,6 +487,7 @@ def change_tier(
         session.commit()
     return user_item(user, subscription)
 
+
 def bulk_change_tier(
     session: Session,
     settings: Settings,
@@ -466,7 +500,9 @@ def bulk_change_tier(
     if len(user_ids) > 100:
         raise _bad("user_ids cannot contain more than 100 users")
     if len(set(user_ids)) != len(user_ids):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="user_ids must be unique")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="user_ids must be unique"
+        )
     plan = parse_tier(tier)
     users = [session.get(User, uid) for uid in user_ids]
     if any(user is None for user in users):
@@ -631,7 +667,9 @@ def erase_user(
     _refuse_admin_target(session, settings, admin_id, user, "user.erase", reason)
     account_id = user.account_id
     others = session.scalar(
-        select(func.count()).select_from(User).where(User.account_id == account_id, User.id != user.id)
+        select(func.count())
+        .select_from(User)
+        .where(User.account_id == account_id, User.id != user.id)
     )
     if others:
         raise _bad("account is shared with other users; refusing to erase")
@@ -644,16 +682,24 @@ def erase_user(
         result = session.execute(statement)
         counts[name] = int(getattr(result, "rowcount", 0) or 0)
 
-    purge("message_feedback", delete(MessageFeedback).where(MessageFeedback.account_id == account_id))
+    purge(
+        "message_feedback", delete(MessageFeedback).where(MessageFeedback.account_id == account_id)
+    )
     purge("outbox_events", delete(OutboxEvent).where(OutboxEvent.run_id.in_(run_ids)))
     purge("routing_records", delete(RoutingRecord).where(RoutingRecord.run_id.in_(run_ids)))
     purge("routing_decisions", delete(RoutingDecision).where(RoutingDecision.run_id.in_(run_ids)))
     purge("cost_ledger", delete(CostLedger).where(CostLedger.reservation_id.in_(reservation_ids)))
-    purge("budget_reservations", delete(BudgetReservation).where(BudgetReservation.account_id == account_id))
+    purge(
+        "budget_reservations",
+        delete(BudgetReservation).where(BudgetReservation.account_id == account_id),
+    )
     purge("billing_events", delete(BillingEvent).where(BillingEvent.account_id == account_id))
     session.execute(update(Run).where(Run.account_id == account_id).values(previous_run_id=None))
     purge("runs", delete(Run).where(Run.account_id == account_id))
-    purge("chat_messages", delete(ChatMessage).where(ChatMessage.conversation_id.in_(conversation_ids)))
+    purge(
+        "chat_messages",
+        delete(ChatMessage).where(ChatMessage.conversation_id.in_(conversation_ids)),
+    )
     purge("conversations", delete(Conversation).where(Conversation.account_id == account_id))
     purge("tasks", delete(Task).where(Task.account_id == account_id))
     purge("reminders", delete(Reminder).where(Reminder.account_id == account_id))
@@ -719,9 +765,7 @@ def list_runs(session: Session, *, limit: int, cursor: str | None) -> dict[str, 
             at = as_utc(datetime.fromisoformat(stamp))
         except ValueError:
             raise _bad("invalid cursor") from None
-        stmt = stmt.where(
-            or_(Run.created_at < at, and_(Run.created_at == at, Run.id < run_id))
-        )
+        stmt = stmt.where(or_(Run.created_at < at, and_(Run.created_at == at, Run.id < run_id)))
     rows = session.scalars(stmt).all()
     page = rows[:limit]
     return {
@@ -794,15 +838,15 @@ def build_monitor(
 
     today_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
     total_runs_today = (
-        session.scalar(
-            select(func.count()).select_from(Run).where(Run.created_at >= today_start)
-        )
+        session.scalar(select(func.count()).select_from(Run).where(Run.created_at >= today_start))
         or 0
     )
     if total_runs_today > 0:
         successful_runs_today = (
             session.scalar(
-                select(func.count()).select_from(Run).where(
+                select(func.count())
+                .select_from(Run)
+                .where(
                     Run.created_at >= today_start,
                     Run.status == RunStatus.COMPLETED,
                 )
@@ -815,9 +859,9 @@ def build_monitor(
 
     open_bug_reports = (
         session.scalar(
-            select(func.count()).select_from(BugReport).where(
-                BugReport.status.notin_(["fixed", "closed", "duplicate", "wontfix"])
-            )
+            select(func.count())
+            .select_from(BugReport)
+            .where(BugReport.status.notin_(["fixed", "closed", "duplicate", "wontfix"]))
         )
         or 0
     )
@@ -888,7 +932,13 @@ def build_monitor(
 
 
 ALLOWED_BUG_REPORT_STATUSES = {
-    "new", "triaged", "in_progress", "fixed", "closed", "duplicate", "wontfix"
+    "new",
+    "triaged",
+    "in_progress",
+    "fixed",
+    "closed",
+    "duplicate",
+    "wontfix",
 }
 
 ALLOWED_BUG_REPORT_TRANSITIONS: dict[str, set[str]] = {
@@ -968,9 +1018,18 @@ def get_admin_bug_report(
     admin_id: str,
     report_id: str,
 ) -> dict[str, Any]:
-    report = session.get(BugReport, report_id)
-    if report is None:
+    stmt = (
+        select(
+            BugReport,
+            (BugReport.screenshot.is_not(None)).label("has_screenshot"),
+        )
+        .options(defer(BugReport.screenshot))
+        .where(BugReport.id == report_id)
+    )
+    row = session.execute(stmt).first()
+    if row is None:
         raise _not_found()
+    report, has_screenshot = row
     user = session.get(User, report.user_id)
     sub = _subscription(session, report.account_id)
     plan = plan_policy(sub).plan_id
@@ -990,7 +1049,7 @@ def get_admin_bug_report(
         "diagnostics": report.diagnostics,
         "status": report.status,
         "admin_notes": report.admin_notes,
-        "has_screenshot": report.screenshot is not None,
+        "has_screenshot": bool(has_screenshot),
         "user": {
             "id": user.id if user else report.user_id,
             "display_name": user.display_name if user else "",
@@ -1086,4 +1145,3 @@ def patch_admin_bug_report(
         "triaged_at": _iso(report.triaged_at) if report.triaged_at else None,
         "resolved_at": _iso(report.resolved_at) if report.resolved_at else None,
     }
-
