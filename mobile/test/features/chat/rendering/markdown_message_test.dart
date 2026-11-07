@@ -307,7 +307,9 @@ void main() {
     });
   });
 
-  testWidgets('MarkdownMessage uses cache and updates on streaming change', (tester) async {
+  testWidgets('MarkdownMessage uses cache and updates on streaming change', (
+    tester,
+  ) async {
     final cache = ParsedMarkdownCache(capacity: 10);
     await tester.pumpWidget(
       _host(

@@ -454,9 +454,9 @@ class _ComposerState extends State<Composer> {
                                           }),
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                  ],
                                 ),
+                              ),
                               const SizedBox(height: 6),
                               Container(height: 1, color: colors.hairline),
                               const SizedBox(height: 6),
@@ -536,44 +536,50 @@ class _ComposerState extends State<Composer> {
                                   valueListenable: _canSendNotifier,
                                   builder: (context, canSend, child) {
                                     return IconButton.filled(
-                                      key: const ValueKey('composer-send-button'),
+                                      key: const ValueKey(
+                                        'composer-send-button',
+                                      ),
                                       tooltip: actionLabel,
                                       padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints.tightFor(
-                                        width: 34,
-                                        height: 34,
-                                      ),
+                                      constraints:
+                                          const BoxConstraints.tightFor(
+                                            width: 34,
+                                            height: 34,
+                                          ),
                                       style:
                                           IconButton.styleFrom(
                                             backgroundColor: colors.primary,
                                             foregroundColor:
                                                 colors.primaryForeground,
-                                            disabledBackgroundColor: colors.muted,
+                                            disabledBackgroundColor:
+                                                colors.muted,
                                             disabledForegroundColor:
                                                 colors.mutedForeground,
                                             shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(
-                                                widget.busy ? 8 : 17,
-                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    widget.busy ? 8 : 17,
+                                                  ),
                                             ),
                                             minimumSize: const Size(34, 34),
                                             fixedSize: const Size(34, 34),
                                             padding: EdgeInsets.zero,
                                           ).copyWith(
-                                            side: WidgetStateProperty.resolveWith(
-                                              (states) =>
-                                                  states.contains(
-                                                    WidgetState.focused,
-                                                  )
-                                                  ? BorderSide(
-                                                      color:
-                                                          colors.primaryForeground,
-                                                      width: KarmiShape.of(
-                                                        context,
-                                                      ).focusRingWidth,
-                                                    )
-                                                  : null,
-                                            ),
+                                            side:
+                                                WidgetStateProperty.resolveWith(
+                                                  (states) =>
+                                                      states.contains(
+                                                        WidgetState.focused,
+                                                      )
+                                                      ? BorderSide(
+                                                          color: colors
+                                                              .primaryForeground,
+                                                          width: KarmiShape.of(
+                                                            context,
+                                                          ).focusRingWidth,
+                                                        )
+                                                      : null,
+                                                ),
                                           ),
                                       onPressed: widget.busy
                                           ? widget.onStop
