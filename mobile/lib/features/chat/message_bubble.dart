@@ -206,6 +206,7 @@ class MessageBubble extends StatelessWidget {
                         streaming:
                             chatMessage!.status == MessageStatus.streaming,
                         allowCollapse: true,
+                        messageId: chatMessage!.id,
                       ),
                     if (chatMessage!.outcome == Outcome.askUser) ...[
                       const SizedBox(height: 8),
