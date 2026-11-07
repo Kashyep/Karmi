@@ -248,11 +248,6 @@ class _BugReportDetailScreenState extends State<BugReportDetailScreen> {
 
     return PopScope(
       canPop: !_busy,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop && _changed) {
-          // Parent inbox will reload on pop
-        }
-      },
       child: Scaffold(
         appBar: AppBar(
           title: Text(detail?.ticket ?? 'Bug Report'),
