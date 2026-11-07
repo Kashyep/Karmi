@@ -9,10 +9,7 @@ import 'account_rules.dart';
 import 'clerk_sso.dart';
 
 typedef ClerkFlowErrorHandler = void Function(Object error);
-typedef UrlLauncherFunction = Future<bool> Function(
-  Uri url, {
-  LaunchMode mode,
-});
+typedef UrlLauncherFunction = Future<bool> Function(Uri url, {LaunchMode mode});
 
 /// Result of a Google SSO attempt.
 sealed class GoogleSignInResult {
@@ -193,10 +190,11 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     this.context, {
     Stream<Uri>? callbackLinks,
     UrlLauncherFunction? urlLauncher,
-  })  : _callbackLinks = callbackLinks,
-        _urlLauncher = urlLauncher ??
-            ((url, {mode = LaunchMode.platformDefault}) =>
-                launchUrl(url, mode: mode));
+  }) : _callbackLinks = callbackLinks,
+       _urlLauncher =
+           urlLauncher ??
+           ((url, {mode = LaunchMode.platformDefault}) =>
+               launchUrl(url, mode: mode));
 
   final ClerkAuthState auth;
   final BuildContext context;
@@ -433,7 +431,8 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     });
 
     try {
-      final redirect = auth.config.redirectionGenerator?.call(
+      final redirect =
+          auth.config.redirectionGenerator?.call(
             context,
             clerk.Strategy.oauthGoogle,
           ) ??
@@ -454,10 +453,8 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     }
 
     if (!completer.isCompleted) {
-      final redirectUrl = auth
-          .signIn
-          ?.firstFactorVerification
-          ?.externalVerificationRedirectUrl;
+      final redirectUrl =
+          auth.signIn?.firstFactorVerification?.externalVerificationRedirectUrl;
       final decision = await postSsoSignInLaunchAndDecision(
         redirectUrl: redirectUrl,
         urlLauncher: _urlLauncher,

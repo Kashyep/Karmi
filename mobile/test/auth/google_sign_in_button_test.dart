@@ -65,18 +65,13 @@ void main() {
     testWidgets(
       'excludes child semantics to avoid duplicate TalkBack announcement',
       (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            GoogleSignInButton(
-              onPressed: () {},
-            ),
-          ),
-        );
+        await tester.pumpWidget(_wrap(GoogleSignInButton(onPressed: () {})));
 
         final semanticsFinder = find.descendant(
           of: find.byType(GoogleSignInButton),
           matching: find.byWidgetPredicate(
-            (w) => w is Semantics && w.properties.label == 'Continue with Google',
+            (w) =>
+                w is Semantics && w.properties.label == 'Continue with Google',
           ),
         );
         expect(semanticsFinder, findsOneWidget);

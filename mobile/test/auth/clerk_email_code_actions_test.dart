@@ -27,19 +27,22 @@ void main() {
   });
 
   group('ssoStartFailureOrNull', () {
-    test('returns GoogleSignInError when launch failed and no other progress', () {
-      final failure = ssoStartFailureOrNull(
-        launched: false,
-        isSignedIn: false,
-        isTransferring: false,
-        ssoCallbackReceived: false,
-      );
-      expect(failure, isA<GoogleSignInError>());
-      expect(
-        failure?.message,
-        'Google sign-in could not start. Please try again.',
-      );
-    });
+    test(
+      'returns GoogleSignInError when launch failed and no other progress',
+      () {
+        final failure = ssoStartFailureOrNull(
+          launched: false,
+          isSignedIn: false,
+          isTransferring: false,
+          ssoCallbackReceived: false,
+        );
+        expect(failure, isA<GoogleSignInError>());
+        expect(
+          failure?.message,
+          'Google sign-in could not start. Please try again.',
+        );
+      },
+    );
 
     test('returns null when browser launch succeeded', () {
       expect(
@@ -114,17 +117,20 @@ void main() {
   });
 
   group('shouldCancelOnResume', () {
-    test('cancels when uncompleted, callback not received, not signed in, and not transferring', () {
-      expect(
-        shouldCancelOnResume(
-          isCompleted: false,
-          ssoCallbackReceived: false,
-          isSignedIn: false,
-          isTransferring: false,
-        ),
-        isTrue,
-      );
-    });
+    test(
+      'cancels when uncompleted, callback not received, not signed in, and not transferring',
+      () {
+        expect(
+          shouldCancelOnResume(
+            isCompleted: false,
+            ssoCallbackReceived: false,
+            isSignedIn: false,
+            isTransferring: false,
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('does not cancel when completed', () {
       expect(
@@ -209,22 +215,28 @@ void main() {
       expect(launched, isFalse);
     });
 
-    test('returns true when urlLauncher returns true and passes mode', () async {
-      Uri? passedUri;
-      LaunchMode? passedMode;
-      final launched = await launchSsoBrowser(
-        redirectUrl: 'https://accounts.google.com/o/oauth2/auth',
-        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async {
-          passedUri = uri;
-          passedMode = mode;
-          return true;
-        },
-        mode: LaunchMode.externalApplication,
-      );
-      expect(launched, isTrue);
-      expect(passedUri, Uri.parse('https://accounts.google.com/o/oauth2/auth'));
-      expect(passedMode, LaunchMode.externalApplication);
-    });
+    test(
+      'returns true when urlLauncher returns true and passes mode',
+      () async {
+        Uri? passedUri;
+        LaunchMode? passedMode;
+        final launched = await launchSsoBrowser(
+          redirectUrl: 'https://accounts.google.com/o/oauth2/auth',
+          urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async {
+            passedUri = uri;
+            passedMode = mode;
+            return true;
+          },
+          mode: LaunchMode.externalApplication,
+        );
+        expect(launched, isTrue);
+        expect(
+          passedUri,
+          Uri.parse('https://accounts.google.com/o/oauth2/auth'),
+        );
+        expect(passedMode, LaunchMode.externalApplication);
+      },
+    );
   });
 
   group('postSsoSignInLaunchAndDecision', () {
@@ -285,14 +297,18 @@ void main() {
       expect(failure, isNull);
     });
 
-    test('returns GoogleSignInSuccess when user is already signed in', () async {
-      final result = await postSsoSignInLaunchAndDecision(
-        redirectUrl: null,
-        urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async => false,
-        isSignedIn: true,
-      );
-      expect(result, isA<GoogleSignInSuccess>());
-    });
+    test(
+      'returns GoogleSignInSuccess when user is already signed in',
+      () async {
+        final result = await postSsoSignInLaunchAndDecision(
+          redirectUrl: null,
+          urlLauncher: (uri, {mode = LaunchMode.platformDefault}) async =>
+              false,
+          isSignedIn: true,
+        );
+        expect(result, isA<GoogleSignInSuccess>());
+      },
+    );
 
     test('returns null when transfer is active', () async {
       final failure = await postSsoSignInLaunchAndDecision(
