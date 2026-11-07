@@ -13,8 +13,6 @@ class BugReportQueueItem {
     this.userId,
     this.retryCount = 0,
     this.retryAfterUntil,
-    this.isRejected = false,
-    this.rejectionReason,
   });
 
   final String clientReportId;
@@ -23,8 +21,6 @@ class BugReportQueueItem {
   final String? userId;
   final int retryCount;
   final DateTime? retryAfterUntil;
-  final bool isRejected;
-  final String? rejectionReason;
 
   bool get isRateLimited {
     if (retryAfterUntil == null) return false;
@@ -41,8 +37,6 @@ class BugReportQueueItem {
     String? userId,
     int? retryCount,
     DateTime? retryAfterUntil,
-    bool? isRejected,
-    String? rejectionReason,
   }) {
     return BugReportQueueItem(
       clientReportId: clientReportId,
@@ -51,8 +45,6 @@ class BugReportQueueItem {
       userId: userId ?? this.userId,
       retryCount: retryCount ?? this.retryCount,
       retryAfterUntil: retryAfterUntil ?? this.retryAfterUntil,
-      isRejected: isRejected ?? this.isRejected,
-      rejectionReason: rejectionReason ?? this.rejectionReason,
     );
   }
 
@@ -64,8 +56,6 @@ class BugReportQueueItem {
     'retry_count': retryCount,
     if (retryAfterUntil != null)
       'retry_after_until': retryAfterUntil!.toIso8601String(),
-    'is_rejected': isRejected,
-    if (rejectionReason != null) 'rejection_reason': rejectionReason,
   };
 
   factory BugReportQueueItem.fromJson(Map<String, dynamic> json) {
@@ -78,8 +68,6 @@ class BugReportQueueItem {
       retryAfterUntil: json['retry_after_until'] != null
           ? DateTime.parse(json['retry_after_until'] as String)
           : null,
-      isRejected: json['is_rejected'] as bool? ?? false,
-      rejectionReason: json['rejection_reason'] as String?,
     );
   }
 
@@ -269,14 +257,13 @@ class BugReportQueue {
     });
   }
 
-  /// Returns items eligible for automatic retrying (not rejected).
+  /// Returns items eligible for automatic retrying (not rate-limited).
   Future<List<BugReportQueueItem>> getEligibleItems({String? userId}) async {
     if (userId == null || userId.isEmpty) return [];
     return _globalLock.synchronized(() async {
       final items = await _loadAllUnlocked();
       final now = DateTime.now().toUtc();
       return items.where((item) {
-        if (item.isRejected) return false;
         if (item.userId != userId) return false;
         if (item.retryAfterUntil != null && item.retryAfterUntil!.isAfter(now)) {
           return false;
@@ -289,12 +276,11 @@ class BugReportQueue {
   /// Alias for [loadAll].
   Future<List<BugReportQueueItem>> getAll() => loadAll();
 
-  /// Returns all active pending items (not marked as rejected).
+  /// Returns all active pending items.
   Future<List<BugReportQueueItem>> getPending({String? userId}) async {
     return _globalLock.synchronized(() async {
       final items = await _loadAllUnlocked();
       return items.where((i) {
-        if (i.isRejected) return false;
         if (userId != null && i.userId != userId) return false;
         return true;
       }).toList();

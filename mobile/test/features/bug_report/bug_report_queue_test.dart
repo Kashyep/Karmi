@@ -269,7 +269,6 @@ void main() {
         },
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'user_id': 'user_legacy',
-        'is_rejected': false,
       });
       await prefs.setStringList(BugReportQueue.prefKey, [legacyRejectedJson, validJson]);
 
@@ -308,7 +307,6 @@ void main() {
         },
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'user_id': 'user_owner',
-        'is_rejected': false,
       });
       await prefs.setStringList(BugReportQueue.prefKey, [legacyOwnerlessJson, validJson]);
 
@@ -341,7 +339,6 @@ void main() {
         },
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'user_id': 'user_owner',
-        'is_rejected': false,
       });
       await prefs.setStringList(BugReportQueue.prefKey, [legacyInlineJson]);
 

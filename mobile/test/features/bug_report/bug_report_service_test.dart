@@ -233,7 +233,6 @@ void main() {
         },
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'user_id': 'user_test',
-        'is_rejected': false,
       });
       // Insert malformed item before valid item to verify it does not block subsequent items
       await prefs.setStringList(BugReportQueue.prefKey, [malformedItemJson, ...items]);
