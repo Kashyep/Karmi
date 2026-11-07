@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Admin session & route access**: Enforced Clerk token, admin allowlist, and `X-Admin-Session` header checks on all admin bug reporting endpoints.
 
 ### Known issues
+- **Web admin UI**: web admin UI (overview tiles, bug inbox, screenshot viewer) NOT MERGED to 314afa4 — backend routes and CSP hardening only.
 - **Device verification NOT VERIFIED (device testing paused by owner)**: Real device verification on Pixel 9a has not been executed; all device test checks remain paused.
 - **R-9 golden visual review open**: Visual review by human owner for updated Flutter golden test assets remains pending.
 - **Real Google sign-in NOT VERIFIED**: End-to-end Google OAuth sign-in against a live Clerk instance and real Google accounts has not been verified on physical devices (requires owner configuration in Clerk dashboard).
