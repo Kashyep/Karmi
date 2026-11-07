@@ -198,7 +198,7 @@ void main() {
     testWidgets('renders section headers and active row highlight', (
       tester,
     ) async {
-      final now = DateTime.now();
+      final now = DateTime(2026, 10, 22, 14, 30);
       final api = _FakeApi();
       api.conversations = [
         ConversationView(
@@ -236,6 +236,7 @@ void main() {
               activeConversationId: 'today_1',
               onOpen: (_) {},
               onNewChat: () {},
+              clock: () => now,
             ),
           ),
         ),
