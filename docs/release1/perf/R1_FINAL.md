@@ -28,7 +28,12 @@ The composer ValueNotifier narrowing has been reverted. All-widget numbers below
 - **Assessment**: As measured on the pre-revert branch, no reduction was observed (+2 rebuilds per send). The narrowing has been reverted; no all-widget rebuild reduction is claimed.
 ## 4. Markdown Cache
 - **Implementation**: Parsed AST cached per message id + content revision in a bounded LRU (`ParsedMarkdownCache`, commit `01db879`).
-- **Effectiveness**: Parse-count effect NOT MEASURED.
+- **Effectiveness**: Measured (see [./MARKDOWN_PARSE_COUNTS.md](./MARKDOWN_PARSE_COUNTS.md)).
+- **Markdown parse counts**: AST parses (uncached -> cached) documented in [./MARKDOWN_PARSE_COUNTS.md](./MARKDOWN_PARSE_COUNTS.md):
+  - Long conversation rebuilds (30 messages, 20 rebuilds): 600 -> 30
+  - Streaming message deltas (1 message, 15 deltas x 3 pumps): 45 -> 15
+  - Conversation with streaming message (30 msgs, 20 rebuilds, 39 distinct pairs): 600 -> 39
+  Test-only debug hooks `MarkdownMessage.debugParseCount`, `MarkdownMessage.debugDisableCache`, and `MarkdownMessage.debugResetParseCount()` instrument the parser with zero production behavior change.
 - **Unit tests**: `test/features/chat/rendering/markdown_message_test.dart` (cache hit, streaming invalidation, bounded eviction): 18/18 pass.
 
 ## 5. Mobile Gates
