@@ -186,7 +186,23 @@ class BugReportQueue {
         (i) => i.clientReportId == request.clientReportId,
       );
       if (index >= 0) {
-        // Already queued with this client_report_id; preserve the exact existing payload
+        final existingItem = items[index];
+        final existingRawScreenshot = prefs.getString(scKey);
+        final newScreenshotJson = request.screenshot != null
+            ? jsonEncode(request.screenshot!.toJson())
+            : null;
+        final payloadChanged = jsonEncode(existingItem.payload) !=
+            jsonEncode(payloadWithoutScreenshot);
+        final screenshotChanged = existingRawScreenshot != newScreenshotJson;
+
+        if (payloadChanged || screenshotChanged) {
+          items[index] = BugReportQueueItem(
+            clientReportId: request.clientReportId,
+            payload: payloadWithoutScreenshot,
+            createdAt: DateTime.now().toUtc(),
+          );
+          await _saveAllUnlocked(items);
+        }
         return;
       }
       items.add(
@@ -237,18 +253,14 @@ class BugReportQueue {
     });
   }
 
-  /// Marks an item rejected so it is dropped from automatic retries (e.g. 413, 415, 422).
+  /// Drops a rejected item so it is not retained indefinitely in storage (e.g. 413, 415, 422, 409).
   Future<void> markRejected(String clientReportId, String reason) async {
     return _globalLock.synchronized(() async {
+      final prefs = await _getPrefs();
       final items = await _loadAllUnlocked();
-      final index = items.indexWhere((i) => i.clientReportId == clientReportId);
-      if (index >= 0) {
-        items[index] = items[index].copyWith(
-          isRejected: true,
-          rejectionReason: reason,
-        );
-        await _saveAllUnlocked(items);
-      }
+      items.removeWhere((i) => i.clientReportId == clientReportId);
+      await prefs.remove(screenshotPrefKey(clientReportId));
+      await _saveAllUnlocked(items);
     });
   }
 

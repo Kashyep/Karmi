@@ -72,6 +72,36 @@ void main() {
     );
 
     test(
+      're-enqueuing with same client_report_id replaces queued item when payload changes',
+      () async {
+        final queue = BugReportQueue();
+        const reportId = '550e8400-e29b-41d4-a716-446655440000';
+        final request1 = BugReportCreateRequest(
+          clientReportId: reportId,
+          category: BugReportCategory.chat,
+          description: 'Original text',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
+        );
+        final request2 = BugReportCreateRequest(
+          clientReportId: reportId,
+          category: BugReportCategory.chat,
+          description: 'Updated text after retry',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
+        );
+
+        await queue.enqueue(request1);
+        var items = await queue.getAll();
+        expect(items.length, 1);
+        expect(items.first.payload['description'], 'Original text');
+
+        await queue.enqueue(request2);
+        items = await queue.getAll();
+        expect(items.length, 1);
+        expect(items.first.payload['description'], 'Updated text after retry');
+      },
+    );
+
+    test(
       'rate limit sets retry_after_until timestamp and isRateLimited checks it',
       () async {
         final queue = BugReportQueue();
@@ -101,7 +131,7 @@ void main() {
     );
 
     test(
-      'markRejected marks item as rejected and drops from pending',
+      'markRejected drops rejected item so it is not retained in storage',
       () async {
         final queue = BugReportQueue();
         const reportId = '550e8400-e29b-41d4-a716-446655440000';
@@ -119,9 +149,7 @@ void main() {
         expect(pending.isEmpty, isTrue);
 
         final all = await queue.getAll();
-        expect(all.length, 1);
-        expect(all.first.isRejected, isTrue);
-        expect(all.first.rejectionReason, 'Payload too large');
+        expect(all.isEmpty, isTrue);
       },
     );
 

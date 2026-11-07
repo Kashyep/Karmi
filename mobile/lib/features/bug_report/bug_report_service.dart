@@ -171,6 +171,7 @@ class BugReportService {
         userMessage: mapBugReportErrorToPlainWords(e),
       );
     } catch (e) {
+      await queue.incrementRetry(request.clientReportId);
       return BugReportSubmissionResult.rejected(
         userMessage: mapBugReportErrorToPlainWords(e),
       );
