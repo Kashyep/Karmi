@@ -105,6 +105,7 @@ class GoogleSignInButton extends StatelessWidget {
       label: 'Continue with Google',
       button: true,
       enabled: isInteractive,
+      onTap: isInteractive ? onPressed : null,
       excludeSemantics: true,
       child: Material(
         color: backgroundColor,
