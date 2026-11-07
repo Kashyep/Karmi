@@ -95,5 +95,12 @@ void main() {
       expect(formatInrRupees(-149.0), '-₹149');
       expect(formatInrRupees(149900.0), '₹1,49,900');
     });
+
+    test('half-paisa parity with formatInr', () {
+      expect(formatInrRupees(0.015), formatInr(15000));
+      expect(formatInrRupees(0.014), formatInr(14000));
+      expect(formatInrRupees(-0.015), formatInr(-15000));
+      expect(formatInrRupees(-0.014), formatInr(-14000));
+    });
   });
 }

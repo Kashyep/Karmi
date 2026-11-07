@@ -57,23 +57,7 @@ String formatInr(int micro) {
 /// Follows the same display rules as [formatInr].
 String formatInrRupees(double rupees) {
   if (rupees == 0.0) return '₹0';
-  final isNegative = rupees < 0;
-  final absRupees = rupees.abs();
-
-  // Non-zero amount below one paisa (0.01 INR)
-  if (absRupees < 0.01) {
-    return isNegative ? '-<₹0.01' : '<₹0.01';
-  }
-
-  // Convert to paise with half-up rounding
-  final paise = (absRupees * 100).round();
-  final wholeRupees = paise ~/ 100;
-  final paiseRemainder = paise % 100;
-
-  final prefix = isNegative ? '-₹' : '₹';
-  if (paiseRemainder == 0) {
-    return '$prefix${_formatIndianGrouping(wholeRupees)}';
-  }
-  final paiseStr = paiseRemainder.toString().padLeft(2, '0');
-  return '$prefix${_formatIndianGrouping(wholeRupees)}.$paiseStr';
+  // Route through integer micro arithmetic (1 rupee = 1,000,000 micro)
+  // to ensure identical half-paisa rounding and formatting.
+  return formatInr((rupees * 1000000).round());
 }
