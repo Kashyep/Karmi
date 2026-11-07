@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -247,6 +248,56 @@ void main() {
 
       final pending = await queue.getPending(userId: 'user_test');
       expect(pending.isEmpty, isTrue);
+    });
+
+    test('flushQueue records Retry-After and breaks early on 429 rate limit', () async {
+      int requestCount = 0;
+      final mockClient = MockClient((request) async {
+        requestCount++;
+        return http.Response(
+          '{"error":"Rate limit exceeded"}',
+          429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': '3600',
+          },
+        );
+      });
+
+      final queue = BugReportQueue();
+      const req1 = BugReportCreateRequest(
+        clientReportId: '550e8400-e29b-41d4-a716-446655440011',
+        category: BugReportCategory.chat,
+        description: 'First report',
+        diagnostics: BugReportDiagnostics(screen: 'chat'),
+      );
+      const req2 = BugReportCreateRequest(
+        clientReportId: '550e8400-e29b-41d4-a716-446655440022',
+        category: BugReportCategory.chat,
+        description: 'Second report',
+        diagnostics: BugReportDiagnostics(screen: 'chat'),
+      );
+      await queue.enqueue(req1, userId: 'user_test');
+      await queue.enqueue(req2, userId: 'user_test');
+
+      final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
+      final service = BugReportService(api: api, queue: queue, userId: 'user_test');
+
+      final sentCount = await service.flushQueue();
+      expect(sentCount, 0);
+      expect(requestCount, 1);
+
+      final all = await queue.getAll();
+      expect(all.length, 2);
+      final firstItem = all.firstWhere(
+        (i) => i.clientReportId == '550e8400-e29b-41d4-a716-446655440011',
+      );
+      expect(firstItem.retryAfterUntil, isNotNull);
+      expect(firstItem.isRateLimited, isTrue);
+
+      final eligible = await queue.getEligibleItems(userId: 'user_test');
+      expect(eligible.length, 1);
+      expect(eligible.first.clientReportId, '550e8400-e29b-41d4-a716-446655440022');
     });
   });
 }

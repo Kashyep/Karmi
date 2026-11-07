@@ -200,6 +200,7 @@ class BugReportService {
           await queue.remove(item.clientReportId);
           sentCount++;
         }
+      } on BugReportRateLimitException catch (e) {
         await queue.recordRetryAfter(item.clientReportId, e.retryAfterSeconds);
         // Break early since we are rate limited
         break;
