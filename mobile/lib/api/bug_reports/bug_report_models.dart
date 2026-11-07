@@ -142,15 +142,14 @@ class BugReportDiagnostics {
 
   static String? _capString(String? v) {
     if (v == null) return null;
-    return v.length > 128 ? v.substring(0, 128) : v;
+    final runes = v.runes;
+    if (runes.length <= 128) return v;
+    return String.fromCharCodes(runes.take(128));
   }
 
   static List<String>? _capList(List<String>? list) {
     if (list == null) return null;
-    return list
-        .take(10)
-        .map((s) => s.length > 128 ? s.substring(0, 128) : s)
-        .toList();
+    return list.take(10).map((s) => _capString(s)!).toList();
   }
 
   /// Deserializes a map, enforcing the strict allowlist.
