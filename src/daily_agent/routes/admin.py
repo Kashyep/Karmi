@@ -258,11 +258,10 @@ def set_user_credits(
 def export_user_data(
     user_id: str,
     x_admin_reason: Annotated[str | None, Header(alias="X-Admin-Reason")] = None,
-    reason: Annotated[str | None, Query(min_length=3, max_length=500)] = None,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
 ) -> JSONResponse:
-    effective_reason = (x_admin_reason or reason or "").strip()
+    effective_reason = (x_admin_reason or "").strip()
     if len(effective_reason) < 3 or len(effective_reason) > 500:
         raise HTTPException(status_code=422, detail="Reason must be between 3 and 500 characters")
     return JSONResponse(

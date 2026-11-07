@@ -200,12 +200,17 @@ void main() {
     });
 
     test('export returns the JSON body as pretty text', () async {
+      String? headerReason;
       String? query;
       final text = await _fromFixture(
         'user_export_reason_test.json',
-        onRequest: (r) => query = r.url.query,
+        onRequest: (r) {
+          headerReason = r.headers['X-Admin-Reason'];
+          query = r.url.query;
+        },
       ).exportUser('tok', 'x', reason: 'test');
-      expect(query, 'reason=test');
+      expect(headerReason, 'test');
+      expect(query, isNot(contains('reason')));
       final decoded = jsonDecode(text) as Map<String, dynamic>;
       expect(decoded['user'], isA<Map>());
       expect((decoded['user'] as Map)['email'], isNull);

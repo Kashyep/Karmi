@@ -115,18 +115,21 @@ void main() {
     expect(api.monitor('tok'), throwsA(isA<AdminUnauthorized>()));
   });
 
-  test('exportUser sends reason as query and returns pretty JSON', () async {
+  test('exportUser sends reason as header and returns pretty JSON', () async {
     late Uri seen;
+    late Map<String, String> seenHeaders;
     final api = _api(
       MockClient((req) async {
         seen = req.url;
+        seenHeaders = req.headers;
         expect(req.headers['X-Admin-Session'], 'tok');
         return http.Response('{"id":"u1"}', 200);
       }),
     );
     final out = await api.exportUser('tok', 'u1', reason: 'support ticket 9');
     expect(seen.path, '/v1/admin/users/u1/export');
-    expect(seen.queryParameters['reason'], 'support ticket 9');
+    expect(seen.queryParameters.containsKey('reason'), isFalse);
+    expect(seenHeaders['X-Admin-Reason'], 'support ticket 9');
     expect(out, contains('\n'));
     expect(jsonDecode(out), {'id': 'u1'});
   });

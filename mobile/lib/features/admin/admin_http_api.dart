@@ -190,7 +190,7 @@ class HttpAdminApi implements AdminApi {
       'GET',
       '$_users/${_id(id)}/export',
       adminToken: token,
-      query: {'reason': reason},
+      headers: {'X-Admin-Reason': reason},
     );
     final decoded = _json(resp);
     return const JsonEncoder.withIndent('  ').convert(decoded);
@@ -268,11 +268,15 @@ class HttpAdminApi implements AdminApi {
     String method,
     String path, {
     Map<String, String>? query,
+    Map<String, String>? headers,
     Object? body,
     String? adminToken,
     bool allowNoAdminSession = false,
   }) async {
-    final headers = <String, String>{'Accept': 'application/json'};
+    final requestHeaders = <String, String>{
+      'Accept': 'application/json',
+      if (headers != null) ...headers,
+    };
     final String? bearer;
     try {
       bearer = await tokenProvider().timeout(timeout);
@@ -280,11 +284,16 @@ class HttpAdminApi implements AdminApi {
       throw const AdminFailure.timeout();
     }
     if (bearer != null && bearer.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $bearer';
+      requestHeaders['Authorization'] = 'Bearer $bearer';
     }
-    if (adminToken != null) headers['X-Admin-Session'] = adminToken;
+    if (adminToken != null) requestHeaders['X-Admin-Session'] = adminToken;
 
-    final resp = await _transport(method, _uri(path, query), headers, body);
+    final resp = await _transport(
+      method,
+      _uri(path, query),
+      requestHeaders,
+      body,
+    );
 
     final status = resp.statusCode;
     if (status >= 200 && status < 300) return resp;
