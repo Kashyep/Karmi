@@ -276,6 +276,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
   }
 
   Future<void> _verifyCode() async {
+    if (_busy) return;
     final code = _code.text;
     if (code.length != 6) {
       setState(() => _errors[AccountField.code] = 'Enter the 6-digit code.');
@@ -291,12 +292,13 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
   }
 
   Future<void> _resend() async {
-    if (_cooldown > 0 || _busy) return;
+    if (_busy || _cooldown > 0) return;
     await _run((a) => a.resendCode(_onClerkError));
     if (mounted && _errors.isEmpty) _startCooldown();
   }
 
   void _changeDetails() {
+    if (_busy) return;
     setState(() {
       _awaitingCode = false;
       _code.clear();
@@ -335,18 +337,21 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
     return OnboardingScaffold(
       currentStep: widget.currentStep,
       totalSteps: widget.totalSteps,
-      onBack: _awaitingCode ? _changeDetails : widget.onBack,
+      onBack: _busy ? null : (_awaitingCode ? _changeDetails : widget.onBack),
       title: title,
       subtitle: subtitle,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_awaitingCode) ...[
-            OtpField(
-              key: const ValueKey('onboarding_otp_field'),
-              controller: _code,
-              hasError: _errors[AccountField.code] != null,
-              onCompleted: (_) => _verifyCode(),
+            IgnorePointer(
+              ignoring: _busy,
+              child: OtpField(
+                key: const ValueKey('onboarding_otp_field'),
+                controller: _code,
+                hasError: _errors[AccountField.code] != null,
+                onCompleted: _busy ? null : (_) => _verifyCode(),
+              ),
             ),
             if (_errors[AccountField.code] != null)
               _ErrorText(_errors[AccountField.code]!),
@@ -363,7 +368,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
                 const Spacer(),
                 TextButton(
                   key: const ValueKey('onboarding_change_details'),
-                  onPressed: _changeDetails,
+                  onPressed: _busy ? null : _changeDetails,
                   child: const Text('Change details'),
                 ),
               ],

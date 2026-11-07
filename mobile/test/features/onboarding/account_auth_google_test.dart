@@ -24,6 +24,21 @@ class DelayedFakeClerkActions extends FakeClerkEmailCodeActions {
     }
     return super.signInWithGoogle();
   }
+
+  Completer<void>? verifyCompleter;
+  int verifyCalls = 0;
+
+  @override
+  Future<void> verifySignUpCode(
+    String code,
+    ClerkFlowErrorHandler onError,
+  ) async {
+    verifyCalls++;
+    if (verifyCompleter != null) {
+      await verifyCompleter!.future;
+    }
+    return super.verifySignUpCode(code, onError);
+  }
 }
 
 Future<void> _pumpAuthStep(
@@ -362,6 +377,87 @@ void main() {
         );
         expect(ctaWidget.isLoading, isFalse);
         expect(ctaWidget.onPressed, isNotNull);
+      },
+    );
+
+    testWidgets(
+      'code verification and resend are blocked while busy',
+      (tester) async {
+        final fake = DelayedFakeClerkActions();
+        fake.requireSecondFactor = true;
+        fake.verifyCompleter = Completer<void>();
+
+        await _pumpAuthStep(tester, actions: fake);
+
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_first_name_field')),
+          'Ada',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_email_field')),
+          'ada@example.com',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_username_field')),
+          'adalovelace',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_password_field')),
+          'ValidPassword123!',
+        );
+        await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
+        await settle(tester);
+
+        expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
+        expect(fake.calls, contains('signUp'));
+
+        // Enter 6-digit code to trigger verification
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_otp_field')),
+          '123456',
+        );
+        await tester.pump();
+
+        expect(fake.verifyCalls, 1);
+
+        // While verify is in flight, _busy is true:
+        // 1. OtpField is wrapped in IgnorePointer(ignoring: true)
+        final ignorePointer = tester.widget<IgnorePointer>(
+          find.ancestor(
+            of: find.byKey(const ValueKey('onboarding_otp_field')),
+            matching: find.byType(IgnorePointer),
+          ),
+        );
+        expect(ignorePointer.ignoring, isTrue);
+
+        // 2. Resend and Change details buttons are disabled
+        final resendButton = tester.widget<TextButton>(
+          find.byKey(const ValueKey('onboarding_resend_code')),
+        );
+        expect(resendButton.onPressed, isNull);
+
+        final changeButton = tester.widget<TextButton>(
+          find.byKey(const ValueKey('onboarding_change_details')),
+        );
+        expect(changeButton.onPressed, isNull);
+
+        // 3. Continue button shows loading and is disabled
+        final ctaWidget = tester.widget<PillCta>(
+          find.byKey(const ValueKey('onboarding_auth_continue')),
+        );
+        expect(ctaWidget.isLoading, isTrue);
+        expect(ctaWidget.onPressed, isNull);
+
+        // 4. Repeated submissions/taps are ignored and do not increase verifyCalls
+        await tester.tap(find.byKey(const ValueKey('onboarding_auth_continue')));
+        await tester.pump();
+        expect(fake.verifyCalls, 1);
+
+        // Complete the in-flight verification
+        fake.verifyCompleter!.complete();
+        await settle(tester);
+
+        expect(fake.isSignedIn, isTrue);
       },
     );
     testWidgets('hidden when actions is null (Clerk not configured)', (
