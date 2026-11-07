@@ -8,9 +8,18 @@ import '../../theme/karmi_motion.dart';
 /// Collector for device and environment diagnostics strictly conforming to the allowlist.
 class DiagnosticsCollector {
   const DiagnosticsCollector({
-    this.appVersion = '0.1.0',
-    this.buildNumber = '4',
-    this.gitSha = 'ac3d16e',
+    this.appVersion = const String.fromEnvironment(
+      'APP_VERSION',
+      defaultValue: '0.1.0',
+    ),
+    this.buildNumber = const String.fromEnvironment(
+      'BUILD_NUMBER',
+      defaultValue: 'unknown',
+    ),
+    this.gitSha = const String.fromEnvironment(
+      'GIT_SHA',
+      defaultValue: 'unknown',
+    ),
   });
 
   final String appVersion;
