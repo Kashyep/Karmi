@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -318,6 +319,11 @@ class _BugReportScreenState extends State<BugReportScreen> {
   }
 
   Widget _buildForm(BuildContext context, KarmiColors colors, ThemeData theme) {
+    final effectiveUserId = widget.userId ?? widget.session?.userId;
+    final hasOwner =
+        widget.service != null ||
+        (effectiveUserId != null && effectiveUserId.isNotEmpty);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -561,9 +567,6 @@ class _BugReportScreenState extends State<BugReportScreen> {
         ],
 
         // Submit Button
-        final effectiveUserId = widget.userId ?? widget.session?.userId;
-        final hasOwner = widget.service != null ||
-            (effectiveUserId != null && effectiveUserId.isNotEmpty);
         FilledButton(
           key: const ValueKey('submit-bug-report-button'),
           onPressed: _isSubmitting || !hasOwner || !_isDescriptionValid
