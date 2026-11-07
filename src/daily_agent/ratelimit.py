@@ -220,6 +220,6 @@ def install_log_redaction() -> None:
             record.exc_text = redact(record.exc_text)
         return result
 
-    logging.Formatter.format = format_record
-    logging.Formatter.formatException = format_exception
+    logging.Formatter.format = format_record  # type: ignore[method-assign]
+    logging.Formatter.formatException = format_exception  # type: ignore[method-assign]
     _installed = True
