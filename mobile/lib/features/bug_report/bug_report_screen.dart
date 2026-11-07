@@ -93,8 +93,9 @@ class _BugReportScreenState extends State<BugReportScreen> {
       );
     }
 
-    _service.flushQueue();
-
+    if (effectiveUserId != null && effectiveUserId.isNotEmpty) {
+      unawaited(_service.flushQueue().catchError((_) => 0));
+    }
     _diagnostics = const DiagnosticsCollector().collect(
       screen: widget.initialScreen,
       errorCode: widget.initialErrorCode,

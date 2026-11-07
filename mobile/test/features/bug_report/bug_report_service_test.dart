@@ -184,5 +184,53 @@ void main() {
       expect(pendingB.length, 1);
       expect(pendingB.first.clientReportId, '550e8400-e29b-41d4-a716-446655440002');
     });
+
+    test('malformed stored item during flush is quarantined and valid item still flushes', () async {
+      final submittedPayloads = <Map<String, dynamic>>[];
+      final mockClient = MockClient((request) async {
+        submittedPayloads.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+          '{"id":"rpt-flush-ok","ticket":"KARMI-0101","status":"new","created_at":"2026-11-07T10:00:00Z"}',
+          201,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final queue = BugReportQueue();
+      const validReq = BugReportCreateRequest(
+        clientReportId: '550e8400-e29b-41d4-a716-446655440003',
+        category: BugReportCategory.chat,
+        description: 'Valid report text',
+        diagnostics: BugReportDiagnostics(screen: 'chat'),
+      );
+      await queue.enqueue(validReq, userId: 'user_test');
+
+      // Inject a malformed queue item directly into prefs
+      final prefs = await SharedPreferences.getInstance();
+      final items = prefs.getStringList(BugReportQueue.prefKey) ?? [];
+      final malformedItemJson = jsonEncode({
+        'client_report_id': 'malformed-id-999',
+        'payload': {
+          'category': 12345, // invalid type; BugReportCreateRequest.fromJson throws TypeError
+          'description': 'Corrupted payload',
+        },
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'user_id': 'user_test',
+        'is_rejected': false,
+      });
+      // Insert malformed item before valid item to verify it does not block subsequent items
+      await prefs.setStringList(BugReportQueue.prefKey, [malformedItemJson, ...items]);
+
+      final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
+      final service = BugReportService(api: api, queue: queue, userId: 'user_test');
+
+      final sentCount = await service.flushQueue();
+      expect(sentCount, 1);
+      expect(submittedPayloads.length, 1);
+      expect(submittedPayloads.first['client_report_id'], '550e8400-e29b-41d4-a716-446655440003');
+
+      final pending = await queue.getPending(userId: 'user_test');
+      expect(pending.isEmpty, isTrue);
+    });
   });
 }

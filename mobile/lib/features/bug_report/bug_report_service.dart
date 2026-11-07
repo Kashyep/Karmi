@@ -187,14 +187,13 @@ class BugReportService {
     int sentCount = 0;
     final eligible = await queue.getEligibleItems(userId: effectiveUserId);
     for (final item in eligible) {
-      final request = await queue.resolveRequest(item);
       try {
+        final request = await queue.resolveRequest(item);
         final created = await api.submitBugReport(request);
         if (created.ticket.isNotEmpty) {
           await queue.remove(item.clientReportId);
           sentCount++;
         }
-      } on BugReportRateLimitException catch (e) {
         await queue.recordRetryAfter(item.clientReportId, e.retryAfterSeconds);
         // Break early since we are rate limited
         break;
@@ -220,6 +219,12 @@ class BugReportService {
         } else {
           await queue.incrementRetry(item.clientReportId);
         }
+      } on FormatException catch (e) {
+        await queue.markRejected(item.clientReportId, e.toString());
+      } on TypeError catch (e) {
+        await queue.markRejected(item.clientReportId, e.toString());
+      } on ArgumentError catch (e) {
+        await queue.markRejected(item.clientReportId, e.toString());
       } catch (_) {
         await queue.incrementRetry(item.clientReportId);
       }
