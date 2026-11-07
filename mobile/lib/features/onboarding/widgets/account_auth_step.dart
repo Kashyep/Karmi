@@ -346,6 +346,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
         children: [
           if (_awaitingCode) ...[
             IgnorePointer(
+              key: const ValueKey('onboarding_otp_ignore'),
               ignoring: _busy,
               child: OtpField(
                 key: const ValueKey('onboarding_otp_field'),

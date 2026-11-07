@@ -475,10 +475,7 @@ void main() {
         // While verify is in flight, _busy is true:
         // 1. OtpField is wrapped in IgnorePointer(ignoring: true)
         final ignorePointer = tester.widget<IgnorePointer>(
-          find.ancestor(
-            of: find.byKey(const ValueKey('onboarding_otp_field')),
-            matching: find.byType(IgnorePointer),
-          ),
+          find.byKey(const ValueKey('onboarding_otp_ignore')),
         );
         expect(ignorePointer.ignoring, isTrue);
 
