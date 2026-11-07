@@ -59,6 +59,30 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets(
+      'excludes child semantics to avoid duplicate TalkBack announcement',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            GoogleSignInButton(
+              onPressed: () {},
+            ),
+          ),
+        );
+
+        final semanticsFinder = find.descendant(
+          of: find.byType(GoogleSignInButton),
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.label == 'Continue with Google',
+          ),
+        );
+        expect(semanticsFinder, findsOneWidget);
+
+        final semanticsWidget = tester.widget<Semantics>(semanticsFinder);
+        expect(semanticsWidget.excludeSemantics, isTrue);
+      },
+    );
+
     testWidgets('disabled state when onPressed is null', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(_wrap(const GoogleSignInButton(onPressed: null)));
