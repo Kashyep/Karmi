@@ -3,6 +3,7 @@ from enum import StrEnum
 from uuid import uuid4
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -571,3 +573,54 @@ def _refuse_audit_mutation(*_args: object) -> None:
 
 event.listen(AdminAuditLog, "before_update", _refuse_audit_mutation)
 event.listen(AdminAuditLog, "before_delete", _refuse_audit_mutation)
+
+
+class BugReport(Base):
+    __tablename__ = "bug_reports"
+    __table_args__ = (
+        UniqueConstraint("ticket_number", name="uq_bug_reports_ticket_number"),
+        UniqueConstraint("user_id", "client_report_id", name="uq_bug_reports_user_client_report_id"),
+        CheckConstraint(
+            "category IN ('crash', 'chat', 'ui', 'account', 'other')",
+            name="check_bug_reports_category",
+        ),
+        CheckConstraint(
+            "status IN ('new', 'triaged', 'in_progress', 'fixed', 'closed', 'duplicate', 'wontfix')",
+            name="check_bug_reports_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    ticket_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    client_report_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    diagnostics: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    screenshot: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    screenshot_content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="new", server_default="new", nullable=False)
+    admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.current_timestamp(),
+        index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.current_timestamp(),
+        onupdate=utcnow,
+    )
+    triaged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    account: Mapped[Account] = relationship()
+    user: Mapped["User"] = relationship()
+
+    @property
+    def ticket(self) -> str:
+        return f"KARMI-{self.ticket_number:04d}"

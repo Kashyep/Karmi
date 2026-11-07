@@ -567,14 +567,6 @@ def settle_budget(
             tokens_settled=UsageWindow.tokens_settled + settled_tokens,
         )
     )
-    session.execute(
-        update(PlatformBudget)
-        .where(PlatformBudget.window_key == window.window_key)
-        .values(
-            reserved_micro=PlatformBudget.reserved_micro - reservation.reserved_micro,
-            settled_micro=PlatformBudget.settled_micro + settled,
-        )
-    )
     if reservation.usage_period_id is not None:
         session.execute(
             update(UsagePeriod)
@@ -584,6 +576,14 @@ def settle_budget(
                 settled_micro=UsagePeriod.settled_micro + settled,
             )
         )
+    session.execute(
+        update(PlatformBudget)
+        .where(PlatformBudget.window_key == window.window_key)
+        .values(
+            reserved_micro=PlatformBudget.reserved_micro - reservation.reserved_micro,
+            settled_micro=PlatformBudget.settled_micro + settled,
+        )
+    )
     reservation.actual_micro = actual_micro
     reservation.status = new_status
     if calls:
@@ -644,17 +644,17 @@ def release_budget(session: Session, reservation: BudgetReservation) -> None:
             everyday_used=UsageWindow.everyday_used - 1,
         )
     )
-    session.execute(
-        update(PlatformBudget)
-        .where(PlatformBudget.window_key == window.window_key)
-        .values(reserved_micro=PlatformBudget.reserved_micro - reservation.reserved_micro)
-    )
     if reservation.usage_period_id is not None:
         session.execute(
             update(UsagePeriod)
             .where(UsagePeriod.id == reservation.usage_period_id)
             .values(reserved_micro=UsagePeriod.reserved_micro - reservation.reserved_micro)
         )
+    session.execute(
+        update(PlatformBudget)
+        .where(PlatformBudget.window_key == window.window_key)
+        .values(reserved_micro=PlatformBudget.reserved_micro - reservation.reserved_micro)
+    )
     logger.info(
         "released reservation %s account=%s micro=%s",
         reservation.id,

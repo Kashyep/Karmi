@@ -29,6 +29,7 @@ from daily_agent.db import get_session
 from daily_agent.deps import gateway_dependency
 from daily_agent.gateway import Gateway
 from daily_agent.models import User
+from daily_agent.schemas import PatchBugReportBody
 from daily_agent.security import as_utc
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
@@ -75,13 +76,13 @@ class BulkTierBody(TierBody):
     user_ids: list[str] = Field(min_length=1, max_length=100)
 
 class CreditsBody(ReasonBody):
-    delta_usd: float | None = Field(default=None, ge=-1_000_000, le=1_000_000)
-    budget_usd: float | None = Field(default=None, ge=0, le=1_000_000)
+    delta_inr: float | None = Field(default=None, ge=-1_000_000, le=1_000_000)
+    budget_inr: float | None = Field(default=None, ge=0, le=1_000_000)
 
     @model_validator(mode="after")
     def exactly_one(self) -> CreditsBody:
-        if (self.delta_usd is None) == (self.budget_usd is None):
-            raise ValueError("provide exactly one of delta_usd or budget_usd")
+        if (self.delta_inr is None) == (self.budget_inr is None):
+            raise ValueError("provide exactly one of delta_inr or budget_inr")
         return self
 
 
@@ -247,8 +248,8 @@ def set_user_credits(
         settings,
         admin.user.id,
         user_id,
-        delta_usd=body.delta_usd,
-        budget_usd=body.budget_usd,
+        delta_inr=body.delta_inr,
+        budget_inr=body.budget_inr,
         reason=body.reason,
     )
 
@@ -313,3 +314,62 @@ def runs(
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     return svc.list_runs(session, limit=limit, cursor=cursor)
+
+
+@router.get("/bug-reports")
+def list_bug_reports(
+    status: str | None = Query(default=None),
+    category: str | None = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=100),
+    cursor: str | None = Query(default=None),
+    _admin: AdminContext = Depends(require_admin_session),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    return svc.list_bug_reports(
+        session, status=status, category=category, limit=limit, cursor=cursor
+    )
+
+
+@router.get("/bug-reports/{bug_report_id}")
+def get_bug_report(
+    bug_report_id: str,
+    admin: AdminContext = Depends(require_admin_session),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    return svc.get_admin_bug_report(session, admin.user.id, bug_report_id)
+
+
+@router.get("/bug-reports/{bug_report_id}/screenshot")
+def get_bug_report_screenshot(
+    bug_report_id: str,
+    admin: AdminContext = Depends(require_admin_session),
+    session: Session = Depends(get_session),
+) -> Response:
+    raw_bytes, content_type = svc.get_admin_bug_report_screenshot(
+        session, admin.user.id, bug_report_id
+    )
+    return Response(
+        content=raw_bytes,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.patch("/bug-reports/{bug_report_id}")
+def patch_bug_report(
+    bug_report_id: str,
+    body: PatchBugReportBody,
+    admin: AdminContext = Depends(require_admin_session),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    return svc.patch_admin_bug_report(
+        session,
+        admin.user.id,
+        bug_report_id,
+        status=body.status,
+        admin_notes=body.admin_notes,
+        reason=body.reason,
+    )
