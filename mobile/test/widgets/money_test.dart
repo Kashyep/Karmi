@@ -109,5 +109,15 @@ void main() {
       expect(formatInrRupees(-0.015), formatInr(-15000));
       expect(formatInrRupees(-0.014), formatInr(-14000));
     });
+
+    test(
+      'guard against NaN and Infinity returns deterministic safe string ₹0',
+      () {
+        expect(formatInrRupees(double.nan), '₹0');
+        expect(formatInrRupees(double.infinity), '₹0');
+        expect(formatInrRupees(double.negativeInfinity), '₹0');
+        expect(formatInrRupees(149.0), '₹149');
+      },
+    );
   });
 }
