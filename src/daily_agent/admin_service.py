@@ -17,7 +17,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, delete, func, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from daily_agent.admin_auth import append_audit, revoke_admin_sessions
 from daily_agent.admin_metrics import RequestMetrics
@@ -912,7 +912,12 @@ def list_bug_reports(
 ) -> dict[str, Any]:
     limit = max(1, min(limit, 100))
     stmt = (
-        select(BugReport, User.display_name)
+        select(
+            BugReport,
+            User.display_name,
+            (BugReport.screenshot.is_not(None)).label("has_screenshot"),
+        )
+        .options(defer(BugReport.screenshot))
         .outerjoin(User, User.id == BugReport.user_id)
         .order_by(BugReport.created_at.desc(), BugReport.id.desc())
         .limit(limit + 1)
@@ -944,11 +949,11 @@ def list_bug_reports(
             "description_preview": report.description[:140],
             "user_id": report.user_id,
             "user_display_name": display_name or "",
-            "has_screenshot": report.screenshot is not None,
+            "has_screenshot": bool(has_screenshot),
             "created_at": _iso(report.created_at),
             "updated_at": _iso(report.updated_at),
         }
-        for report, display_name in page
+        for report, display_name, has_screenshot in page
     ]
     next_cursor = (
         f"{as_utc(page[-1][0].created_at).astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%S.%fZ')}|{page[-1][0].id}"

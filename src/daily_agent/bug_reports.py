@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from daily_agent.models import BugReport, uuid_str
+from daily_agent.models import BugReport, User, uuid_str
 from daily_agent.schemas import BugReportCreate
 from daily_agent.security import Principal
 
@@ -105,6 +105,11 @@ def create_bug_report(
         screenshot_content_type = ct
 
     # 3. Rate limit check: max 3 new reports per rolling 24 hours per user
+    session.execute(
+        select(User.id)
+        .where(User.id == principal.user_id)
+        .with_for_update()
+    )
     now = datetime.now(UTC)
     window_start = now - timedelta(hours=24)
     report_count, oldest_created = session.execute(
