@@ -20,7 +20,7 @@ void main() {
     test('formats empty field names list', () {
       expect(
         missingFieldsMessage([]),
-        'Clerk still needs: .',
+        'Google sign-in did not finish. Please try again.',
       );
     });
   });

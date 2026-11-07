@@ -38,7 +38,10 @@ class GoogleSignInError extends GoogleSignInResult {
 
 /// Formats a user-facing message describing missing Clerk sign-up fields after SSO transfer.
 String missingFieldsMessage(Iterable<String> fieldNames) {
-  final fields = fieldNames.join(', ');
+  final fields = fieldNames.where((f) => f.isNotEmpty).join(', ');
+  if (fields.isEmpty) {
+    return 'Google sign-in did not finish. Please try again.';
+  }
   return 'Clerk still needs: $fields.';
 }
 
