@@ -121,7 +121,8 @@ void main() {
                       (l.contains('ChatScreen') ||
                           l.contains('MessageBubble') ||
                           l.contains('_UserRow') ||
-                          l.contains('Composer')),
+                          l.startsWith('Rebuilding Composer(') ||
+                          l.startsWith('Rebuilding Composer-[')),
                 )
                 .length,
           );

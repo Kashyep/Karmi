@@ -91,7 +91,7 @@ class _ComposerState extends State<Composer> {
     super.initState();
     _draftStore = widget.draftStore ?? _fallbackDrafts;
     _focusNode = FocusNode(
-      debugLabel: 'ChatInputFocus',
+      debugLabel: 'ComposerTextFieldFocus',
       onKeyEvent: _handleKeyEvent,
     );
     _canSendNotifier = ValueNotifier<bool>(_canSend);
@@ -309,6 +309,7 @@ class _ComposerState extends State<Composer> {
     final submission = ComposerSubmit(text: fullText, attachments: attachments);
     final hadChipsOrAttachments =
         _pasteChips.isNotEmpty || _attachments.isNotEmpty;
+    final hadLimitError = _limitError != null;
     // Optimistic send: clear state immediately
     _controller.clear();
     _previousText = '';
@@ -318,7 +319,7 @@ class _ComposerState extends State<Composer> {
     _debounceTimer?.cancel();
     _draftStore.clear(widget.draftKey);
     _canSendNotifier.value = _canSend;
-    if (hadChipsOrAttachments) {
+    if (hadChipsOrAttachments || hadLimitError) {
       setState(() {});
     }
     // Sending dismisses the keyboard; a failed send brings focus back via [refocus].
