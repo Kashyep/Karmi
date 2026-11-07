@@ -52,10 +52,10 @@ class AccountAuthStep extends StatefulWidget {
   final Future<void> Function() onDevSignIn;
 
   @override
-  State<AccountAuthStep> createState() => _AccountAuthStepState();
+  State<AccountAuthStep> createState() => AccountAuthStepState();
 }
 
-class _AccountAuthStepState extends State<AccountAuthStep> {
+class AccountAuthStepState extends State<AccountAuthStep> {
   static const int _resendCooldownSeconds = 30;
 
   final _first = TextEditingController();
@@ -308,6 +308,11 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
       _cooldown = 0;
     });
   }
+  @visibleForTesting
+  Future<void> verifyCodeForTesting() => _verifyCode();
+
+  @visibleForTesting
+  void changeDetailsForTesting() => _changeDetails();
 
   void _switchMode(_Mode mode) {
     setState(() {

@@ -502,6 +502,16 @@ void main() {
         await tester.pump();
         expect(fake.verifyCalls, 1);
 
+        // 5. Direct invocations to _verifyCode and _changeDetails early-return while busy
+        final state = tester.state<AccountAuthStepState>(
+          find.byType(AccountAuthStep),
+        );
+        await state.verifyCodeForTesting();
+        expect(fake.verifyCalls, 1);
+
+        state.changeDetailsForTesting();
+        await tester.pump();
+        expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
         // Complete the in-flight verification
         fake.verifyCompleter!.complete();
         await settle(tester);
