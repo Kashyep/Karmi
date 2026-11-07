@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../api/bug_reports/bug_report_models.dart';
 import '../../api/chat/chat_models.dart';
+import '../../auth/session.dart';
 import '../../theme/karmi_colors.dart';
 import '../bug_report/bug_report_screen.dart';
-
 /// User-facing card for errors during assistant runs.
 class ErrorCard extends StatelessWidget {
   const ErrorCard({
@@ -14,6 +14,8 @@ class ErrorCard extends StatelessWidget {
     this.onRetry,
     this.onContinue,
     this.onUpgrade,
+    this.session,
+    this.userId,
   });
 
   final ErrorCategory category;
@@ -21,11 +23,16 @@ class ErrorCard extends StatelessWidget {
   final VoidCallback? onContinue;
   final VoidCallback? onUpgrade;
   final String? errorCode;
+  final KarmiSession? session;
+  final String? userId;
 
   void _openBugReport(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => BugReportScreen(
+          api: session?.api,
+          session: session,
+          userId: userId ?? session?.userId,
           initialCategory: BugReportCategory.chat,
           initialScreen: 'chat',
           initialErrorCode: errorCode ?? category.name,

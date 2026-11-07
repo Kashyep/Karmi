@@ -150,6 +150,8 @@ class _KarmiShellState extends State<KarmiShell> {
       case 0:
         return ChatScreen(
           api: widget.api,
+          session: widget.session,
+          userId: widget.session.userId,
           onOpenPlans: _openPlans,
           draftStore: widget.session.draftStore,
           historyCommands: widget.historyCommands,

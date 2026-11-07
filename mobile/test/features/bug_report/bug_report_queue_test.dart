@@ -26,7 +26,7 @@ void main() {
           ),
         );
 
-        await queue.enqueue(request);
+        await queue.enqueue(request, userId: 'user_test');
 
         final pending = await queue.getPending();
         expect(pending.length, 1);
@@ -63,8 +63,8 @@ void main() {
           diagnostics: const BugReportDiagnostics(screen: 'chat'),
         );
 
-        await queue.enqueue(request);
-        await queue.enqueue(request);
+        await queue.enqueue(request, userId: 'user_test');
+        await queue.enqueue(request, userId: 'user_test');
 
         final items = await queue.getAll();
         expect(items.length, 1);
@@ -89,12 +89,12 @@ void main() {
           diagnostics: const BugReportDiagnostics(screen: 'chat'),
         );
 
-        await queue.enqueue(request1);
+        await queue.enqueue(request1, userId: 'user_test');
         var items = await queue.getAll();
         expect(items.length, 1);
         expect(items.first.payload['description'], 'Original text');
 
-        await queue.enqueue(request2);
+        await queue.enqueue(request2, userId: 'user_test');
         items = await queue.getAll();
         expect(items.length, 1);
         expect(items.first.payload['description'], 'Updated text after retry');
@@ -124,11 +124,11 @@ void main() {
           ),
         );
 
-        await queue.enqueue(request1);
+        await queue.enqueue(request1, userId: 'user_test');
         final item1 = (await queue.getAll()).first;
 
         await Future<void>.delayed(const Duration(milliseconds: 10));
-        await queue.enqueue(request2);
+        await queue.enqueue(request2, userId: 'user_test');
         final item2 = (await queue.getAll()).first;
 
         expect(item2.createdAt.isAfter(item1.createdAt), isTrue);
@@ -149,7 +149,7 @@ void main() {
           diagnostics: const BugReportDiagnostics(screen: 'settings'),
         );
 
-        await queue.enqueue(request);
+        await queue.enqueue(request, userId: 'user_test');
 
         // Set rate limit for 60 seconds
         await queue.setRateLimit(reportId, 60);
@@ -178,7 +178,7 @@ void main() {
           diagnostics: const BugReportDiagnostics(screen: 'home'),
         );
 
-        await queue.enqueue(request);
+        await queue.enqueue(request, userId: 'user_test');
         await queue.markRejected(reportId, 'Payload too large');
 
         final pending = await queue.getPending();
@@ -199,12 +199,25 @@ void main() {
         diagnostics: const BugReportDiagnostics(screen: 'profile'),
       );
 
-      await queue.enqueue(request);
+      await queue.enqueue(request, userId: 'user_test');
       expect((await queue.getAll()).length, 1);
 
       await queue.remove(reportId);
       expect((await queue.getAll()).isEmpty, isTrue);
     });
+    test('enqueue without an owner throws ArgumentError', () async {
+      final queue = BugReportQueue();
+      const reportId = '550e8400-e29b-41d4-a716-446655440000';
+      final request = BugReportCreateRequest(
+        clientReportId: reportId,
+        category: BugReportCategory.chat,
+        description: 'Test report',
+        diagnostics: const BugReportDiagnostics(screen: 'chat'),
+      );
+      expect(() => queue.enqueue(request), throwsArgumentError);
+      expect(() => queue.enqueue(request, userId: ''), throwsArgumentError);
+    });
+
 
     test('clearUserItems removes only the specified user items and screenshots', () async {
       final queue = BugReportQueue();

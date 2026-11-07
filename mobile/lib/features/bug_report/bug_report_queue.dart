@@ -212,6 +212,13 @@ class BugReportQueue {
   /// without re-generating or altering them. Screenshots are stored under a separate
   /// key to avoid rewriting large base64 blobs on routine queue mutations.
   Future<void> enqueue(BugReportCreateRequest request, {String? userId}) async {
+    if (userId == null || userId.isEmpty) {
+      throw ArgumentError.value(
+        userId,
+        'userId',
+        'Cannot enqueue bug report without owner userId',
+      );
+    }
     return _globalLock.synchronized(() async {
       final prefs = await _getPrefs();
       final items = await _loadAllUnlocked();
@@ -266,13 +273,13 @@ class BugReportQueue {
 
   /// Returns items eligible for automatic retrying (not rejected).
   Future<List<BugReportQueueItem>> getEligibleItems({String? userId}) async {
+    if (userId == null || userId.isEmpty) return [];
     return _globalLock.synchronized(() async {
       final items = await _loadAllUnlocked();
       final now = DateTime.now().toUtc();
       return items.where((item) {
         if (item.isRejected) return false;
-        if (userId != null && item.userId != userId) return false;
-        if (userId == null && item.userId != null) return false;
+        if (item.userId != userId) return false;
         if (item.retryAfterUntil != null && item.retryAfterUntil!.isAfter(now)) {
           return false;
         }
@@ -291,7 +298,6 @@ class BugReportQueue {
       return items.where((i) {
         if (i.isRejected) return false;
         if (userId != null && i.userId != userId) return false;
-        if (userId == null && i.userId != null) return false;
         return true;
       }).toList();
     });

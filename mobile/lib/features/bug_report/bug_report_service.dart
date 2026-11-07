@@ -106,6 +106,11 @@ class BugReportService {
     String? userId,
   }) async {
     final effectiveUserId = userId ?? this.userId;
+    if (effectiveUserId == null || effectiveUserId.isEmpty) {
+      return BugReportSubmissionResult.rejected(
+        userMessage: 'Sign in again to send reports',
+      );
+    }
     // 1. Enqueue exact payload first (with same client_report_id)
     await queue.enqueue(request, userId: effectiveUserId);
     // 2. Attempt API submission
@@ -184,6 +189,7 @@ class BugReportService {
   /// Returns the number of successfully submitted reports.
   Future<int> flushQueue({String? userId}) async {
     final effectiveUserId = userId ?? this.userId;
+    if (effectiveUserId == null || effectiveUserId.isEmpty) return 0;
     int sentCount = 0;
     final eligible = await queue.getEligibleItems(userId: effectiveUserId);
     for (final item in eligible) {

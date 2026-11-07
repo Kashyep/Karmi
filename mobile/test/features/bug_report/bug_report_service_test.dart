@@ -36,7 +36,7 @@ void main() {
 
       final queue = BugReportQueue();
       final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final service = BugReportService(api: api, queue: queue);
+      final service = BugReportService(api: api, queue: queue, userId: 'test_user');
 
       final result = await service.submit(testRequest);
       expect(result.status, BugReportSubmissionStatus.submitted);
@@ -55,7 +55,7 @@ void main() {
 
       final queue = BugReportQueue();
       final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final service = BugReportService(api: api, queue: queue);
+      final service = BugReportService(api: api, queue: queue, userId: 'test_user');
 
       final result = await service.submit(testRequest);
       expect(result.status, BugReportSubmissionStatus.queued);
@@ -78,7 +78,7 @@ void main() {
 
       final queue = BugReportQueue();
       final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-      final service = BugReportService(api: api, queue: queue);
+      final service = BugReportService(api: api, queue: queue, userId: 'test_user');
 
       final result = await service.submit(testRequest);
       expect(result.status, BugReportSubmissionStatus.rateLimited);
@@ -98,7 +98,7 @@ void main() {
 
         final queue = BugReportQueue();
         final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-        final service = BugReportService(api: api, queue: queue);
+      final service = BugReportService(api: api, queue: queue, userId: 'test_user');
 
         final result = await service.submit(testRequest);
         expect(result.status, BugReportSubmissionStatus.rejected);
@@ -127,10 +127,10 @@ void main() {
         });
 
         final queue = BugReportQueue();
-        await queue.enqueue(testRequest);
+        await queue.enqueue(testRequest, userId: 'test_user');
 
         final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
-        final service = BugReportService(api: api, queue: queue);
+        final service = BugReportService(api: api, queue: queue, userId: 'test_user');
 
         final sentCount = await service.flushQueue();
         expect(sentCount, 1);
@@ -140,6 +140,22 @@ void main() {
         expect(pending.isEmpty, isTrue);
       },
     );
+    test('submit without an owner rejects and does not enqueue', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response('{"ticket":"OK"}', 201);
+      });
+      final queue = BugReportQueue();
+      final api = BugReportsApi(baseUrl: baseUrl, client: mockClient);
+      final service = BugReportService(api: api, queue: queue);
+
+      final result = await service.submit(testRequest);
+      expect(result.status, BugReportSubmissionStatus.rejected);
+      expect(result.userMessage, 'Sign in again to send reports');
+
+      final all = await queue.getAll();
+      expect(all.isEmpty, isTrue);
+    });
+
 
     test('owner-scoped flush only sends items belonging to the current user session', () async {
       final submittedPayloads = <Map<String, dynamic>>[];

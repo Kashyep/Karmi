@@ -42,13 +42,16 @@ class SettingsScreen extends StatelessWidget {
   static final GlobalKey _boundaryKey = GlobalKey();
 
   Future<void> _openBugReport(BuildContext context) async {
-    unawaited(
-      BugReportService(
-        api: BugReportsApi.fromApi(session.api),
-        queue: BugReportQueue(),
-        userId: session.userId,
-      ).flushQueue().catchError((_) => 0),
-    );
+    final uid = session.userId;
+    if (uid != null && uid.isNotEmpty) {
+      unawaited(
+        BugReportService(
+          api: BugReportsApi.fromApi(session.api),
+          queue: BugReportQueue(),
+          userId: uid,
+        ).flushQueue().catchError((_) => 0),
+      );
+    }
     final screenshotBytes = await capturePngFromRepaintBoundary(_boundaryKey);
     if (!context.mounted) return;
     Navigator.of(context).push(
@@ -56,7 +59,7 @@ class SettingsScreen extends StatelessWidget {
         builder: (_) => BugReportScreen(
           api: session.api,
           session: session,
-          userId: session.userId,
+          userId: uid,
           initialScreen: 'settings',
           screenshotBytes: screenshotBytes,
         ),

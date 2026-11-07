@@ -80,4 +80,32 @@ void main() {
       expect(screen.initialErrorCode, 'SSE_TIMEOUT');
     },
   );
+
+  testWidgets(
+    'ErrorCard passes session and userId through to BugReportScreen',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: KarmiTheme.of(KarmiTier.ananta, Brightness.dark),
+          home: const Scaffold(
+            body: ErrorCard(
+              category: ErrorCategory.timeout,
+              errorCode: 'SSE_TIMEOUT',
+              userId: 'user_456',
+            ),
+          ),
+        ),
+      );
+
+      final linkFinder = find.byKey(const ValueKey('error_card_report_link'));
+      await tester.tap(linkFinder);
+      await tester.pumpAndSettle();
+
+      final screenFinder = find.byType(BugReportScreen);
+      expect(screenFinder, findsOneWidget);
+
+      final BugReportScreen screen = tester.widget(screenFinder);
+      expect(screen.userId, 'user_456');
+    },
+  );
 }

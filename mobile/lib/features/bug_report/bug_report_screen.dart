@@ -91,6 +91,9 @@ class _BugReportScreenState extends State<BugReportScreen> {
         queue: queue,
         userId: effectiveUserId,
       );
+      if (effectiveUserId == null || effectiveUserId.isEmpty) {
+        _submissionError = 'Sign in again to send reports';
+      }
     }
 
     if (effectiveUserId != null && effectiveUserId.isNotEmpty) {
@@ -145,9 +148,14 @@ class _BugReportScreenState extends State<BugReportScreen> {
   }
 
   Future<void> _submit() async {
-    setState(() {
-      _submissionError = null;
-    });
+    final effectiveUserId = widget.userId ?? widget.session?.userId;
+    if (widget.service == null &&
+        (effectiveUserId == null || effectiveUserId.isEmpty)) {
+      setState(() {
+        _submissionError = 'Sign in again to send reports';
+      });
+      return;
+    }
 
     if (!_isDescriptionValid) {
       setState(() {
@@ -553,9 +561,14 @@ class _BugReportScreenState extends State<BugReportScreen> {
         ],
 
         // Submit Button
+        final effectiveUserId = widget.userId ?? widget.session?.userId;
+        final hasOwner = widget.service != null ||
+            (effectiveUserId != null && effectiveUserId.isNotEmpty);
         FilledButton(
           key: const ValueKey('submit-bug-report-button'),
-          onPressed: _isSubmitting || !_isDescriptionValid ? null : _submit,
+          onPressed: _isSubmitting || !hasOwner || !_isDescriptionValid
+              ? null
+              : _submit,
           child: _isSubmitting
               ? const KarmiLoader(label: 'Sending report')
               : const Text('Send bug report'),
