@@ -69,6 +69,35 @@ class _BugReportScreenState extends State<BugReportScreen> {
   bool _isSubmitting = false;
   String? _submissionError;
   BugReportSubmissionResult? _submissionResult;
+  String? _initialOwner;
+
+  String? get _currentOwner => widget.userId ?? widget.session?.userId;
+
+  /// Whether the screen currently has a valid, unchanged owner.
+  ///
+  /// Bug report drafts and queues are bound to a specific user on screen entry.
+  /// If the active session or owner changes (user signs out, token expires, or switches
+  /// accounts) during report composition, we fail-closed: [hasOwner] evaluates to false,
+  /// the submit button is disabled, and submissions are rejected. This prevents cross-user
+  /// report leakage into a previous owner's offline retry queue.
+  bool get _hasOwner {
+    if (widget.service != null && _initialOwner == null) {
+      return true;
+    }
+    final current = _currentOwner;
+    if (current == null || current.isEmpty) return false;
+    if (_initialOwner == null || _initialOwner!.isEmpty) return false;
+    return current == _initialOwner;
+  }
+
+  void _onSessionChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (!_hasOwner) {
+        _submissionError = 'Sign in again to send reports';
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -79,7 +108,9 @@ class _BugReportScreenState extends State<BugReportScreen> {
     _selectedCategory = widget.initialCategory ?? BugReportCategory.chat;
     _screenshotBytes = widget.screenshotBytes;
 
-    final effectiveUserId = widget.userId ?? widget.session?.userId;
+    _initialOwner = widget.userId ?? widget.session?.userId;
+    widget.session?.addListener(_onSessionChanged);
+
     if (widget.service != null) {
       _service = widget.service!;
     } else {
@@ -90,14 +121,14 @@ class _BugReportScreenState extends State<BugReportScreen> {
       _service = BugReportService(
         api: api,
         queue: queue,
-        userId: effectiveUserId,
+        userId: _initialOwner,
       );
-      if (effectiveUserId == null || effectiveUserId.isEmpty) {
+      if (_initialOwner == null || _initialOwner!.isEmpty) {
         _submissionError = 'Sign in again to send reports';
       }
     }
 
-    if (effectiveUserId != null && effectiveUserId.isNotEmpty) {
+    if (_initialOwner != null && _initialOwner!.isNotEmpty) {
       unawaited(_service.flushQueue().catchError((_) => 0));
     }
     _diagnostics = const DiagnosticsCollector().collect(
@@ -126,7 +157,21 @@ class _BugReportScreenState extends State<BugReportScreen> {
   }
 
   @override
+  void didUpdateWidget(BugReportScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session != widget.session) {
+      oldWidget.session?.removeListener(_onSessionChanged);
+      widget.session?.addListener(_onSessionChanged);
+    }
+    if (oldWidget.userId != widget.userId ||
+        oldWidget.session != widget.session) {
+      _onSessionChanged();
+    }
+  }
+
+  @override
   void dispose() {
+    widget.session?.removeListener(_onSessionChanged);
     _descriptionController.dispose();
     super.dispose();
   }
@@ -149,9 +194,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
   }
 
   Future<void> _submit() async {
-    final effectiveUserId = widget.userId ?? widget.session?.userId;
-    if (widget.service == null &&
-        (effectiveUserId == null || effectiveUserId.isEmpty)) {
+    if (!_hasOwner) {
       setState(() {
         _submissionError = 'Sign in again to send reports';
       });
@@ -319,11 +362,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
   }
 
   Widget _buildForm(BuildContext context, KarmiColors colors, ThemeData theme) {
-    final effectiveUserId = widget.userId ?? widget.session?.userId;
-    final hasOwner =
-        widget.service != null ||
-        (effectiveUserId != null && effectiveUserId.isNotEmpty);
-
+    final hasOwner = _hasOwner;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

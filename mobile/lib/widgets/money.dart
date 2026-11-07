@@ -55,7 +55,12 @@ String formatInr(int micro) {
 /// Formats an amount in INR rupees ([rupees] as double) with Indian digit grouping.
 ///
 /// Follows the same display rules as [formatInr].
+///
+/// Guard: If [rupees] is non-finite (`double.nan`, `double.infinity`, or
+/// `double.negativeInfinity`), returns the safe fallback `'₹0'` rather than
+/// printing invalid numeric tokens or throwing.
 String formatInrRupees(double rupees) {
+  if (!rupees.isFinite) return '₹0';
   if (rupees == 0.0) return '₹0';
   // Route through integer micro arithmetic (1 rupee = 1,000,000 micro)
   // to ensure identical half-paisa rounding and formatting.

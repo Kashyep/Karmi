@@ -106,8 +106,6 @@ class BugReportDiagnostics {
     'error_code',
   };
 
-  static const Set<String> allowedKeys = allowlistedKeys;
-
   final String? _appVersion;
   final String? _buildNumber;
   final String? _gitSha;

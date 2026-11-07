@@ -5,7 +5,7 @@ import 'package:karmi_app/features/bug_report/diagnostics_collector.dart';
 
 void main() {
   group('Diagnostics allowlist and boundaries', () {
-    const allowedKeys = {
+    const expectedKeys = {
       'app_version',
       'build_number',
       'git_sha',
@@ -25,8 +25,11 @@ void main() {
     };
 
     test('allowlist contains exactly the 16 contract keys', () {
-      expect(allowedKeys.length, 16);
-      expect(BugReportDiagnostics.allowedKeys, unorderedEquals(allowedKeys));
+      expect(expectedKeys.length, 16);
+      expect(
+        BugReportDiagnostics.allowlistedKeys,
+        unorderedEquals(expectedKeys),
+      );
     });
 
     test('serialized JSON contains ONLY keys from the allowlist', () {
@@ -52,7 +55,7 @@ void main() {
       final json = diag.toJson();
       for (final key in json.keys) {
         expect(
-          allowedKeys.contains(key),
+          expectedKeys.contains(key),
           isTrue,
           reason: 'Key $key not allowlisted',
         );
