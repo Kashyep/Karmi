@@ -51,9 +51,13 @@ class CitationSyntax extends md.InlineSyntax {
 
 /// Bounded LRU cache of parsed Markdown AST nodes.
 class ParsedMarkdownCache {
-  ParsedMarkdownCache({this.capacity = 100});
+  ParsedMarkdownCache({this.capacity = 100, this.enabled = true});
+
+  /// Creates a pass-through cache that always parses and stores nothing.
+  ParsedMarkdownCache.disabled() : capacity = 0, enabled = false;
 
   final int capacity;
+  final bool enabled;
   final LinkedHashMap<String, List<md.Node>> _cache =
       LinkedHashMap<String, List<md.Node>>();
 
@@ -66,6 +70,10 @@ class ParsedMarkdownCache {
 
   /// Cache key can be a messageId+content or the content string itself.
   List<md.Node> getOrParse(String key, List<md.Node> Function() parse) {
+    if (!enabled) {
+      _misses++;
+      return parse();
+    }
     final cached = _cache.remove(key);
     if (cached != null) {
       _hits++;
@@ -112,6 +120,19 @@ class MarkdownMessage extends StatefulWidget {
   final String? messageId;
   final ParsedMarkdownCache? cache;
 
+  /// Test-visible counter tracking actual Markdown parse executions.
+  @visibleForTesting
+  static int debugParseCount = 0;
+
+  /// Test-visible toggle to simulate un-cached rendering across widget trees.
+  @visibleForTesting
+  static bool debugDisableCache = false;
+
+  @visibleForTesting
+  static void debugResetParseCount() {
+    debugParseCount = 0;
+  }
+
   @override
   State<MarkdownMessage> createState() => _MarkdownMessageState();
 }
@@ -119,13 +140,19 @@ class MarkdownMessage extends StatefulWidget {
 class _MarkdownMessageState extends State<MarkdownMessage> {
   final List<TapGestureRecognizer> _recognizers = [];
 
-  ParsedMarkdownCache get _cache => widget.cache ?? defaultMarkdownCache;
+  ParsedMarkdownCache get _cache {
+    if (MarkdownMessage.debugDisableCache) {
+      return ParsedMarkdownCache.disabled();
+    }
+    return widget.cache ?? defaultMarkdownCache;
+  }
 
   List<md.Node> _getNodes() {
     final key = widget.messageId != null
         ? '${widget.messageId}:${widget.text}'
         : widget.text;
     return _cache.getOrParse(key, () {
+      MarkdownMessage.debugParseCount++;
       final document = md.Document(
         extensionSet: md.ExtensionSet.gitHubWeb,
         encodeHtml: true,

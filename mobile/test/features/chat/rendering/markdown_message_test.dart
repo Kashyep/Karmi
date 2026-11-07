@@ -352,4 +352,298 @@ void main() {
     expect(cache.misses, 2);
     expect(cache.hits, 1);
   });
+
+  group('ParsedMarkdownCache parse counting: cached vs uncached', () {
+    setUp(() {
+      MarkdownMessage.debugResetParseCount();
+      MarkdownMessage.debugDisableCache = false;
+      defaultMarkdownCache.clear();
+    });
+
+    tearDown(() {
+      MarkdownMessage.debugResetParseCount();
+      MarkdownMessage.debugDisableCache = false;
+      defaultMarkdownCache.clear();
+    });
+
+    test('unit: 20 rebuilds of 30 messages has deterministic parse counts', () {
+      const messageCount = 30;
+      const rebuilds = 20;
+      const distinctPairs = messageCount;
+
+      // With cache
+      final cachedCache = ParsedMarkdownCache(capacity: 100);
+      var cachedParses = 0;
+      for (var r = 0; r < rebuilds; r++) {
+        for (var i = 0; i < messageCount; i++) {
+          cachedCache.getOrParse('msg-$i:content-$i', () {
+            cachedParses++;
+            return [md.Text('content-$i')];
+          });
+        }
+      }
+      expect(cachedParses, equals(distinctPairs));
+      expect(cachedCache.misses, equals(distinctPairs));
+      expect(cachedCache.hits, equals(messageCount * (rebuilds - 1)));
+
+      // Without cache
+      final uncachedCache = ParsedMarkdownCache.disabled();
+      var uncachedParses = 0;
+      for (var r = 0; r < rebuilds; r++) {
+        for (var i = 0; i < messageCount; i++) {
+          uncachedCache.getOrParse('msg-$i:content-$i', () {
+            uncachedParses++;
+            return [md.Text('content-$i')];
+          });
+        }
+      }
+      expect(uncachedParses, equals(rebuilds * messageCount));
+      expect(uncachedCache.misses, equals(rebuilds * messageCount));
+      expect(uncachedCache.hits, equals(0));
+    });
+
+    test('unit: streaming message with 15 deltas and 3 rebuilds per delta', () {
+      const deltaCount = 15;
+      const rebuildsPerDelta = 3;
+      const totalRebuilds = deltaCount * rebuildsPerDelta;
+      const distinctPairs = deltaCount;
+
+      final deltas = List.generate(
+        deltaCount,
+        (i) => List.generate(i + 1, (j) => 'tok$j').join(' '),
+      );
+
+      // With cache
+      final cachedCache = ParsedMarkdownCache(capacity: 100);
+      var cachedParses = 0;
+      for (final text in deltas) {
+        for (var r = 0; r < rebuildsPerDelta; r++) {
+          cachedCache.getOrParse('stream-msg:$text', () {
+            cachedParses++;
+            return [md.Text(text)];
+          });
+        }
+      }
+      expect(cachedParses, equals(distinctPairs));
+      expect(cachedCache.misses, equals(distinctPairs));
+      expect(cachedCache.hits, equals(totalRebuilds - distinctPairs));
+
+      // Without cache
+      final uncachedCache = ParsedMarkdownCache.disabled();
+      var uncachedParses = 0;
+      for (final text in deltas) {
+        for (var r = 0; r < rebuildsPerDelta; r++) {
+          uncachedCache.getOrParse('stream-msg:$text', () {
+            uncachedParses++;
+            return [md.Text(text)];
+          });
+        }
+      }
+      expect(uncachedParses, equals(totalRebuilds));
+      expect(uncachedCache.misses, equals(totalRebuilds));
+      expect(uncachedCache.hits, equals(0));
+    });
+
+    testWidgets(
+      'host widget: N=20 rebuilds of a long conversation (30 messages)',
+      (tester) async {
+        const messageCount = 30;
+        const rebuilds = 20;
+        const distinctPairs = messageCount;
+        final messages = List.generate(
+          messageCount,
+          (i) => (
+            id: 'msg-$i',
+            text: 'Message $i content with **bold** and `code`',
+          ),
+        );
+
+        Widget buildConversation({ParsedMarkdownCache? cache}) {
+          return _host(
+            Column(
+              children: [
+                for (final m in messages)
+                  MarkdownMessage(
+                    key: ValueKey(m.id),
+                    messageId: m.id,
+                    text: m.text,
+                    streaming: false,
+                    cache: cache,
+                  ),
+              ],
+            ),
+          );
+        }
+
+        // --- WITH CACHE ---
+        final cachedCache = ParsedMarkdownCache(capacity: 100);
+        MarkdownMessage.debugResetParseCount();
+
+        for (var r = 0; r < rebuilds; r++) {
+          await tester.pumpWidget(buildConversation(cache: cachedCache));
+        }
+
+        final cachedParses = MarkdownMessage.debugParseCount;
+        expect(cachedParses, equals(distinctPairs));
+        expect(cachedCache.misses, equals(distinctPairs));
+        expect(cachedCache.hits, equals(messageCount * (rebuilds - 1)));
+
+        // --- WITHOUT CACHE ---
+        final uncachedCache = ParsedMarkdownCache.disabled();
+        MarkdownMessage.debugResetParseCount();
+
+        for (var r = 0; r < rebuilds; r++) {
+          await tester.pumpWidget(buildConversation(cache: uncachedCache));
+        }
+
+        final uncachedParses = MarkdownMessage.debugParseCount;
+        expect(uncachedParses, equals(rebuilds * messageCount));
+        expect(uncachedCache.misses, equals(rebuilds * messageCount));
+        expect(uncachedCache.hits, equals(0));
+      },
+    );
+
+    testWidgets(
+      'host widget: streaming message across growing content (15 deltas x 3 rebuilds)',
+      (tester) async {
+        const deltaCount = 15;
+        const pumpsPerDelta = 3;
+        const totalRebuilds = deltaCount * pumpsPerDelta;
+        const distinctPairs = deltaCount;
+
+        final deltas = List.generate(
+          deltaCount,
+          (i) => List.generate(i + 1, (j) => 'token$j').join(' '),
+        );
+
+        Widget buildStreaming(String text, {ParsedMarkdownCache? cache}) {
+          return _host(
+            MarkdownMessage(
+              key: const ValueKey('stream-msg'),
+              messageId: 'stream-msg',
+              text: text,
+              streaming: true,
+              cache: cache,
+            ),
+          );
+        }
+
+        // --- WITH CACHE ---
+        final cachedCache = ParsedMarkdownCache(capacity: 100);
+        MarkdownMessage.debugResetParseCount();
+
+        for (final text in deltas) {
+          for (var p = 0; p < pumpsPerDelta; p++) {
+            await tester.pumpWidget(buildStreaming(text, cache: cachedCache));
+          }
+        }
+
+        final cachedParses = MarkdownMessage.debugParseCount;
+        expect(cachedParses, equals(distinctPairs));
+        expect(cachedCache.misses, equals(distinctPairs));
+        expect(cachedCache.hits, equals(totalRebuilds - distinctPairs));
+
+        // --- WITHOUT CACHE ---
+        final uncachedCache = ParsedMarkdownCache.disabled();
+        MarkdownMessage.debugResetParseCount();
+
+        for (final text in deltas) {
+          for (var p = 0; p < pumpsPerDelta; p++) {
+            await tester.pumpWidget(buildStreaming(text, cache: uncachedCache));
+          }
+        }
+
+        final uncachedParses = MarkdownMessage.debugParseCount;
+        expect(uncachedParses, equals(totalRebuilds));
+        expect(uncachedCache.misses, equals(totalRebuilds));
+        expect(uncachedCache.hits, equals(0));
+      },
+    );
+
+    testWidgets(
+      'host widget: 30-message conversation with streaming message across 20 rebuilds',
+      (tester) async {
+        const staticMessageCount = 29;
+        const deltaCount = 10;
+        const pumpsPerDelta = 2;
+        const totalRebuilds = deltaCount * pumpsPerDelta; // 20 rebuilds
+        const totalMessages = staticMessageCount + 1; // 30 messages
+        const distinctPairs =
+            staticMessageCount + deltaCount; // 39 distinct (id, rev) pairs
+
+        final staticMessages = List.generate(
+          staticMessageCount,
+          (i) => (id: 'msg-$i', text: 'Static message $i with `code`'),
+        );
+        final deltas = List.generate(
+          deltaCount,
+          (i) => List.generate(i + 1, (j) => 'tok$j').join(' '),
+        );
+
+        Widget buildFullConversation(
+          String streamText, {
+          ParsedMarkdownCache? cache,
+        }) {
+          return _host(
+            Column(
+              children: [
+                for (final m in staticMessages)
+                  MarkdownMessage(
+                    key: ValueKey(m.id),
+                    messageId: m.id,
+                    text: m.text,
+                    streaming: false,
+                    cache: cache,
+                  ),
+                MarkdownMessage(
+                  key: const ValueKey('msg-streaming'),
+                  messageId: 'msg-streaming',
+                  text: streamText,
+                  streaming: true,
+                  cache: cache,
+                ),
+              ],
+            ),
+          );
+        }
+
+        // --- WITH CACHE ---
+        final cachedCache = ParsedMarkdownCache(capacity: 100);
+        MarkdownMessage.debugResetParseCount();
+
+        for (final text in deltas) {
+          for (var p = 0; p < pumpsPerDelta; p++) {
+            await tester.pumpWidget(
+              buildFullConversation(text, cache: cachedCache),
+            );
+          }
+        }
+
+        final cachedParses = MarkdownMessage.debugParseCount;
+        expect(cachedParses, equals(distinctPairs));
+        expect(cachedCache.misses, equals(distinctPairs));
+        expect(
+          cachedCache.hits,
+          equals((totalRebuilds * totalMessages) - distinctPairs),
+        );
+
+        // --- WITHOUT CACHE ---
+        final uncachedCache = ParsedMarkdownCache.disabled();
+        MarkdownMessage.debugResetParseCount();
+
+        for (final text in deltas) {
+          for (var p = 0; p < pumpsPerDelta; p++) {
+            await tester.pumpWidget(
+              buildFullConversation(text, cache: uncachedCache),
+            );
+          }
+        }
+
+        final uncachedParses = MarkdownMessage.debugParseCount;
+        expect(uncachedParses, equals(totalRebuilds * totalMessages));
+        expect(uncachedCache.misses, equals(totalRebuilds * totalMessages));
+        expect(uncachedCache.hits, equals(0));
+      },
+    );
+  });
 }
