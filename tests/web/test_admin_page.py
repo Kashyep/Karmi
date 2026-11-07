@@ -173,6 +173,8 @@ def test_admin_response_carries_strict_csp_and_framing_headers(client_factory) -
     assert response.status_code == 200
 
     directives = _csp_directives(response.headers["content-security-policy"])
+    assert directives["default-src"] == ["'self'"]
+    assert directives["style-src"] == ["'self'"]
     assert "'self'" in directives["script-src"]
     assert "https://clerk.example.test" in directives["script-src"]
     assert directives["frame-ancestors"] == ["'none'"]
@@ -201,8 +203,10 @@ def test_admin_csp_without_clerk_key_names_no_clerk_hosts(client_factory) -> Non
 
     assert "clerk" not in policy
     assert "cloudflare" not in policy
-    assert _csp_directives(policy)["script-src"] == ["'self'"]
-
+    directives = _csp_directives(policy)
+    assert directives["default-src"] == ["'self'"]
+    assert directives["style-src"] == ["'self'"]
+    assert directives["script-src"] == ["'self'"]
 
 def test_admin_clerk_js_is_pinned_to_exact_version() -> None:
     source = (STATIC / "admin.js").read_text(encoding="utf-8")

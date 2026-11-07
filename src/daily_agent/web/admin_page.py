@@ -60,7 +60,9 @@ def admin_page_headers(*, publishable_key: str | None) -> dict[str, str]:
     challenge_frames = f" {CLERK_CHALLENGE_ORIGIN}" if domain else ""
     csp = "; ".join(
         [
+            "default-src 'self'",
             f"script-src 'self'{clerk_origin}{clerk_protect}",
+            "style-src 'self'",
             "worker-src 'self' blob:",
             f"connect-src 'self'{clerk_origin}",
             f"img-src 'self' data: blob:{clerk_origin}{clerk_images}",
