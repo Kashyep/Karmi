@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Generator
 import contextlib
 import re
+from collections.abc import Generator
 from typing import Any
 
 from sqlalchemy import Engine, event
