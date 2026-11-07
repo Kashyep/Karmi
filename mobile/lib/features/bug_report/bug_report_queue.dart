@@ -178,8 +178,12 @@ class BugReportQueue {
 
       // Separate screenshot storage to keep queue list mutations fast and small
       final scKey = screenshotPrefKey(request.clientReportId);
-      if (request.screenshot != null) {
-        await prefs.setString(scKey, jsonEncode(request.screenshot!.toJson()));
+      final existingRawScreenshot = prefs.getString(scKey);
+      final newScreenshotJson = request.screenshot != null
+          ? jsonEncode(request.screenshot!.toJson())
+          : null;
+      if (newScreenshotJson != null) {
+        await prefs.setString(scKey, newScreenshotJson);
       } else {
         await prefs.remove(scKey);
       }
@@ -193,10 +197,6 @@ class BugReportQueue {
       );
       if (index >= 0) {
         final existingItem = items[index];
-        final existingRawScreenshot = prefs.getString(scKey);
-        final newScreenshotJson = request.screenshot != null
-            ? jsonEncode(request.screenshot!.toJson())
-            : null;
         final payloadChanged = jsonEncode(existingItem.payload) !=
             jsonEncode(payloadWithoutScreenshot);
         final screenshotChanged = existingRawScreenshot != newScreenshotJson;

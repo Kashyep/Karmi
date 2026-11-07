@@ -102,6 +102,42 @@ void main() {
     );
 
     test(
+      're-enqueuing with same client_report_id replaces queued item when screenshot changes',
+      () async {
+        final queue = BugReportQueue();
+        const reportId = '550e8400-e29b-41d4-a716-446655440000';
+        final request1 = BugReportCreateRequest(
+          clientReportId: reportId,
+          category: BugReportCategory.chat,
+          description: 'Original text',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
+        );
+        final request2 = BugReportCreateRequest(
+          clientReportId: reportId,
+          category: BugReportCategory.chat,
+          description: 'Original text',
+          diagnostics: const BugReportDiagnostics(screen: 'chat'),
+          screenshot: const BugReportScreenshot(
+            bytesBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            width: 1,
+            height: 1,
+          ),
+        );
+
+        await queue.enqueue(request1);
+        final item1 = (await queue.getAll()).first;
+
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        await queue.enqueue(request2);
+        final item2 = (await queue.getAll()).first;
+
+        expect(item2.createdAt.isAfter(item1.createdAt), isTrue);
+        final resolved = await queue.resolveRequest(item2);
+        expect(resolved.screenshot, isNotNull);
+      },
+    );
+
+    test(
       'rate limit sets retry_after_until timestamp and isRateLimited checks it',
       () async {
         final queue = BugReportQueue();
