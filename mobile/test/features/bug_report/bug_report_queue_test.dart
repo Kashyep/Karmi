@@ -285,6 +285,45 @@ void main() {
       expect(persisted.first.contains('legacy-rejected-001'), isFalse);
     });
 
+    test('legacy ownerless item is dropped on load and its screenshot unpersisted', () async {
+      final prefs = await SharedPreferences.getInstance();
+      const scKey = 'bug_report_screenshot_legacy-ownerless-001';
+      await prefs.setString(scKey, '{"bytes_base64":"abc","width":1,"height":1}');
+
+      final legacyOwnerlessJson = jsonEncode({
+        'client_report_id': 'legacy-ownerless-001',
+        'payload': {
+          'client_report_id': 'legacy-ownerless-001',
+          'category': 'chat',
+          'description': 'Ownerless report',
+        },
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      final validJson = jsonEncode({
+        'client_report_id': 'valid-item-002',
+        'payload': {
+          'client_report_id': 'valid-item-002',
+          'category': 'chat',
+          'description': 'Valid report with owner',
+        },
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'user_id': 'user_owner',
+        'is_rejected': false,
+      });
+      await prefs.setStringList(BugReportQueue.prefKey, [legacyOwnerlessJson, validJson]);
+
+      final queue = BugReportQueue();
+      final items = await queue.loadAll();
+
+      expect(items.length, 1);
+      expect(items.first.clientReportId, 'valid-item-002');
+      expect(prefs.containsKey(scKey), isFalse);
+
+      final persisted = prefs.getStringList(BugReportQueue.prefKey)!;
+      expect(persisted.length, 1);
+      expect(persisted.first.contains('legacy-ownerless-001'), isFalse);
+    });
+
     test('legacy inline screenshot is migrated to separate storage and stripped from queue entry', () async {
       final prefs = await SharedPreferences.getInstance();
       const screenshotData = {

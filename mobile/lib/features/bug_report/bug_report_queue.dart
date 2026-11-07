@@ -140,7 +140,8 @@ class BugReportQueue {
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
         final isRejected = decoded['is_rejected'] == true;
         final clientReportId = decoded['client_report_id'] as String?;
-        if (isRejected) {
+        final userId = decoded['user_id'] as String?;
+        if (isRejected || userId == null || userId.isEmpty) {
           if (clientReportId != null && clientReportId.isNotEmpty) {
             await prefs.remove(screenshotPrefKey(clientReportId));
           }
@@ -151,11 +152,8 @@ class BugReportQueue {
         final payload = decoded['payload'];
         if (payload is Map<String, dynamic> && payload.containsKey('screenshot')) {
           final inlineScreenshot = payload['screenshot'];
-          final userId = decoded['user_id'] as String?;
           if (clientReportId != null &&
               clientReportId.isNotEmpty &&
-              userId != null &&
-              userId.isNotEmpty &&
               inlineScreenshot != null) {
             final scKey = screenshotPrefKey(clientReportId);
             if (!prefs.containsKey(scKey)) {
@@ -253,7 +251,7 @@ class BugReportQueue {
             clientReportId: request.clientReportId,
             payload: payloadWithoutScreenshot,
             createdAt: DateTime.now().toUtc(),
-            userId: userId ?? existingItem.userId,
+            userId: userId,
           );
           await _saveAllUnlocked(items);
         }
