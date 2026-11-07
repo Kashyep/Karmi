@@ -17,6 +17,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Admin monitoring metrics**: Added `requests_today`, `daily_request_cap`, `success_rate`, `open_bug_reports`, `cost_today_inr`, and model-level latency and health table to `/v1/admin/monitor` (`src/daily_agent/admin_service.py`; commits `66c1535`, `ac3d16e`).
 - **Mobile admin bug inbox**: Bug report list, detail view, and status update interface in mobile admin tooling (`mobile/lib/features/admin/`; commit `f6538d4`).
 - **Persistent chat and streaming controls**: Resumable SSE streaming (`POST /v1/chat/stream`), Continue/Resume/Stop/Regenerate controls, multiline composer with text attachments, and conversation management (rename/pin/archive/delete with undo) (commits `a7b2025`, `cb16086`, `e472945`, `b0f0fdc`, `734e07b`).
+- **Web admin dashboard**: Browser-based administration console with metrics overview tiles, bug report inbox with screenshot viewer, and INR formatting (`src/daily_agent/web/static/admin.js`, `src/daily_agent/web/admin_page.py`; commit `7f1f93d`).
+- **Markdown AST cache**: Cached parsed markdown AST in `ParsedMarkdownCache` (`mobile/lib/features/chat/rendering/markdown_message.dart`; commit `47a15f2`).
+- **Chat timing middleware**: Latency timing logs enabled via `DAILY_AGENT_CHAT_TIMING_ENABLED` (default OFF) (`src/daily_agent/chat_timing.py`; commit `47a15f2`).
+- **Request body limit middleware**: Global request payload size limit returning HTTP 413 (`src/daily_agent/body_limit.py`; commit `74b63cc`).
 
 ### Changed
 - **Unified shell layout**: Replaced divergent shell trees with a single layout tree unifying glass and solid/opaque modes with identical tab semantics (`mobile/lib/shell/karmi_shell.dart`; commits `66e0253`, `f6617d0`).
@@ -32,6 +36,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Diagnostics privacy leak prevention**: Omitted hostname and sanitized device model strings to avoid leaking PII in diagnostics payloads (`mobile/lib/features/bug_report/diagnostics_collector.dart`; commit `eeb7071`).
 - **Sub-micro currency formatting**: Render non-zero sub-micro rupee amounts as `<₹0.01` (`mobile/lib/widgets/money.dart`; commit `b8bfc83`).
 - **Admin CSP sources**: Permitted Clerk protect, image, worker, and challenge sources in `/admin` Content Security Policy (`src/daily_agent/web/admin_page.py`; commit `2a37177`).
+- **Bug report concurrency lock order**: Strict lock ordering on bug report submissions to prevent race conditions (commit `74b63cc`).
+- **Admin bug report filter validation**: Validated category and status filters, returning HTTP 422 on unknown values (`src/daily_agent/routes/admin.py`; commit `818f6ad`).
+- **Admin CSP Clerk styles**: Permitted `style-src 'unsafe-inline'` when Clerk authentication is configured (`src/daily_agent/web/admin_page.py`; commit `818f6ad`).
+- **Currency NaN/Infinity guard**: Guarded `formatInrRupees` to return ₹0 on NaN or Infinity values (`mobile/lib/widgets/money.dart`; commit `9cf2ce4`).
+- **Bug report owner session evaluation**: Re-evaluated owner identity fail-closed on session change (`mobile/lib/features/bug_report/bug_report_screen.dart`; commit `9cf2ce4`).
 
 ### Security
 - **Strict diagnostics allowlist**: Rejected unapproved client telemetry keys with HTTP 422 (`src/daily_agent/bug_reports_service.py`).
@@ -39,7 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Admin session & route access**: Enforced Clerk token, admin allowlist, and `X-Admin-Session` header checks on all admin bug reporting endpoints.
 
 ### Known issues
-- **Web admin UI**: web admin UI (overview tiles, bug inbox, screenshot viewer) NOT MERGED to 314afa4 — backend routes and CSP hardening only.
+- **Web admin UI browser verification**: Web admin UI is merged (overview tiles, bug inbox, screenshot viewer; commits `7f1f93d`, `818f6ad`), but browser runtime verification has not been executed on live infrastructure (device testing paused by owner).
+- **Chat timing client p95 latency**: Timing middleware defaulted to OFF via `DAILY_AGENT_CHAT_TIMING_ENABLED` due to unexplained client p95 latency gap observed during benchmarking; owner decision pending (`docs/release1/perf/R1_FINAL.md`).
 - **Device verification NOT VERIFIED (device testing paused by owner)**: Real device verification on Pixel 9a has not been executed; all device test checks remain paused.
 - **R-9 golden visual review open**: Visual review by human owner for updated Flutter golden test assets remains pending.
 - **Real Google sign-in NOT VERIFIED**: End-to-end Google OAuth sign-in against a live Clerk instance and real Google accounts has not been verified on physical devices (requires owner configuration in Clerk dashboard).

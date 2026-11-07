@@ -10,7 +10,7 @@ All commands and configurations are cited from repository source files or marked
 
 | Step | Owner Action | Status |
 | :--- | :--- | :--- |
-| **1. Pre-flight (local)** | Verify local branch `r1f/release` HEAD, pubspec version `0.1.0+5`, and zero push status | Ready for owner execution |
+| **1. Pre-flight (local)** | Verify local branch `release1/final` HEAD, pubspec version `0.1.0+5`, and zero push status | Ready for owner execution |
 | **2. Deploy + migration `a5b6c7d8e9f0`** | Perform BACKUP-FIRST, apply Alembic migration, verify schema, and deploy container | Ready for owner execution (BACKUP-FIRST) |
 | **3. Clerk Google SSO** | Enable Google connection in Clerk dashboard & add redirect URL allowlist | Configured in repo; Device testing: **NOT VERIFIED (device testing paused by owner)** |
 | **4. Disable CI reviewer workflow** | Disable `.github/workflows/jules-pr-reviewer.yml` in GitHub Actions UI | Ready for owner action in GitHub UI |
@@ -27,12 +27,12 @@ All commands and configurations are cited from repository source files or marked
 Before deploying or tagging Release 1, verify the local branch state, application versioning, and remote sync status.
 
 ### 1.1 Verify Branch and HEAD Commit
-- Target branch: `r1f/release` (worktree: `/home/rosso/Projects/Karmi-release/final-rel`).
-- Base branch: `314afa4` (`release1/final`).
+- Target branch: `release1/final` (worktree: `/home/rosso/Projects/Karmi-release/final`).
+- Release HEAD commit: Cut from `release1/final` HEAD containing merged release branches (`r1f/webadmin`, `r1f/fix`, `r1f/perf`, `r1f/p3-app`, `r1f/p3-backend`, `r1f/release`).
 - Inspect HEAD commit:
   ```bash
   git status
-  git log -1 --oneline r1f/release
+  git log -1 --oneline release1/final
   ```
 - Expected status: Working tree clean, HEAD commit contains release prep documentation (`docs(release): ...`).
 

@@ -394,3 +394,25 @@ Release-prep agent did not run gates; all statuses are repo-evidence-based until
 - Azure regression 4 on `34f4062`: 12/12; allowlisted admin gets code-required (200), true non-admin 403.
 - Final artifacts (rebuilt from `b9a4457`): `~/Projects/Karmi-release/v0.1.0+4/` APK sha256 d57138ec…f34b2, AAB 43ae4e1b…37802; installed on Pixel 9a.
 - PENDING (user): `karmi-ui code`, rossoadmin sign-in on device, admin console check, release approval. Nothing pushed or published.
+
+## Release 1 reconciliation and final merge integration (2026-11-08)
+
+- Integration branch: `release1/final`.
+- Verified merges integrated into `release1/final`:
+  - `7f1f93d` (`merge: r1f/webadmin`): Web admin dashboard additions (INR formatting in `admin.js`, overview metrics tiles, web bug inbox viewer, Playwright screenshots at 360px and 1440px, and `DAILY_AGENT_ADMIN_UI_ENABLED` gate).
+  - `74b63cc` (`merge: r1f/fix`): Request body size limit middleware in `src/daily_agent/body_limit.py` (F-02) and bug report concurrency lock ordering in `src/daily_agent/bug_reports.py` (F-03).
+  - `47a15f2` (`merge: r1f/perf`): Item 2 measured optimization: composer ValueNotifier narrowing reverted (`1a64e33`) with no measured reduction, cached Markdown AST kept in `markdown_message.dart`, backend chat timing middleware added with default OFF via `DAILY_AGENT_CHAT_TIMING_ENABLED`, honest perf report in `docs/release1/perf/R1_FINAL.md`.
+  - `9cf2ce4` (`merge: r1f/p3-app`): P3 mobile app fixes: dead alias F4 removed, `formatInrRupees` returns ₹0 for NaN/Infinity (F5), bug-report owner fail-closed on session change.
+  - `818f6ad` (`merge: r1f/p3-backend`): P3 backend fixes: admin bug-report filter validation returning 422 on unknown (F-08), admin CSP `style-src 'unsafe-inline'` when Clerk is configured, access-log redaction runbook section (F-05).
+  - `fedf535` (`merge: r1f/release`): Release documentation and version bump branch (version bump to 0.1.0+5 in `mobile/pubspec.yaml`, changelog, release notes, SHA256SUMS recipe, owner runbook, PR draft, and Memory updates).
+- Documentation reconciliation:
+  - `docs/release1/PR_DRAFT.md`: Rewrote stale `RECONCILE` section to `RECONCILED` record documenting all 6 merged branches with merge commit SHAs; updated Items 1–9 verification table to match strict status taxonomy (EVIDENCE PRESENT, PARTIALLY VERIFIED, NOT VERIFIED); added summary bullet points for performance rework and backend fixes; updated source branch target commit header.
+  - `docs/release1/RELEASE_NOTES_v0.1.0.md`: Updated target commit header to indicate cut from `release1/final` HEAD at final gate run; added F-02 body limit and F-03 lock order to operator notes; updated Section 3 verification status table to match PR_DRAFT exactly.
+  - `CHANGELOG.md`: Reconciled known issues section (removed stale claim that web admin UI is unmerged; documented browser runtime NOT VERIFIED and chat timing p95 latency question); recorded added web admin UI, Markdown AST cache, timing middleware, and body limit; recorded fixed lock order, admin filter validation, Clerk style-src, NaN/Inf guard, and session evaluation.
+  - `docs/release1/OWNER_STEPS.md`: Reconciled pre-flight target branch references from `r1f/release` to `release1/final`.
+- Release status summary:
+  - Physical device testing: NOT VERIFIED across all items (paused by owner).
+  - Real Google Sign-in: NOT VERIFIED (pending owner Clerk setup and redirect URL allowlist `ai.karmi.app://sso-callback`).
+  - Web admin dashboard UI: MERGED to codebase; browser runtime verification NOT VERIFIED (paused by owner).
+  - Perf rebuild optimization: Composer narrowing reverted (no measured reduction); metric target <=9 met via metric correction; chat timing default OFF; open p95 question pending owner decision.
+  - Release gates: Pending final execution by main agent. Zero external push.
