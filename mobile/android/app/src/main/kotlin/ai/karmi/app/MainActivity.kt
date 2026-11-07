@@ -2,10 +2,13 @@ package ai.karmi.app
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Bundle
 import androidx.lifecycle.Lifecycle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 /**
@@ -22,6 +25,9 @@ import io.flutter.plugin.common.MethodChannel
  * home-screen icon changes then.
  */
 class MainActivity : FlutterActivity() {
+    private var initialLink: String? = null
+    private var linkEvents: EventChannel.EventSink? = null
+
     private val aliases = mapOf(
         "ananta" to ".LauncherAnanta",
         "yanta" to ".LauncherYanta",
@@ -30,6 +36,26 @@ class MainActivity : FlutterActivity() {
     )
 
     private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleIntent(intent, isInitial = true)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent, isInitial = false)
+    }
+
+    private fun handleIntent(intent: Intent?, isInitial: Boolean) {
+        val data = intent?.dataString ?: return
+        intent.data = null
+        if (isInitial) {
+            initialLink = data
+        }
+        linkEvents?.success(data)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -53,6 +79,29 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEEP_LINK_METHOD_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getInitialLink" -> {
+                        val link = initialLink
+                        initialLink = null
+                        result.success(link)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, DEEP_LINK_EVENT_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    linkEvents = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    linkEvents = null
+                }
+            })
     }
 
     override fun onStop() {
@@ -95,6 +144,8 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         const val CHANNEL = "ai.karmi.app/app_icon"
+        const val DEEP_LINK_METHOD_CHANNEL = "ai.karmi.app/deep_links/messages"
+        const val DEEP_LINK_EVENT_CHANNEL = "ai.karmi.app/deep_links/events"
         private const val PREFS = "karmi_app_icon"
         private const val KEY_PENDING = "pending_tier"
     }

@@ -9,6 +9,7 @@ import 'armory/armory_controller.dart';
 import 'features/admin/admin_controller.dart';
 import 'features/admin/admin_http_api.dart';
 import 'auth/session.dart';
+import 'auth/clerk_sso.dart';
 import 'fonts.dart';
 import 'settings/karmi_settings.dart';
 
@@ -27,7 +28,11 @@ Future<void> main() async {
   final clerkAuthFuture = publishableKey.isEmpty
       ? Future<ClerkAuthState?>.value(null)
       : ClerkAuthState.create(
-          config: ClerkAuthConfig(publishableKey: publishableKey),
+          config: ClerkAuthConfig(
+            publishableKey: publishableKey,
+            redirectionGenerator: clerkRedirectionGenerator,
+            deepLinkStream: createSsoDeepLinkStream(),
+          ),
         );
 
   await Future.wait<dynamic>([glassInitFuture, prefsFuture, clerkAuthFuture]);

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../auth/account_rules.dart';
 import '../../../auth/clerk_email_code_actions.dart';
+import '../../../auth/google_sign_in_button.dart';
 import '../../../theme/karmi_colors.dart';
 import 'onboarding_scaffold.dart';
 import 'otp_field.dart';
@@ -51,10 +52,10 @@ class AccountAuthStep extends StatefulWidget {
   final Future<void> Function() onDevSignIn;
 
   @override
-  State<AccountAuthStep> createState() => _AccountAuthStepState();
+  State<AccountAuthStep> createState() => AccountAuthStepState();
 }
 
-class _AccountAuthStepState extends State<AccountAuthStep> {
+class AccountAuthStepState extends State<AccountAuthStep> {
   static const int _resendCooldownSeconds = 30;
 
   final _first = TextEditingController();
@@ -68,6 +69,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
   bool _awaitingCode = false;
   bool _busy = false;
   bool _showPassword = false;
+  bool _googleLoading = false;
   bool _offerSignIn = false;
   bool _offerCreate = false;
   final Map<AccountField, String> _errors = {};
@@ -127,6 +129,45 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
     setState(() => _busy = false);
     if (actions.isSignedIn) {
       widget.onSignedIn(_mode == _Mode.create ? _pendingDetails : null);
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    if (_busy) return;
+    final actions = widget.actions;
+    if (actions == null || actions.isNotAvailable) return;
+    setState(() {
+      _busy = true;
+      _googleLoading = true;
+      _pendingDetails = null;
+      _clearErrors();
+    });
+    try {
+      final result = await actions.signInWithGoogle();
+      if (!mounted) return;
+      switch (result) {
+        case GoogleSignInSuccess():
+          widget.onSignedIn(null);
+        case GoogleSignInCancelled():
+          setState(() {
+            _errors[AccountField.form] = 'Google sign-in was cancelled.';
+          });
+        case GoogleSignInError(:final message):
+          setState(() {
+            _errors[AccountField.form] = message;
+          });
+      }
+    } catch (e) {
+      if (mounted) {
+        _onClerkError(e);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _googleLoading = false;
+        });
+      }
     }
   }
 
@@ -236,6 +277,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
   }
 
   Future<void> _verifyCode() async {
+    if (_busy) return;
     final code = _code.text;
     if (code.length != 6) {
       setState(() => _errors[AccountField.code] = 'Enter the 6-digit code.');
@@ -251,12 +293,13 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
   }
 
   Future<void> _resend() async {
-    if (_cooldown > 0 || _busy) return;
+    if (_busy || _cooldown > 0) return;
     await _run((a) => a.resendCode(_onClerkError));
     if (mounted && _errors.isEmpty) _startCooldown();
   }
 
   void _changeDetails() {
+    if (_busy) return;
     setState(() {
       _awaitingCode = false;
       _code.clear();
@@ -265,6 +308,11 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
       _cooldown = 0;
     });
   }
+  @visibleForTesting
+  Future<void> verifyCodeForTesting() => _verifyCode();
+
+  @visibleForTesting
+  void changeDetailsForTesting() => _changeDetails();
 
   void _switchMode(_Mode mode) {
     setState(() {
@@ -279,6 +327,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
     final textTheme = Theme.of(context).textTheme;
     final isCreate = _mode == _Mode.create;
     final email = _email.text.trim();
+    final actions = widget.actions;
 
     final title = _awaitingCode
         ? 'Enter verification code'
@@ -294,18 +343,22 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
     return OnboardingScaffold(
       currentStep: widget.currentStep,
       totalSteps: widget.totalSteps,
-      onBack: _awaitingCode ? _changeDetails : widget.onBack,
+      onBack: _busy ? null : (_awaitingCode ? _changeDetails : widget.onBack),
       title: title,
       subtitle: subtitle,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_awaitingCode) ...[
-            OtpField(
-              key: const ValueKey('onboarding_otp_field'),
-              controller: _code,
-              hasError: _errors[AccountField.code] != null,
-              onCompleted: (_) => _verifyCode(),
+            IgnorePointer(
+              key: const ValueKey('onboarding_otp_ignore'),
+              ignoring: _busy,
+              child: OtpField(
+                key: const ValueKey('onboarding_otp_field'),
+                controller: _code,
+                hasError: _errors[AccountField.code] != null,
+                onCompleted: _busy ? null : (_) => _verifyCode(),
+              ),
             ),
             if (_errors[AccountField.code] != null)
               _ErrorText(_errors[AccountField.code]!),
@@ -322,12 +375,38 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
                 const Spacer(),
                 TextButton(
                   key: const ValueKey('onboarding_change_details'),
-                  onPressed: _changeDetails,
+                  onPressed: _busy ? null : _changeDetails,
                   child: const Text('Change details'),
                 ),
               ],
             ),
           ] else ...[
+            if (actions != null && !actions.isNotAvailable) ...[
+              GoogleSignInButton(
+                key: const ValueKey('onboarding_google_button'),
+                onPressed: _busy || actions.isNotAvailable
+                    ? null
+                    : _signInWithGoogle,
+                isLoading: _googleLoading,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(child: Divider(color: colors.borderSubtle)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'or',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colors.mutedForeground,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Divider(color: colors.borderSubtle)),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
             if (isCreate) ...[
               _field(
                 key: 'onboarding_first_name_field',
@@ -364,6 +443,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
             TextField(
               key: const ValueKey('onboarding_password_field'),
               controller: _password,
+              enabled: !_busy,
               obscureText: !_showPassword,
               autocorrect: false,
               enableSuggestions: false,
@@ -390,7 +470,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
                       setState(() => _showPassword = !_showPassword),
                 ),
               ),
-              onSubmitted: (_) => _submit(),
+              onSubmitted: _busy ? null : (_) => _submit(),
             ),
           ],
           if (!_awaitingCode && _errors[AccountField.form] != null) ...[
@@ -400,7 +480,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
             const SizedBox(height: 8),
             TextButton(
               key: const ValueKey('onboarding_offer_sign_in'),
-              onPressed: () => _switchMode(_Mode.signIn),
+              onPressed: _busy ? null : () => _switchMode(_Mode.signIn),
               child: const Text('Sign in instead'),
             ),
           ],
@@ -408,7 +488,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
             const SizedBox(height: 8),
             TextButton(
               key: const ValueKey('onboarding_offer_create'),
-              onPressed: () => _switchMode(_Mode.create),
+              onPressed: _busy ? null : () => _switchMode(_Mode.create),
               child: const Text('Create an account'),
             ),
           ],
@@ -416,8 +496,9 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
             const SizedBox(height: 12),
             TextButton(
               key: const ValueKey('onboarding_toggle_mode'),
-              onPressed: () =>
-                  _switchMode(isCreate ? _Mode.signIn : _Mode.create),
+              onPressed: _busy
+                  ? null
+                  : () => _switchMode(isCreate ? _Mode.signIn : _Mode.create),
               child: Text(
                 isCreate
                     ? 'Already have an account? Sign in'
@@ -442,13 +523,13 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
                 ? 'Create account'
                 : 'Sign in',
             isLoading: _busy,
-            onPressed: _submit,
+            onPressed: _busy ? null : _submit,
           ),
           if (widget.devAuthEnabled) ...[
             const SizedBox(height: 8),
             TextButton(
               key: const ValueKey('onboarding_dev_signin'),
-              onPressed: widget.onDevSignIn,
+              onPressed: _busy ? null : widget.onDevSignIn,
               child: const Text('Continue (development sign-in)'),
             ),
           ],
@@ -472,6 +553,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
       keyboardType: keyboardType,
       autocorrect: false,
       autofocus: autofocus,
+      enabled: !_busy,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -479,7 +561,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
         errorStyle: _supportStyle(context, error: true),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      onSubmitted: (_) => _submit(),
+      onSubmitted: _busy ? null : (_) => _submit(),
     );
   }
 

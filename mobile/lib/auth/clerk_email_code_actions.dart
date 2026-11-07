@@ -1,8 +1,132 @@
+import 'dart:async';
+
 import 'package:clerk_auth/clerk_auth.dart' as clerk;
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'account_rules.dart';
+import 'clerk_sso.dart';
 
 typedef ClerkFlowErrorHandler = void Function(Object error);
+typedef UrlLauncherFunction = Future<bool> Function(
+  Uri url, {
+  LaunchMode mode,
+});
+
+/// Result of a Google SSO attempt.
+sealed class GoogleSignInResult {
+  const GoogleSignInResult();
+
+  const factory GoogleSignInResult.success() = GoogleSignInSuccess;
+  const factory GoogleSignInResult.cancelled() = GoogleSignInCancelled;
+  const factory GoogleSignInResult.error(String message) = GoogleSignInError;
+}
+
+class GoogleSignInSuccess extends GoogleSignInResult {
+  const GoogleSignInSuccess();
+}
+
+class GoogleSignInCancelled extends GoogleSignInResult {
+  const GoogleSignInCancelled();
+}
+
+class GoogleSignInError extends GoogleSignInResult {
+  const GoogleSignInError(this.message);
+  final String message;
+}
+
+/// Formats a user-facing message describing missing Clerk sign-up fields after SSO transfer.
+String missingFieldsMessage(Iterable<String> fieldNames) {
+  final fields = fieldNames.where((f) => f.isNotEmpty).join(', ');
+  if (fields.isEmpty) {
+    return 'Google sign-in did not finish. Please try again.';
+  }
+  return 'Clerk still needs: $fields.';
+}
+
+/// Pure decision helper returning a [GoogleSignInError] if the SSO browser launch
+/// could not start and no completion, transfer, or callback link is active.
+GoogleSignInError? ssoStartFailureOrNull({
+  required bool launched,
+  bool isSignedIn = false,
+  bool isTransferring = false,
+  bool ssoCallbackReceived = false,
+}) {
+  if (isSignedIn || isTransferring || ssoCallbackReceived) {
+    return null;
+  }
+  if (!launched) {
+    return const GoogleSignInError(
+      'Google sign-in could not start. Please try again.',
+    );
+  }
+  return null;
+}
+
+/// Pure helper that attempts to launch the external SSO browser given [redirectUrl]
+/// and [urlLauncher]. Returns `true` if launched successfully, `false` if redirect
+/// is missing, launch returned false, or launch threw.
+Future<bool> launchSsoBrowser({
+  required String? redirectUrl,
+  required UrlLauncherFunction urlLauncher,
+  LaunchMode mode = LaunchMode.platformDefault,
+}) async {
+  if (redirectUrl == null || redirectUrl.isEmpty) {
+    return false;
+  }
+  try {
+    final uri = Uri.parse(redirectUrl);
+    return await urlLauncher(uri, mode: mode);
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Pure decision helper resolving the post-ssoSignIn launch outcome into a [GoogleSignInResult]
+/// or null if launch succeeded or the sign-in session progressed (transferring
+/// or callback received).
+Future<GoogleSignInResult?> postSsoSignInLaunchAndDecision({
+  required String? redirectUrl,
+  required UrlLauncherFunction urlLauncher,
+  LaunchMode mode = LaunchMode.platformDefault,
+  bool isSignedIn = false,
+  bool isTransferring = false,
+  bool ssoCallbackReceived = false,
+}) async {
+  final launched = await launchSsoBrowser(
+    redirectUrl: redirectUrl,
+    urlLauncher: urlLauncher,
+    mode: mode,
+  );
+  if (isSignedIn) {
+    return const GoogleSignInSuccess();
+  }
+  return ssoStartFailureOrNull(
+    launched: launched,
+    isSignedIn: isSignedIn,
+    isTransferring: isTransferring,
+    ssoCallbackReceived: ssoCallbackReceived,
+  );
+}
+
+/// Pure decision helper deciding whether to ignore an app resume event.
+bool shouldIgnoreResume({
+  required bool isCompleted,
+  required bool ssoCallbackReceived,
+}) {
+  return isCompleted || ssoCallbackReceived;
+}
+
+/// Pure decision helper deciding whether to cancel the Google SSO sign-in on app resume.
+bool shouldCancelOnResume({
+  required bool isCompleted,
+  required bool ssoCallbackReceived,
+  required bool isSignedIn,
+  required bool isTransferring,
+}) {
+  return !isCompleted && !ssoCallbackReceived && !isSignedIn && !isTransferring;
+}
 
 /// Seam between Karmi's account form and Clerk. Identity, verification and
 /// session state stay with Clerk; the form only asks for what Clerk needs.
@@ -56,13 +180,27 @@ abstract interface class ClerkEmailCodeActions {
   );
   Future<void> resendCode(ClerkFlowErrorHandler onError);
   Future<void> reset(ClerkFlowErrorHandler onError);
+
+  /// Initiates Google OAuth sign-in via external browser, handling any
+  /// subsequent sign-in to sign-up transfer so new users are never dead-ended.
+  Future<GoogleSignInResult> signInWithGoogle();
 }
 
 class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
-  ClerkSdkEmailCodeActions(this.auth, this.context);
+  ClerkSdkEmailCodeActions(
+    this.auth,
+    this.context, {
+    Stream<Uri>? callbackLinks,
+    UrlLauncherFunction? urlLauncher,
+  })  : _callbackLinks = callbackLinks,
+        _urlLauncher = urlLauncher ??
+            ((url, {mode = LaunchMode.platformDefault}) =>
+                launchUrl(url, mode: mode));
 
   final ClerkAuthState auth;
   final BuildContext context;
+  final Stream<Uri>? _callbackLinks;
+  final UrlLauncherFunction _urlLauncher;
 
   @override
   bool get isSignedIn => auth.isSignedIn;
@@ -183,4 +321,164 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
   @override
   Future<void> reset(ClerkFlowErrorHandler onError) =>
       _safely(() => auth.resetClient(), onError);
+
+  @override
+  Future<GoogleSignInResult> signInWithGoogle() async {
+    if (isNotAvailable) {
+      return const GoogleSignInError('Clerk authentication is not configured.');
+    }
+
+    final completer = Completer<GoogleSignInResult>();
+    void finish(GoogleSignInResult result) {
+      if (!completer.isCompleted) {
+        completer.complete(result);
+      }
+    }
+
+    bool ssoCallbackReceived = false;
+    bool isTransferring = false;
+    Timer? cancelTimer;
+    Timer? callbackTimeoutTimer;
+
+    Future<void> checkState() async {
+      if (completer.isCompleted) return;
+      if (auth.isSignedIn) {
+        finish(const GoogleSignInSuccess());
+        return;
+      }
+      if (auth.signIn?.isTransferable == true ||
+          auth.signUp?.isTransferable == true) {
+        if (isTransferring) return;
+        isTransferring = true;
+        try {
+          await auth.transfer();
+          if (auth.isSignedIn) {
+            finish(const GoogleSignInSuccess());
+            return;
+          }
+          final missing = auth.signUp?.missingFields ?? const [];
+          if (missing.isNotEmpty) {
+            final message = missingFieldsMessage(missing.map((f) => f.name));
+            finish(GoogleSignInError(message));
+            return;
+          }
+        } catch (e) {
+          finish(GoogleSignInError(issueFromClerkError(e).message));
+          return;
+        } finally {
+          isTransferring = false;
+        }
+      }
+    }
+
+    void listener() {
+      unawaited(checkState());
+    }
+
+    auth.addListener(listener);
+
+    final callbackStream = _callbackLinks ?? ssoCallbackStream;
+    StreamSubscription<Uri>? callbackSub;
+    callbackSub = callbackStream.listen((uri) {
+      ssoCallbackReceived = true;
+      cancelTimer?.cancel();
+      cancelTimer = null;
+      callbackTimeoutTimer ??= Timer(const Duration(seconds: 45), () {
+        if (!completer.isCompleted) {
+          finish(
+            const GoogleSignInError(
+              'Google sign-in did not finish. Please try again.',
+            ),
+          );
+        }
+      });
+      unawaited(checkState());
+    });
+
+    AppLifecycleListener? lifecycleListener;
+    lifecycleListener = AppLifecycleListener(
+      onResume: () {
+        if (shouldIgnoreResume(
+          isCompleted: completer.isCompleted,
+          ssoCallbackReceived: ssoCallbackReceived,
+        )) {
+          return;
+        }
+        cancelTimer?.cancel();
+        cancelTimer = Timer(const Duration(milliseconds: 750), () async {
+          if (shouldIgnoreResume(
+            isCompleted: completer.isCompleted,
+            ssoCallbackReceived: ssoCallbackReceived,
+          )) {
+            return;
+          }
+          await checkState();
+          if (shouldCancelOnResume(
+            isCompleted: completer.isCompleted,
+            ssoCallbackReceived: ssoCallbackReceived,
+            isSignedIn: auth.isSignedIn,
+            isTransferring: isTransferring,
+          )) {
+            finish(const GoogleSignInCancelled());
+          }
+        });
+      },
+    );
+
+    StreamSubscription<clerk.ClerkError>? errorSub;
+    errorSub = auth.errorStream.listen((error) {
+      final issue = issueFromClerkError(error);
+      finish(GoogleSignInError(issue.message));
+    });
+
+    try {
+      final redirect = auth.config.redirectionGenerator?.call(
+            context,
+            clerk.Strategy.oauthGoogle,
+          ) ??
+          kClerkOAuthRedirectUri;
+      await auth.safelyCall(
+        context,
+        () => auth.oauthSignIn(
+          strategy: clerk.Strategy.oauthGoogle,
+          redirect: redirect,
+        ),
+        onError: (error) {
+          final issue = issueFromClerkError(error);
+          finish(GoogleSignInError(issue.message));
+        },
+      );
+    } catch (e) {
+      finish(GoogleSignInError(issueFromClerkError(e).message));
+    }
+
+    if (!completer.isCompleted) {
+      final redirectUrl = auth
+          .signIn
+          ?.firstFactorVerification
+          ?.externalVerificationRedirectUrl;
+      final decision = await postSsoSignInLaunchAndDecision(
+        redirectUrl: redirectUrl,
+        urlLauncher: _urlLauncher,
+        mode: auth.config.defaultLaunchMode,
+        isSignedIn: auth.isSignedIn,
+        isTransferring: isTransferring,
+        ssoCallbackReceived: ssoCallbackReceived,
+      );
+      if (decision != null) {
+        finish(decision);
+      }
+    }
+    try {
+      final result = await completer.future;
+      return result;
+    } finally {
+      auth.removeListener(listener);
+      lifecycleListener.dispose();
+      cancelTimer?.cancel();
+      callbackTimeoutTimer?.cancel();
+      await callbackSub.cancel();
+      await errorSub.cancel();
+    }
+  }
 }
