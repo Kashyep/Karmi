@@ -242,7 +242,7 @@ void main() {
             'admin_notes': null,
             'usage': {
               'today_requests': 3,
-              'month_spend_usd': 0.123456,
+              'month_spend_inr': 0.123456,
               'credits_remaining': 4.5,
               'sessions': 7,
             },
@@ -257,7 +257,216 @@ void main() {
     expect(detail.user.revertPlanId, 'ananta');
     expect(detail.user.lastActiveAt, isNull);
     expect(detail.usage.todayRequests, 3);
-    expect(detail.usage.monthSpendUsd, closeTo(0.123456, 1e-9));
+    expect(detail.usage.monthSpendInr, closeTo(0.123456, 1e-9));
     expect(detail.usage.sessions, 7);
   });
+
+  test('adjustCredits posts delta_inr and reason without *_usd', () async {
+    Map<String, dynamic>? postedBody;
+    final api = _api(
+      MockClient((req) async {
+        postedBody = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({'budget_inr': 100.0, 'credits_remaining': 50.0}),
+          200,
+        );
+      }),
+    );
+    await api.adjustCredits('tok', 'u1', deltaInr: 25.5, reason: 'promotion');
+    expect(postedBody, {'delta_inr': 25.5, 'reason': 'promotion'});
+    expect(postedBody!.containsKey('delta_usd'), isFalse);
+    expect(postedBody!.containsKey('budget_usd'), isFalse);
+  });
+
+  test('adjustCredits posts budget_inr and reason without *_usd', () async {
+    Map<String, dynamic>? postedBody;
+    final api = _api(
+      MockClient((req) async {
+        postedBody = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({'budget_inr': 500.0, 'credits_remaining': 200.0}),
+          200,
+        );
+      }),
+    );
+    await api.adjustCredits('tok', 'u1', budgetInr: 500.0, reason: 'override');
+    expect(postedBody, {'budget_inr': 500.0, 'reason': 'override'});
+    expect(postedBody!.containsKey('delta_usd'), isFalse);
+  });
+
+  test('listBugReports sends query params and parses page', () async {
+    Uri? sentUri;
+    final api = _api(
+      MockClient((req) async {
+        sentUri = req.url;
+        return http.Response(
+          jsonEncode({
+            'items': [
+              {
+                'id': 'b1',
+                'ticket': 'KARMI-0001',
+                'category': 'crash',
+                'status': 'new',
+                'description_preview': 'App crashes on start',
+                'user_id': 'u1',
+                'user_display_name': 'Test User',
+                'has_screenshot': true,
+                'created_at': '2026-10-24T00:00:00+00:00',
+                'updated_at': '2026-10-24T01:00:00+00:00',
+              },
+            ],
+            'next_cursor': 'cursor-123',
+          }),
+          200,
+        );
+      }),
+    );
+    final page = await api.listBugReports(
+      'tok',
+      status: 'new',
+      category: 'crash',
+      limit: 25,
+      cursor: 'cur-prev',
+    );
+    expect(sentUri!.path, '/v1/admin/bug-reports');
+    expect(sentUri!.queryParameters['status'], 'new');
+    expect(sentUri!.queryParameters['category'], 'crash');
+    expect(sentUri!.queryParameters['limit'], '25');
+    expect(sentUri!.queryParameters['cursor'], 'cur-prev');
+    expect(page.items, hasLength(1));
+    expect(page.items.single.ticket, 'KARMI-0001');
+    expect(page.items.single.hasScreenshot, isTrue);
+    expect(page.nextCursor, 'cursor-123');
+  });
+
+  test(
+    'getBugReport fetches detail and parses diagnostics and user summary',
+    () async {
+      final api = _api(
+        MockClient((req) async {
+          expect(req.url.path, '/v1/admin/bug-reports/b1');
+          return http.Response(
+            jsonEncode({
+              'id': 'b1',
+              'ticket': 'KARMI-0001',
+              'category': 'chat',
+              'status': 'triaged',
+              'description': 'Chat stream froze midway',
+              'diagnostics': {
+                'app_version': '0.1.0',
+                'os': 'android',
+                'model': 'Pixel 9a',
+              },
+              'admin_notes': 'Investigating provider response',
+              'has_screenshot': false,
+              'user': {'id': 'u1', 'display_name': 'Alice', 'plan': 'ananta'},
+              'created_at': '2026-10-24T00:00:00+00:00',
+              'updated_at': '2026-10-24T01:00:00+00:00',
+              'triaged_at': '2026-10-24T02:00:00+00:00',
+              'resolved_at': null,
+            }),
+            200,
+          );
+        }),
+      );
+      final report = await api.getBugReport('tok', 'b1');
+      expect(report.id, 'b1');
+      expect(report.ticket, 'KARMI-0001');
+      expect(report.diagnostics['app_version'], '0.1.0');
+      expect(report.user?.displayName, 'Alice');
+      expect(report.user?.plan, 'ananta');
+      expect(report.triagedAt, isNotNull);
+      expect(report.resolvedAt, isNull);
+    },
+  );
+
+  test(
+    'getBugReportScreenshot fetches raw bytes with auth and handles 404',
+    () async {
+      String? authHeader;
+      final api = _api(
+        MockClient((req) async {
+          authHeader = req.headers['X-Admin-Session'];
+          if (req.url.path == '/v1/admin/bug-reports/b1/screenshot') {
+            return http.Response.bytes([1, 2, 3, 4], 200);
+          }
+          return http.Response('not found', 404);
+        }),
+      );
+      final bytes = await api.getBugReportScreenshot('tok', 'b1');
+      expect(bytes, [1, 2, 3, 4]);
+      expect(authHeader, 'tok');
+
+      await expectLater(
+        api.getBugReportScreenshot('tok', 'b2'),
+        throwsA(
+          isA<AdminFailure>().having((e) => e.statusCode, 'statusCode', 404),
+        ),
+      );
+    },
+  );
+
+  test(
+    'patchBugReport sends only changed fields and handles 409 conflict',
+    () async {
+      Map<String, dynamic>? patchBody;
+      final api = _api(
+        MockClient((req) async {
+          if (req.method == 'PATCH') {
+            patchBody = jsonDecode(req.body) as Map<String, dynamic>;
+            if (patchBody?['status'] == 'invalid_state') {
+              return http.Response(
+                jsonEncode({'detail': 'invalid status transition'}),
+                409,
+              );
+            }
+            return http.Response(
+              jsonEncode({
+                'id': 'b1',
+                'ticket': 'KARMI-0001',
+                'category': 'chat',
+                'status': patchBody?['status'] ?? 'new',
+                'description': 'description',
+                'diagnostics': {},
+                'admin_notes': patchBody?['admin_notes'],
+                'has_screenshot': false,
+                'created_at': '2026-10-24T00:00:00+00:00',
+                'updated_at': '2026-10-24T01:00:00+00:00',
+              }),
+              200,
+            );
+          }
+          return http.Response('', 400);
+        }),
+      );
+
+      // Status only
+      await api.patchBugReport(
+        'tok',
+        'b1',
+        status: 'triaged',
+        reason: 'triaged it',
+      );
+      expect(patchBody, {'status': 'triaged', 'reason': 'triaged it'});
+      expect(patchBody!.containsKey('admin_notes'), isFalse);
+
+      // Admin notes only
+      await api.patchBugReport(
+        'tok',
+        'b1',
+        adminNotes: 'note added',
+        reason: 'added info',
+      );
+      expect(patchBody, {'admin_notes': 'note added', 'reason': 'added info'});
+      expect(patchBody!.containsKey('status'), isFalse);
+
+      // 409 conflict
+      await expectLater(
+        api.patchBugReport('tok', 'b1', status: 'invalid_state', reason: 'bad'),
+        throwsA(
+          isA<AdminFailure>().having((e) => e.statusCode, 'statusCode', 409),
+        ),
+      );
+    },
+  );
 }

@@ -6,9 +6,11 @@ import '../../auth/clerk_email_code_actions.dart';
 import '../../auth/session.dart';
 import '../../settings/karmi_settings.dart';
 import '../../theme/karmi_colors.dart';
+import '../../widgets/money.dart';
+import '../plans/plan_catalog.dart';
+import 'widgets/account_auth_step.dart';
 import 'widgets/choice_tile.dart';
 import 'widgets/onboarding_scaffold.dart';
-import 'widgets/account_auth_step.dart';
 import 'widgets/pill_cta.dart';
 
 /// Redesigned Onboarding Flow for Karmi Release 1.
@@ -48,6 +50,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
 
   // Step 3: Preferences state
   String _selectedMode = 'concise';
+  int? _anantaPriceInr;
 
   ClerkEmailCodeActions? _actions(BuildContext context) =>
       widget.clerkActions ??
@@ -67,6 +70,21 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     }
 
     _selectedMode = widget.settings?.promptMode ?? 'concise';
+    _loadAnantaPrice();
+  }
+
+  Future<void> _loadAnantaPrice() async {
+    try {
+      final plans = await widget.session.api.getPlans();
+      if (!mounted) return;
+      final ananta = plans.firstWhere(
+        (p) => p.id == 'ananta',
+        orElse: () => plans.first,
+      );
+      setState(() {
+        _anantaPriceInr = ananta.priceInr;
+      });
+    } catch (_) {}
   }
 
   @override
@@ -440,13 +458,21 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                       ),
                     ),
                     const Spacer(),
-                    Text(
-                      '\$0 / month',
-                      style: textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colors.foreground,
+                    if (_anantaPriceInr != null)
+                      Text(
+                        '${formatInrRupees(_anantaPriceInr!.toDouble())} / month',
+                        style: textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colors.foreground,
+                        ),
+                      )
+                    else
+                      Text(
+                        'Price unavailable',
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colors.mutedForeground,
+                        ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 16),

@@ -4,11 +4,13 @@ import '../../theme/karmi_colors.dart';
 import 'admin_controller.dart';
 import 'admin_support.dart';
 import 'audit_screen.dart';
+import 'bug_inbox_screen.dart';
 import 'monitor_screen.dart';
 import 'users_screen.dart';
 
 enum AdminSection {
   users('Users', Icons.people_outline, Icons.people),
+  bugs('Bug inbox', Icons.bug_report_outlined, Icons.bug_report),
   monitor('Monitor', Icons.monitor_heart_outlined, Icons.monitor_heart),
   audit('Audit', Icons.fact_check_outlined, Icons.fact_check);
 
@@ -40,6 +42,10 @@ class _AdminShellState extends State<AdminShell> {
     return switch (_section) {
       AdminSection.users => UsersScreen(
         key: const ValueKey('admin-users'),
+        controller: controller,
+      ),
+      AdminSection.bugs => BugInboxScreen(
+        key: const ValueKey('admin-bugs'),
         controller: controller,
       ),
       AdminSection.monitor => MonitorScreen(

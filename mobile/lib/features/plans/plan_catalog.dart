@@ -1,19 +1,47 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
+import '../../api/karmi_api.dart';
 import '../../theme/karmi_colors.dart';
 import '../../theme/karmi_tier.dart';
 import '../../widgets/karmi_card.dart';
+import '../../widgets/money.dart';
 import '../chat/status_chip.dart';
+
+/// Extension to fetch customer plans from the server (`/v1/plans`).
+extension CustomerPlansApi on KarmiApi {
+  Future<List<PlanView>> getPlans() async {
+    final uri = Uri.parse('$baseUrl/v1/plans');
+    final headers = <String, String>{};
+    final provider = tokenProvider;
+    final bearer = provider == null ? token : await provider();
+    if (bearer != null) {
+      headers['Authorization'] = 'Bearer $bearer';
+    }
+    final response = await client.get(uri, headers: headers).timeout(timeout);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is List) {
+        return decoded
+            .map((item) => PlanView.fromJson(item as Map<String, dynamic>))
+            .toList();
+      }
+    }
+    throw ServerException(response.statusCode);
+  }
+}
 
 /// Mirrors `src/daily_agent/plans.py` SYNTHETIC_POLICIES (display name and
 /// everyday limit). There is no plan catalogue endpoint yet; these are
 /// synthetic development values, not tariffs.
 class PlanInfo {
-  const PlanInfo(this.id, this.label, this.everydayLimit);
+  const PlanInfo(this.id, this.label, this.everydayLimit, {this.priceInr});
 
   final String id;
   final String label;
   final int everydayLimit;
+  final int? priceInr;
 }
 
 const List<PlanInfo> kPlans = [
@@ -65,6 +93,17 @@ class PlanCard extends StatelessWidget {
                 ),
             ],
           ),
+          if (plan.priceInr != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              '${formatInrRupees(plan.priceInr!.toDouble())} / month',
+              key: ValueKey('plan_price_${plan.id}'),
+              style: text.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colors.foreground,
+              ),
+            ),
+          ],
           const SizedBox(height: 4),
           Text(
             '${plan.everydayLimit} everyday messages per day',

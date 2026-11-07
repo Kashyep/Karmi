@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../api/bug_reports/bug_reports_api.dart';
 import '../../armory/armory_controller.dart';
 import '../../auth/session.dart';
 import '../../settings/karmi_settings.dart';
@@ -9,6 +12,9 @@ import '../../widgets/focus_ring.dart';
 import '../../widgets/karmi_card.dart';
 import '../admin/admin_code_screen.dart';
 import '../admin/admin_controller.dart';
+import '../bug_report/bug_report_queue.dart';
+import '../bug_report/bug_report_screen.dart';
+import '../bug_report/bug_report_service.dart';
 
 /// Settings (T4.3): theme mode, tier theme (Armory), reduce transparency,
 /// licences, sign out.
@@ -32,6 +38,21 @@ class SettingsScreen extends StatelessWidget {
   final VoidCallback onOpenArmory;
   final VoidCallback? onOpenPlans;
   final AdminController? admin;
+
+  void _openBugReport(BuildContext context) {
+    unawaited(
+      BugReportService(
+        api: BugReportsApi.fromApi(session.api),
+        queue: BugReportQueue(),
+      ).flushQueue().catchError((_) => 0),
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            BugReportScreen(api: session.api, initialScreen: 'settings'),
+      ),
+    );
+  }
 
   void _openAdmin(BuildContext context) {
     final controller = admin;
@@ -131,6 +152,17 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+                const Divider(height: 1),
+                KarmiFocusRing(
+                  child: ListTile(
+                    key: const ValueKey('report_bug_tile'),
+                    leading: const Icon(Icons.bug_report_outlined),
+                    title: const Text('Report a bug'),
+                    subtitle: const Text('Send diagnostics or report an issue'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _openBugReport(context),
+                  ),
+                ),
                 const Divider(height: 1),
                 KarmiFocusRing(
                   child: ListTile(

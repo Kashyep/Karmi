@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../../api/bug_reports/bug_report_models.dart';
 import '../../api/chat/chat_models.dart';
 import '../../theme/karmi_colors.dart';
+import '../bug_report/bug_report_screen.dart';
 
 /// User-facing card for errors during assistant runs.
 class ErrorCard extends StatelessWidget {
   const ErrorCard({
     super.key,
     required this.category,
+    this.errorCode,
     this.onRetry,
     this.onContinue,
     this.onUpgrade,
@@ -17,6 +20,19 @@ class ErrorCard extends StatelessWidget {
   final VoidCallback? onRetry;
   final VoidCallback? onContinue;
   final VoidCallback? onUpgrade;
+  final String? errorCode;
+
+  void _openBugReport(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BugReportScreen(
+          initialCategory: BugReportCategory.chat,
+          initialScreen: 'chat',
+          initialErrorCode: errorCode ?? category.name,
+        ),
+      ),
+    );
+  }
 
   /// Pure helper returning the user-facing message for the error category.
   static String messageFor(ErrorCategory category) => switch (category) {
@@ -56,24 +72,28 @@ class ErrorCard extends StatelessWidget {
     ErrorCategory.internal => Icons.error_outline,
   };
 
-  (VoidCallback, String)? _actionFor(ErrorCategory category) =>
-      switch (category) {
-        ErrorCategory.quotaExhausted =>
-          onUpgrade != null ? (onUpgrade!, 'View plans') : null,
-        ErrorCategory.capacityFull =>
-          onRetry != null ? (onRetry!, 'Try again') : null,
-        ErrorCategory.providerUnavailable =>
-          onRetry != null ? (onRetry!, 'Retry') : null,
-        ErrorCategory.validationFailed =>
-          onRetry != null ? (onRetry!, 'Regenerate') : null,
-        ErrorCategory.unauthorized =>
-          onRetry != null ? (onRetry!, 'Sign in') : null,
-        ErrorCategory.resumeUnavailable =>
-          onContinue != null ? (onContinue!, 'Continue') : null,
-        ErrorCategory.network => onRetry != null ? (onRetry!, 'Retry') : null,
-        ErrorCategory.timeout => onRetry != null ? (onRetry!, 'Retry') : null,
-        ErrorCategory.internal => onRetry != null ? (onRetry!, 'Retry') : null,
-      };
+  ({VoidCallback callback, String label})? _actionFor(
+    ErrorCategory category,
+  ) => switch (category) {
+    ErrorCategory.quotaExhausted =>
+      onUpgrade != null ? (callback: onUpgrade!, label: 'View plans') : null,
+    ErrorCategory.capacityFull =>
+      onRetry != null ? (callback: onRetry!, label: 'Try again') : null,
+    ErrorCategory.providerUnavailable =>
+      onRetry != null ? (callback: onRetry!, label: 'Retry') : null,
+    ErrorCategory.validationFailed =>
+      onRetry != null ? (callback: onRetry!, label: 'Regenerate') : null,
+    ErrorCategory.unauthorized =>
+      onRetry != null ? (callback: onRetry!, label: 'Sign in') : null,
+    ErrorCategory.resumeUnavailable =>
+      onContinue != null ? (callback: onContinue!, label: 'Continue') : null,
+    ErrorCategory.network =>
+      onRetry != null ? (callback: onRetry!, label: 'Retry') : null,
+    ErrorCategory.timeout =>
+      onRetry != null ? (callback: onRetry!, label: 'Retry') : null,
+    ErrorCategory.internal =>
+      onRetry != null ? (callback: onRetry!, label: 'Retry') : null,
+  };
 
   // Recoverable warning categories (resumeUnavailable, quotaExhausted, unauthorized) use warningSurface; fatal errors use errorSurface.
   bool get _isWarning => switch (category) {
@@ -144,22 +164,57 @@ class ErrorCard extends StatelessWidget {
               Icon(iconFor(category), size: 20, color: iconColor),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  message,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: contentColor,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      message,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: contentColor,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Semantics(
+                      button: true,
+                      label: 'Report this problem',
+                      child: InkWell(
+                        key: const ValueKey('error_card_report_link'),
+                        onTap: () => _openBugReport(context),
+                        borderRadius: BorderRadius.circular(4),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: 1.0,
+                            heightFactor: 1.0,
+                            child: Text(
+                              'Report this',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: contentColor,
+                                decoration: TextDecoration.underline,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (action != null) ...[
                 const SizedBox(width: 8),
                 Tooltip(
-                  message: action.$2,
+                  message: action.label,
                   child: Semantics(
                     button: true,
-                    label: action.$2,
+                    label: action.label,
                     child: TextButton(
-                      onPressed: action.$1,
+                      onPressed: action.callback,
                       style: TextButton.styleFrom(
                         foregroundColor: contentColor,
                         backgroundColor: buttonBgColor,
@@ -174,7 +229,7 @@ class ErrorCard extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        action.$2,
+                        action.label,
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
