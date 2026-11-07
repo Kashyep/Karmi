@@ -54,8 +54,10 @@ def test_match_chat_route() -> None:
 
 
 def test_chat_timing_middleware_emits_logs(
+    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    monkeypatch.setenv("DAILY_AGENT_CHAT_TIMING_ENABLED", "1")
     caplog.set_level("INFO", logger="daily_agent.chat_timing")
 
     async def run_scenario() -> None:
