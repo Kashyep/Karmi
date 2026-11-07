@@ -138,7 +138,8 @@ class BugReportQueue {
         }
 
         final payload = decoded['payload'];
-        if (payload is Map<String, dynamic> && payload.containsKey('screenshot')) {
+        if (payload is Map<String, dynamic> &&
+            payload.containsKey('screenshot')) {
           final inlineScreenshot = payload['screenshot'];
           if (clientReportId != null &&
               clientReportId.isNotEmpty &&
@@ -177,7 +178,9 @@ class BugReportQueue {
   /// Resolves the full [BugReportCreateRequest] including any separately stored screenshot.
   Future<BugReportCreateRequest> resolveRequest(BugReportQueueItem item) async {
     final prefs = await _getPrefs();
-    final rawScreenshot = prefs.getString(screenshotPrefKey(item.clientReportId));
+    final rawScreenshot = prefs.getString(
+      screenshotPrefKey(item.clientReportId),
+    );
     final payload = Map<String, dynamic>.from(item.payload);
     if (rawScreenshot != null && !payload.containsKey('screenshot')) {
       try {
@@ -221,8 +224,9 @@ class BugReportQueue {
         await prefs.remove(scKey);
       }
 
-      final payloadWithoutScreenshot =
-          Map<String, dynamic>.from(request.toJson());
+      final payloadWithoutScreenshot = Map<String, dynamic>.from(
+        request.toJson(),
+      );
       payloadWithoutScreenshot.remove('screenshot');
 
       final index = items.indexWhere(
@@ -230,7 +234,8 @@ class BugReportQueue {
       );
       if (index >= 0) {
         final existingItem = items[index];
-        final payloadChanged = jsonEncode(existingItem.payload) !=
+        final payloadChanged =
+            jsonEncode(existingItem.payload) !=
             jsonEncode(payloadWithoutScreenshot);
         final screenshotChanged = existingRawScreenshot != newScreenshotJson;
 
@@ -265,7 +270,8 @@ class BugReportQueue {
       final now = DateTime.now().toUtc();
       return items.where((item) {
         if (item.userId != userId) return false;
-        if (item.retryAfterUntil != null && item.retryAfterUntil!.isAfter(now)) {
+        if (item.retryAfterUntil != null &&
+            item.retryAfterUntil!.isAfter(now)) {
           return false;
         }
         return true;
@@ -315,8 +321,9 @@ class BugReportQueue {
       final items = await _loadAllUnlocked();
       final index = items.indexWhere((i) => i.clientReportId == clientReportId);
       if (index >= 0) {
-        final resetTime =
-            DateTime.now().toUtc().add(Duration(seconds: seconds));
+        final resetTime = DateTime.now().toUtc().add(
+          Duration(seconds: seconds),
+        );
         items[index] = items[index].copyWith(retryAfterUntil: resetTime);
         await _saveAllUnlocked(items);
       }

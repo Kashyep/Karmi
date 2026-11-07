@@ -687,7 +687,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                           onContinue: _continueLast,
                                           onUpgrade: widget.onOpenPlans,
                                           session: widget.session,
-                                          userId: widget.userId ??
+                                          userId:
+                                              widget.userId ??
                                               widget.session?.userId,
                                         ),
                                       ),

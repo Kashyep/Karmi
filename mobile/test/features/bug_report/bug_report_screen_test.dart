@@ -25,8 +25,9 @@ class MockBugReportService extends BugReportService {
 
   @override
   Future<BugReportSubmissionResult> submit(
-    BugReportCreateRequest request,
-  ) async {
+    BugReportCreateRequest request, {
+    String? userId,
+  }) async {
     lastSubmittedRequest = request;
     return onSubmitting(request);
   }

@@ -84,18 +84,21 @@ void main() {
       expect(diag.screen!.length, 128);
     });
 
-    test('string fields truncate on code-point boundaries without splitting surrogates', () {
-      // 127 ASCII chars + 2 emoji (each emoji is 2 UTF-16 code units / 1 code point)
-      // Total: 129 code points, 131 UTF-16 code units.
-      final str = '${'a' * 127}🎉🔥';
-      final diag = BugReportDiagnostics(screen: str);
-      // Should retain 128 code points: 127 'a's + '🎉'
-      expect(diag.screen!.runes.length, 128);
-      expect(diag.screen!.endsWith('🎉'), isTrue);
-      // And neither surrogate half is left isolated
-      expect(diag.screen!.contains('\uD83C'), isTrue); // high surrogate
-      expect(diag.screen!.contains('\uDF89'), isTrue); // low surrogate
-    });
+    test(
+      'string fields truncate on code-point boundaries without splitting surrogates',
+      () {
+        // 127 ASCII chars + 2 emoji (each emoji is 2 UTF-16 code units / 1 code point)
+        // Total: 129 code points, 131 UTF-16 code units.
+        final str = '${'a' * 127}🎉🔥';
+        final diag = BugReportDiagnostics(screen: str);
+        // Should retain 128 code points: 127 'a's + '🎉'
+        expect(diag.screen!.runes.length, 128);
+        expect(diag.screen!.endsWith('🎉'), isTrue);
+        // And neither surrogate half is left isolated
+        expect(diag.screen!.contains('\uD83C'), isTrue); // high surrogate
+        expect(diag.screen!.contains('\uDF89'), isTrue); // low surrogate
+      },
+    );
 
     test(
       'list fields are capped to 10 items and each item capped to 128 chars',
@@ -147,13 +150,16 @@ void main() {
       expect(diag.errorCode, 'ERR_TEST');
     });
 
-    test('collector never sends Platform.localHostname to prevent PII leaks', () {
-      const collector = DiagnosticsCollector();
-      final diag = collector.collect();
-      expect(diag.deviceModel, isNull);
-      final json = diag.toJson();
-      expect(json.containsKey('device_model'), isFalse);
-      expect(json['device_model'], isNot(Platform.localHostname));
-    });
+    test(
+      'collector never sends Platform.localHostname to prevent PII leaks',
+      () {
+        const collector = DiagnosticsCollector();
+        final diag = collector.collect();
+        expect(diag.deviceModel, isNull);
+        final json = diag.toJson();
+        expect(json.containsKey('device_model'), isFalse);
+        expect(json['device_model'], isNot(Platform.localHostname));
+      },
+    );
   });
 }

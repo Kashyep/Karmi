@@ -1,7 +1,8 @@
 import 'package:clerk_auth/clerk_auth.dart' as clerk;
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:karmi_app/api/bug_reports/bug_reports_api_models.dart';
+import 'package:flutter/foundation.dart';
+import 'package:karmi_app/api/bug_reports/bug_report_models.dart';
 import 'package:karmi_app/api/karmi_api.dart';
 import 'package:karmi_app/auth/session.dart';
 import 'package:karmi_app/features/bug_report/bug_report_queue.dart';
@@ -19,8 +20,8 @@ class _FakeClerkUser implements clerk.User {
 
 class _FakeClerkAuthState extends ChangeNotifier implements ClerkAuthState {
   _FakeClerkAuthState({required bool signedIn, String? userId})
-      : _isSignedIn = signedIn,
-        _user = userId != null ? _FakeClerkUser(userId) : null;
+    : _isSignedIn = signedIn,
+      _user = userId != null ? _FakeClerkUser(userId) : null;
 
   bool _isSignedIn;
   clerk.User? _user;
@@ -44,7 +45,7 @@ class _FakeClerkAuthState extends ChangeNotifier implements ClerkAuthState {
     notifyListeners();
   }
 
-  void signIn(String userId) {
+  void remoteSignIn(String userId) {
     _isSignedIn = true;
     _user = _FakeClerkUser(userId);
     notifyListeners();
@@ -70,11 +71,11 @@ void main() {
 
       // Enqueue an item for user_abc
       final queue = BugReportQueue(prefs: prefs);
-      const req = BugReportCreateRequest(
+      final req = BugReportCreateRequest(
         clientReportId: '550e8400-e29b-41d4-a716-446655440001',
         category: BugReportCategory.chat,
         description: 'Offline bug report',
-        diagnostics: BugReportDiagnostics(screen: 'chat'),
+        diagnostics: const BugReportDiagnostics(screen: 'chat'),
       );
       await queue.enqueue(req, userId: 'user_abc');
 
@@ -112,11 +113,11 @@ void main() {
 
         // Enqueue an item for user_clerk_123
         final queue = BugReportQueue(prefs: prefs);
-        const req = BugReportCreateRequest(
+        final req = BugReportCreateRequest(
           clientReportId: '550e8400-e29b-41d4-a716-446655440002',
-          category: BugReportCategory.settings,
+          category: BugReportCategory.other,
           description: 'Clerk user bug report',
-          diagnostics: BugReportDiagnostics(screen: 'settings'),
+          diagnostics: const BugReportDiagnostics(screen: 'settings'),
         );
         await queue.enqueue(req, userId: 'user_clerk_123');
         expect((await queue.getAll()).length, 1);
@@ -157,7 +158,7 @@ void main() {
       expect(session.lastEnd, SessionEnd.signedOut);
 
       // Re-sign in with Clerk
-      fakeClerk.signIn('user_clerk_123');
+      fakeClerk.remoteSignIn('user_clerk_123');
       expect(session.isSignedIn, isTrue);
       expect(session.userId, 'user_clerk_123');
       expect(session.lastEnd, SessionEnd.none);
