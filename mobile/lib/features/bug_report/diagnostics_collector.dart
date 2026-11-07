@@ -56,7 +56,9 @@ class DiagnosticsCollector {
     try {
       os = customOs ?? Platform.operatingSystem;
       osVersion = customOsVersion ?? Platform.operatingSystemVersion;
-      deviceModel = customDeviceModel ?? Platform.localHostname;
+      // Do not source deviceModel from Platform.localHostname:
+      // hostname can contain a person's name (PII leak). Omit when absent.
+      deviceModel = customDeviceModel;
       locale = customLocale ?? Platform.localeName;
     } catch (_) {
       // In web or restricted sandbox, catch io exceptions

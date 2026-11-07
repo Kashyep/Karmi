@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/api/bug_reports/bug_report_models.dart';
 import 'package:karmi_app/features/bug_report/diagnostics_collector.dart';
@@ -144,6 +145,15 @@ void main() {
       expect(diag.buildNumber, '42');
       expect(diag.screen, 'settings');
       expect(diag.errorCode, 'ERR_TEST');
+    });
+
+    test('collector never sends Platform.localHostname to prevent PII leaks', () {
+      const collector = DiagnosticsCollector();
+      final diag = collector.collect();
+      expect(diag.deviceModel, isNull);
+      final json = diag.toJson();
+      expect(json.containsKey('device_model'), isFalse);
+      expect(json['device_model'], isNot(Platform.localHostname));
     });
   });
 }
