@@ -748,6 +748,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       : _feedbackRetry,
                   onContinue: _continueLast,
                   onUpgrade: widget.onOpenPlans,
+                  session: widget.session,
+                  userId: widget.userId ?? widget.session?.userId,
                 ),
               ),
             KeyedSubtree(
