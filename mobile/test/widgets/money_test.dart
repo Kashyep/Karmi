@@ -88,6 +88,13 @@ void main() {
       expect(formatInrRupees(-0.0099), '-<₹0.01');
     });
 
+    test('sub-micro non-zero amounts print <₹0.01', () {
+      expect(formatInrRupees(0.0000001), '<₹0.01');
+      expect(formatInrRupees(-0.0000001), '-<₹0.01');
+      expect(formatInrRupees(0.000000001), '<₹0.01');
+      expect(formatInrRupees(-0.000000001), '-<₹0.01');
+    });
+
     test('exact paise and negative decimals', () {
       expect(formatInrRupees(0.01), '₹0.01');
       expect(formatInrRupees(-0.01), '-₹0.01');

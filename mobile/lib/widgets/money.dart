@@ -59,5 +59,9 @@ String formatInrRupees(double rupees) {
   if (rupees == 0.0) return '₹0';
   // Route through integer micro arithmetic (1 rupee = 1,000,000 micro)
   // to ensure identical half-paisa rounding and formatting.
-  return formatInr((rupees * 1000000).round());
+  final micro = (rupees * 1000000).round();
+  if (micro == 0) {
+    return rupees < 0 ? '-<₹0.01' : '<₹0.01';
+  }
+  return formatInr(micro);
 }
