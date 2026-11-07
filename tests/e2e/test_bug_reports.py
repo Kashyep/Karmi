@@ -311,7 +311,7 @@ def test_screenshot_payload_size_limits(test_context: dict[str, Any]) -> None:
         },
     )
     assert r_12mb.status_code == 413
-    assert r_12mb.json()["detail"] == "screenshot exceeds 5 MB limit"
+    assert r_12mb.json()["detail"] == "request body too large"
 
     # 2. PNG of exactly 5_242_880 raw bytes returns 201
     exact_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * (5_242_880 - 8)

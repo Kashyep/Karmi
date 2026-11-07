@@ -13,7 +13,7 @@ Send = Callable[[Message], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 MAX_BUG_REPORT_BODY_BYTES = 7 * 1024 * 1024  # 7 MB
-_ERROR_BODY = json.dumps({"detail": "screenshot exceeds 5 MB limit"}).encode("utf-8")
+_ERROR_BODY = json.dumps({"detail": "request body too large"}).encode("utf-8")
 
 
 class BodyTooLargeError(Exception):

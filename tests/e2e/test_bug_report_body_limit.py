@@ -59,7 +59,7 @@ def test_content_length_over_limit_returns_413_and_no_db_row(
         content=b"{}",
     )
     assert resp.status_code == 413
-    assert resp.json()["detail"] == "screenshot exceeds 5 MB limit"
+    assert resp.json()["detail"] == "request body too large"
 
     # Handler was never reached: no bug report row created
     with factory() as session:  # type: ignore[operator]
@@ -89,7 +89,7 @@ def test_chunked_streaming_body_over_limit_returns_413(
         content=chunk_stream(),
     )
     assert resp.status_code == 413
-    assert resp.json()["detail"] == "screenshot exceeds 5 MB limit"
+    assert resp.json()["detail"] == "request body too large"
 
     with factory() as session:  # type: ignore[operator]
         rows = session.scalars(select(BugReport)).all()
