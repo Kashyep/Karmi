@@ -410,7 +410,7 @@ def test_monitor_new_keys_present_with_correct_values_on_seeded_db(env: Env) -> 
     forbidden_key_substrings = ("prompt", "reply", "token", "secret", "message")
     for entry in mon["model_health"]:
         assert set(entry.keys()) == expected_model_health_keys
-        for key in entry.keys():
+        for key in entry:
             assert not any(forbidden in key for forbidden in forbidden_key_substrings)
 
     # Check model health entry for fake-economy
