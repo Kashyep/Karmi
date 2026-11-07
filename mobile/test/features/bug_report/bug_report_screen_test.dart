@@ -175,10 +175,27 @@ void main() {
     );
 
     testWidgets(
-      'screenshot toggle is OFF by default and shows notice when toggled ON',
+      'screenshot toggle is hidden when no screenshot bytes are provided',
       (tester) async {
         await tester.pumpWidget(
           createTestableWidget(child: const BugReportScreen()),
+        );
+
+        expect(
+          find.byKey(const ValueKey('screenshot-consent-toggle')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'screenshot toggle is OFF by default and shows notice when toggled ON if bytes present',
+      (tester) async {
+        final sampleBytes = Uint8List.fromList([1, 2, 3, 4]);
+        await tester.pumpWidget(
+          createTestableWidget(
+            child: BugReportScreen(screenshotBytes: sampleBytes),
+          ),
         );
 
         final toggleFinder = find.byKey(

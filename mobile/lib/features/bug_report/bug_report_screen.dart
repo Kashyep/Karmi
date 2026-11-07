@@ -384,73 +384,73 @@ class _BugReportScreenState extends State<BugReportScreen> {
           ),
         ),
         const SizedBox(height: 16),
-
-        // Screenshot Section
-        KarmiCard(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Include screenshot',
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: colors.primaryText,
+        // Screenshot Section (only shown when screenshot bytes are captured)
+        if (_screenshotBytes != null) ...[
+          KarmiCard(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Include screenshot',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: colors.primaryText,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Optional screen capture for debugging',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colors.mutedForeground,
+                          const SizedBox(height: 2),
+                          Text(
+                            'Optional screen capture for debugging',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colors.mutedForeground,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  Switch(
-                    key: const ValueKey('screenshot-consent-toggle'),
-                    value: _includeScreenshot,
-                    onChanged: _onToggleScreenshot,
-                  ),
-                ],
-              ),
-              if (_includeScreenshot) ...[
-                const SizedBox(height: 8),
-                Container(
-                  key: const ValueKey('screenshot-notice'),
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: colors.muted),
-                  child: Text(
-                    'Notice: The screenshot may include on-screen content. Please ensure no sensitive information is shown.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colors.mutedForeground,
+                    Switch(
+                      key: const ValueKey('screenshot-consent-toggle'),
+                      value: _includeScreenshot,
+                      onChanged: _onToggleScreenshot,
                     ),
-                  ),
+                  ],
                 ),
-                if (_screenshotError != null) ...[
+                if (_includeScreenshot) ...[
                   const SizedBox(height: 8),
-                  Text(
-                    _screenshotError!,
-                    key: const ValueKey('screenshot-error-message'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colors.destructive,
+                  Container(
+                    key: const ValueKey('screenshot-notice'),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: colors.muted),
+                    child: Text(
+                      'Notice: The screenshot may include on-screen content. Please ensure no sensitive information is shown.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.mutedForeground,
+                      ),
                     ),
                   ),
+                  if (_screenshotError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _screenshotError!,
+                      key: const ValueKey('screenshot-error-message'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.destructive,
+                      ),
+                    ),
+                  ],
                 ],
               ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-
+          const SizedBox(height: 16),
+        ],
         // Diagnostics Transparency Section
         KarmiCard(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

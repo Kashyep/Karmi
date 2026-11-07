@@ -15,6 +15,7 @@ import '../admin/admin_controller.dart';
 import '../bug_report/bug_report_queue.dart';
 import '../bug_report/bug_report_screen.dart';
 import '../bug_report/bug_report_service.dart';
+import '../bug_report/screenshot_capture.dart';
 
 /// Settings (T4.3): theme mode, tier theme (Armory), reduce transparency,
 /// licences, sign out.
@@ -38,8 +39,9 @@ class SettingsScreen extends StatelessWidget {
   final VoidCallback onOpenArmory;
   final VoidCallback? onOpenPlans;
   final AdminController? admin;
+  static final GlobalKey _boundaryKey = GlobalKey();
 
-  void _openBugReport(BuildContext context) {
+  Future<void> _openBugReport(BuildContext context) async {
     unawaited(
       BugReportService(
         api: BugReportsApi.fromApi(session.api),
@@ -47,6 +49,8 @@ class SettingsScreen extends StatelessWidget {
         userId: session.userId,
       ).flushQueue().catchError((_) => 0),
     );
+    final screenshotBytes = await capturePngFromRepaintBoundary(_boundaryKey);
+    if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => BugReportScreen(
@@ -54,6 +58,7 @@ class SettingsScreen extends StatelessWidget {
           session: session,
           userId: session.userId,
           initialScreen: 'settings',
+          screenshotBytes: screenshotBytes,
         ),
       ),
     );
@@ -73,8 +78,10 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = KarmiColors.of(context);
-    return ListenableBuilder(
-      listenable: Listenable.merge([
+    return RepaintBoundary(
+      key: _boundaryKey,
+      child: ListenableBuilder(
+        listenable: Listenable.merge([
         settings,
         armory,
         if (admin != null) admin!,
@@ -201,6 +208,7 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
