@@ -296,12 +296,12 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
     AppLifecycleListener? lifecycleListener;
     lifecycleListener = AppLifecycleListener(
       onResume: () {
-        if (completer.isCompleted || ssoCallbackReceived || auth.isSignedIn) {
+        if (completer.isCompleted || ssoCallbackReceived) {
           return;
         }
         cancelTimer?.cancel();
         cancelTimer = Timer(const Duration(milliseconds: 750), () async {
-          if (completer.isCompleted || ssoCallbackReceived || auth.isSignedIn) {
+          if (completer.isCompleted || ssoCallbackReceived) {
             return;
           }
           await checkState();
