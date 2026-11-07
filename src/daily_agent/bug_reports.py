@@ -56,8 +56,10 @@ def create_bug_report(
         body.diagnostics.model_dump(),
         screenshot_b64,
     )
+    # 1. Acquire per-user serialization point
+    session.execute(select(User.id).where(User.id == principal.user_id).with_for_update())
 
-    # 1. Replay / idempotency check
+    # 2. Replay / idempotency check
     existing = session.scalar(
         select(BugReport).where(
             BugReport.user_id == principal.user_id,
@@ -68,8 +70,7 @@ def create_bug_report(
         if existing.request_hash == request_hash:
             return existing, True
         raise _idempotency_conflict()
-
-    # 2. Screenshot validation
+    # 3. Screenshot validation
     raw_screenshot: bytes | None = None
     screenshot_content_type: str | None = None
     if body.screenshot is not None:
@@ -110,12 +111,7 @@ def create_bug_report(
             )
         screenshot_content_type = ct
 
-    # 3. Rate limit check: max 3 new reports per rolling 24 hours per user
-    session.execute(
-        select(User.id)
-        .where(User.id == principal.user_id)
-        .with_for_update()
-    )
+    # 4. Rate limit check: max 3 new reports per rolling 24 hours per user
     now = datetime.now(UTC)
     window_start = now - timedelta(hours=24)
     report_count, oldest_created = session.execute(
@@ -139,7 +135,7 @@ def create_bug_report(
             headers={"Retry-After": str(retry_after)},
         )
 
-    # 4. Safe concurrent ticket allocation
+    # 5. Safe concurrent ticket allocation
     for attempt in range(10):
         try:
             with session.begin_nested():

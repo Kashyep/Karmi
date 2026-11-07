@@ -140,8 +140,7 @@ def test_five_concurrent_bug_reports_from_one_user_yield_three_created_and_two_l
             transport=httpx.ASGITransport(app=test_app), base_url="http://test"
         ) as client:
             tasks = [
-                client.post("/v1/bug-reports", headers=headers, json=payloads[i])
-                for i in range(5)
+                client.post("/v1/bug-reports", headers=headers, json=payloads[i]) for i in range(5)
             ]
             return await asyncio.gather(*tasks)
 
@@ -164,13 +163,9 @@ def test_five_concurrent_bug_reports_from_one_user_yield_three_created_and_two_l
         assert re.match(r"^KARMI-\d{4}$", data["ticket"]) is not None
 
     with session_factory() as session:
-        user_reports = session.scalars(
-            select(BugReport).where(BugReport.user_id == user.id)
-        ).all()
+        user_reports = session.scalars(select(BugReport).where(BugReport.user_id == user.id)).all()
         assert len(user_reports) == 3
-        count = session.scalar(
-            select(func.count(BugReport.id)).where(BugReport.user_id == user.id)
-        )
+        count = session.scalar(select(func.count(BugReport.id)).where(BugReport.user_id == user.id))
         assert count == 3
 
 
@@ -219,13 +214,13 @@ def test_concurrent_ticket_allocation_across_users_is_unique_and_never_500(
 
     ticket_pattern = re.compile(r"^KARMI-\d{4}$")
     for ticket in tickets:
-        assert ticket_pattern.match(ticket) is not None, f"Ticket {ticket} did not match KARMI-\\d{{4}}"
+        assert ticket_pattern.match(ticket) is not None, (
+            f"Ticket {ticket} did not match KARMI-\\d{{4}}"
+        )
 
     user_ids = [u.id for u, _ in users_data]
     with session_factory() as session:
-        reports = session.scalars(
-            select(BugReport).where(BugReport.user_id.in_(user_ids))
-        ).all()
+        reports = session.scalars(select(BugReport).where(BugReport.user_id.in_(user_ids))).all()
         assert len(reports) == num_users
         ticket_numbers = {r.ticket_number for r in reports}
         assert len(ticket_numbers) == num_users
@@ -285,7 +280,9 @@ def test_concurrent_ticket_allocation_multiple_users_under_limit(
 
     ticket_pattern = re.compile(r"^KARMI-\d{4}$")
     for ticket in tickets:
-        assert ticket_pattern.match(ticket) is not None, f"Ticket {ticket} did not match KARMI-\\d{{4}}"
+        assert ticket_pattern.match(ticket) is not None, (
+            f"Ticket {ticket} did not match KARMI-\\d{{4}}"
+        )
 
     with session_factory() as session:
         for user, _token in users_data:
@@ -293,3 +290,43 @@ def test_concurrent_ticket_allocation_multiple_users_under_limit(
                 select(BugReport).where(BugReport.user_id == user.id)
             ).all()
             assert len(user_reports) == 2
+
+
+def test_concurrent_identical_bug_reports_serialize_and_replay(
+    session_factory: sessionmaker[Session],
+    test_settings: Settings,
+    test_app: FastAPI,
+) -> None:
+    with session_factory() as session:
+        _account, user, token = create_identity(
+            session, test_settings, name="concurrent_replay_user"
+        )
+
+    headers = {"Authorization": f"Bearer {token}"}
+    client_report_id = str(uuid.uuid4())
+    payload = {
+        "client_report_id": client_report_id,
+        "category": "chat",
+        "description": "Concurrent identical report submission.",
+        "diagnostics": sample_diagnostics(),
+    }
+
+    async def run_concurrent() -> list[httpx.Response]:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            tasks = [
+                client.post("/v1/bug-reports", headers=headers, json=payload) for _ in range(5)
+            ]
+            return await asyncio.gather(*tasks)
+
+    responses = asyncio.run(run_concurrent())
+    status_codes = sorted(r.status_code for r in responses)
+    assert status_codes == [200, 200, 200, 200, 201]
+
+    tickets = {r.json()["ticket"] for r in responses}
+    assert len(tickets) == 1
+
+    with session_factory() as session:
+        reports = session.scalars(select(BugReport).where(BugReport.user_id == user.id)).all()
+        assert len(reports) == 1
