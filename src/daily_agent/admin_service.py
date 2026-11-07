@@ -106,14 +106,6 @@ def micro_to_inr(micro: int) -> float:
     return round(micro / MICRO_PER_INR, 6)
 
 
-def to_micro(_settings: Settings | None, inr: float) -> int:
-    return inr_to_micro(inr)
-
-
-def from_micro(_settings: Settings | None, micro: int) -> float:
-    return micro_to_inr(micro)
-
-
 def _subscription(session: Session, account_id: str) -> Subscription | None:
     return session.scalar(select(Subscription).where(Subscription.account_id == account_id))
 
@@ -496,8 +488,6 @@ def adjust_credits(
     *,
     delta_inr: float | None = None,
     budget_inr: float | None = None,
-    delta_usd: float | None = None,
-    budget_usd: float | None = None,
     reason: str,
 ) -> dict[str, Any]:
     user = _load_user(session, user_id)
@@ -510,10 +500,6 @@ def adjust_credits(
     policy = plan_policy(subscription)
     period = ensure_usage_period(session, user.account_id, policy, subscription.period_anchor)
     before = period.spend_limit_micro
-    if delta_inr is None and delta_usd is not None:
-        delta_inr = delta_usd
-    if budget_inr is None and budget_usd is not None:
-        budget_inr = budget_usd
     if delta_inr is not None:
         adjustment = inr_to_micro(delta_inr)
         after = before + adjustment

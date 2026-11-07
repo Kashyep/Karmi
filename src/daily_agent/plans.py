@@ -5,6 +5,7 @@ from dataclasses import dataclass
 BUDGET_UNIT = "INR_MICRO"
 MICRO_PER_INR = 1_000_000
 
+
 @dataclass(frozen=True)
 class PlanPolicy:
     plan_id: str
