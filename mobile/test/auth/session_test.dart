@@ -44,6 +44,12 @@ class _FakeClerkAuthState extends ChangeNotifier implements ClerkAuthState {
     notifyListeners();
   }
 
+  void signIn(String userId) {
+    _isSignedIn = true;
+    _user = _FakeClerkUser(userId);
+    notifyListeners();
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -127,5 +133,34 @@ void main() {
         expect(remaining.isEmpty, isTrue);
       },
     );
+
+    test('lastEnd resets to none when Clerk signs in again', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = KarmiApi(baseUrl: 'http://test');
+      final fakeClerk = _FakeClerkAuthState(
+        signedIn: true,
+        userId: 'user_clerk_123',
+      );
+      final session = KarmiSession(
+        api: api,
+        prefs: prefs,
+        clerkAuth: fakeClerk,
+      );
+
+      expect(session.userId, 'user_clerk_123');
+      expect(session.lastEnd, SessionEnd.none);
+
+      // Sign out
+      await session.signOut();
+      expect(session.isSignedIn, isFalse);
+      expect(session.lastEnd, SessionEnd.signedOut);
+
+      // Re-sign in with Clerk
+      fakeClerk.signIn('user_clerk_123');
+      expect(session.isSignedIn, isTrue);
+      expect(session.userId, 'user_clerk_123');
+      expect(session.lastEnd, SessionEnd.none);
+    });
   });
 }

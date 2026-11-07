@@ -120,6 +120,9 @@ class KarmiSession extends ChangeNotifier {
         _lastSignedInUserId = null;
       }
     } else if (signedIn) {
+      if (!_wasClerkSignedIn) {
+        _lastEnd = SessionEnd.none;
+      }
       final currentUid = clerkAuth?.user?.id;
       if (currentUid != null && currentUid.isNotEmpty) {
         _lastSignedInUserId = currentUid;
