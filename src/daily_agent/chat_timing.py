@@ -3,6 +3,12 @@
 Logs request arrival (chat.request.start) and completion (chat.request.end) with
 start time, end time, duration_ms, HTTP status code, and normalized route.
 Never logs prompts, replies, user tokens, message text, or secrets.
+
+Timing defaults to OFF. Enable for local benchmarking only via
+DAILY_AGENT_CHAT_TIMING_ENABLED=1 (e.g. scripts/bench_chat_latency.py --compare).
+Kept OFF by default due to open p95 issue: client p95 gap ~40 ms with timing on
+across 3 rounds, while middleware direct overhead p95 is 0.28 ms. Cause not identified;
+owner decision needed.
 """
 
 from __future__ import annotations
@@ -55,10 +61,22 @@ def is_chat_timing_enabled() -> bool:
     """Return whether chat request timing logs and middleware are enabled.
 
     Controlled via the DAILY_AGENT_CHAT_TIMING_ENABLED environment variable.
-    Defaults to True in all environments.
+    Defaults to False (disabled) in all environments (missing or empty string means disabled).
+    Only "1", "true", "yes", or "on" (case-insensitive) enables it.
+
+    How to enable:
+        Set DAILY_AGENT_CHAT_TIMING_ENABLED=1 (or "true", "yes", "on") in your
+        environment for local benchmarking only, e.g.:
+            DAILY_AGENT_CHAT_TIMING_ENABLED=1 scripts/bench_chat_latency.py --compare
+
+    Open p95 question:
+        Benchmarking showed a client p95 latency gap of ~40 ms with timing on
+        across 3 rounds, despite middleware direct overhead p95 being only 0.28 ms.
+        The cause has not been identified and owner decision is needed.
+        Default stays OFF until this is resolved.
     """
-    val = os.environ.get("DAILY_AGENT_CHAT_TIMING_ENABLED", "true").strip().lower()
-    return val not in ("false", "0", "no", "off")
+    val = os.environ.get("DAILY_AGENT_CHAT_TIMING_ENABLED", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
 
 
 class ChatTimingMiddleware:
