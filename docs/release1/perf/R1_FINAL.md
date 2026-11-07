@@ -14,19 +14,18 @@ Evaluated via `test/perf/chat_perf_test.dart` (`chat_screen_subtree_rebuilds_per
 | Base `314afa4`, corrected matcher | `Rebuilding Composer(` / `Rebuilding Composer-[` | 4, 4, 4 | 4 |
 | Branch `bd92301`, corrected matcher | `Rebuilding Composer(` / `Rebuilding Composer-[` | 4, 4, 4 | 4 |
 
-- **Measurement detail**: Base `314afa4` corrected matcher samples: 3, 4, 4, 4, 4. The original substring matcher counted FocusNode debug label `ComposerTextFieldFocus` lines, so it was not a true composer rebuild count.
-- **Assessment**: The 12 to 4 change is a measurement correction, not a runtime improvement. The ≤9 target is met on the corrected metric; the composer narrowing did not reduce the count.
+- **Measurement detail**: The 12 figure came from an overcounting matcher: the substring matcher `contains('Composer')` also counted FocusNode debug label `ComposerTextFieldFocus` lines, so it was not a true composer rebuild count. Corrected-matcher base is 4 and the branch stays 4 after the revert.
+- **Assessment**: The <=9 target is met ONLY through metric correction. NO real rebuild reduction is claimed. The composer narrowing gave no reduction.
 
 ## 3. All-Widget Rebuilds Per Send
-Measured using an instrumented copy of the test across 5 sends, counting raw `Rebuilding` lines:
+The composer ValueNotifier narrowing has been reverted. All-widget numbers below are as measured previously on the pre-revert branch (`bd92301`) using an instrumented copy of the test across 5 sends, counting raw `Rebuilding` lines:
 
 | Commit | Runs | Samples (5 sends) | Min | Max | Median |
 |---|---|---|---|---|---|
 | Base `314afa4` | Identical across 3 runs | 365, 613, 647, 681, 715 | 365 | 715 | 647 |
-| Branch `bd92301` | Identical across 3 runs | 367, 615, 649, 683, 717 | 367 | 717 | 649 |
+| Branch `bd92301` (pre-revert) | Identical across 3 runs | 367, 615, 649, 683, 717 | 367 | 717 | 649 |
 
-- **Assessment**: No reduction; +2 rebuilds per send on the branch.
-
+- **Assessment**: As measured on the pre-revert branch, no reduction was observed (+2 rebuilds per send). The narrowing has been reverted; no all-widget rebuild reduction is claimed.
 ## 4. Markdown Cache
 - **Implementation**: Parsed AST cached per message id + content revision in a bounded LRU (`ParsedMarkdownCache`, commit `01db879`).
 - **Effectiveness**: Parse-count effect NOT MEASURED.
@@ -54,7 +53,14 @@ Build command: `flutter build apk --release --split-per-abi --obfuscate --split-
 - Release-signed build not produced (needs owner key).
 
 ## 7. Backend Chat Timing
-Implemented in `ChatTimingMiddleware` (`src/daily_agent/chat_timing.py`; toggle env `DAILY_AGENT_CHAT_TIMING_ENABLED`, default on).
+Implemented in `ChatTimingMiddleware` (`src/daily_agent/chat_timing.py`; toggle env `DAILY_AGENT_CHAT_TIMING_ENABLED`).
+Timing defaults to **OFF** (missing or empty -> disabled; "1", "true", "yes", or "on" -> enabled).
+
+To enable for local benchmarking only:
+```bash
+DAILY_AGENT_CHAT_TIMING_ENABLED=1 python scripts/bench_chat_latency.py --compare
+```
+
 Bench: `scripts/bench_chat_latency.py --compare --rounds 3 -n 200 --warmup 10` (fake provider port 8765, backend 8766, token delay 0.005 s; alternating BEFORE [timing off] / AFTER [timing on]; fresh backend per pass).
 
 | Metric | Round 1 | Round 2 | Round 3 | Median |
@@ -67,7 +73,7 @@ Bench: `scripts/bench_chat_latency.py --compare --rounds 3 -n 200 --warmup 10` (
 | Server p95 ms (AFTER) | 171.17 | 180.59 | 175.09 | 175.09 |
 
 - **Middleware direct overhead (AFTER)**: p50 0.23 ms, p95 0.28 ms, mean 0.22 ms.
-- **OPEN ISSUE**: Client p95 is about 40 ms higher with timing on in all three rounds, but the measured middleware overhead is 0.28 ms p95. Cause NOT identified. Do not call it noise. Owner decision needed on keeping timing on by default.
+- **Open p95 question**: Client p95 gap is ~40 ms higher with timing on across 3 rounds (BEFORE median 134.92 ms vs AFTER median 176.44 ms), despite middleware direct overhead p95 being only 0.28 ms. Cause not identified; owner decision needed. Timing defaults to OFF until this is resolved.
 
 ## 8. Backend Gates
 - `scripts/tasks.py lint`: exit 0 after ruff fix commit `c47425b`.
@@ -78,5 +84,5 @@ Bench: `scripts/bench_chat_latency.py --compare --rounds 3 -n 200 --warmup 10` (
 - Device frame timing NOT VERIFIED (paused by owner).
 - Release-signed APK not built (requires owner key).
 - Markdown-cache parse-count effect NOT MEASURED.
-- Composer narrowing gave no measured reduction (+2 on all-widget rebuilds).
-- Backend p95 question open (requires owner decision).
+- Composer narrowing gave no measured reduction (+2 on all-widget rebuilds on pre-revert branch) and was reverted (composer behaviourally matches base `314afa4`).
+- Backend chat timing default stays OFF due to unexplained client p95 latency gap (~40 ms higher with timing on across 3 rounds, middleware direct overhead p95 0.28 ms, cause not identified, owner decision needed).
