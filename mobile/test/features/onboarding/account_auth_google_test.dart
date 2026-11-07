@@ -332,6 +332,38 @@ void main() {
         expect(passwordWidget.enabled, isTrue);
       },
     );
+
+    testWidgets(
+      'Google sign-in transfer with missing fields surfaces required fields error',
+      (tester) async {
+        final fake = FakeClerkEmailCodeActions();
+        fake.nextGoogleResult = const GoogleSignInError(
+          'Clerk still needs: username.',
+        );
+
+        await _pumpAuthStep(tester, actions: fake);
+
+        final googleButton = find.byKey(
+          const ValueKey('onboarding_google_button'),
+        );
+        await tester.tap(googleButton);
+        await settle(tester);
+
+        expect(fake.calls, contains('signInWithGoogle'));
+        expect(find.text('Clerk still needs: username.'), findsOneWidget);
+
+        // Form remains interactive and re-enabled
+        final buttonWidget = tester.widget<GoogleSignInButton>(googleButton);
+        expect(buttonWidget.isLoading, isFalse);
+        expect(buttonWidget.onPressed, isNotNull);
+
+        final ctaWidget = tester.widget<PillCta>(
+          find.byKey(const ValueKey('onboarding_auth_continue')),
+        );
+        expect(ctaWidget.isLoading, isFalse);
+        expect(ctaWidget.onPressed, isNotNull);
+      },
+    );
     testWidgets('hidden when actions is null (Clerk not configured)', (
       tester,
     ) async {

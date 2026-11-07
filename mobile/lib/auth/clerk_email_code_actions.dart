@@ -254,6 +254,12 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
             finish(const GoogleSignInSuccess());
             return;
           }
+          final missing = auth.signUp?.missingFields ?? const [];
+          if (missing.isNotEmpty) {
+            final fields = missing.map((f) => f.name).join(', ');
+            finish(GoogleSignInError('Clerk still needs: $fields.'));
+            return;
+          }
         } catch (e) {
           finish(GoogleSignInError(issueFromClerkError(e).message));
           return;
