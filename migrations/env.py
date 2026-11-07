@@ -11,7 +11,7 @@ from daily_agent.db import Base
 
 config = context.config
 if config.config_file_name:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 # Build a fresh Settings instead of the lru_cached get_settings(): the app may
 # have been imported earlier in this process with a different DAILY_AGENT_DATABASE_URL
 # (e.g. the disposable integration database), and migrating the stale URL would
