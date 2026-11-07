@@ -18,6 +18,7 @@ from daily_agent.security import Principal
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 JPEG_MAGIC = b"\xff\xd8\xff"
 MAX_SCREENSHOT_BYTES = 5_242_880  # 5 MB
+MAX_SCREENSHOT_B64_CHARS = 4 * ((MAX_SCREENSHOT_BYTES + 2) // 3)
 
 
 def compute_bug_report_hash(
@@ -77,6 +78,11 @@ def create_bug_report(
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
                 detail="unsupported screenshot content type; must be image/png or image/jpeg",
+            )
+        if len(body.screenshot.data_base64) > MAX_SCREENSHOT_B64_CHARS:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="screenshot exceeds 5 MB limit",
             )
         try:
             raw_screenshot = base64.b64decode(body.screenshot.data_base64, validate=True)

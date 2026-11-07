@@ -206,7 +206,8 @@ class PlanView(BaseModel):
 
 class BugReportScreenshotCreate(BaseModel):
     content_type: str
-    data_base64: str = Field(max_length=10_000_000)
+    data_base64: str
+
 
 class BugReportDiagnostics(BaseModel):
     model_config = ConfigDict(extra="forbid")

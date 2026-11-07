@@ -251,6 +251,67 @@ def test_screenshot_size_413_and_type_415(test_context: dict[str, Any]) -> None:
     assert r_jpeg.status_code == 201
 
 
+def test_screenshot_payload_size_limits(test_context: dict[str, Any]) -> None:
+    client: TestClient = test_context["client"]  # type: ignore[assignment]
+    factory = test_context["factory"]
+    settings = test_context["settings"]
+
+    with factory() as session:  # type: ignore[operator]
+        _acc, _user, token = create_identity(session, settings, name="size-limits-tester")  # type: ignore[arg-type]
+
+    # 1. Roughly 12 MB base64 body returns 413 (not 422 from schema max_length)
+    large_b64 = "A" * (12 * 1024 * 1024)
+    r_12mb = client.post(
+        "/v1/bug-reports",
+        headers=auth(token),
+        json={
+            "client_report_id": str(uuid.uuid4()),
+            "category": "ui",
+            "description": "Report with ~12 MB screenshot base64 payload.",
+            "diagnostics": sample_diagnostics(),
+            "screenshot": {"content_type": "image/png", "data_base64": large_b64},
+        },
+    )
+    assert r_12mb.status_code == 413
+    assert r_12mb.json()["detail"] == "screenshot exceeds 5 MB limit"
+
+    # 2. PNG of exactly 5_242_880 raw bytes returns 201
+    exact_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * (5_242_880 - 8)
+    assert len(exact_bytes) == 5_242_880
+    exact_b64 = base64.b64encode(exact_bytes).decode("ascii")
+    r_exact = client.post(
+        "/v1/bug-reports",
+        headers=auth(token),
+        json={
+            "client_report_id": str(uuid.uuid4()),
+            "category": "ui",
+            "description": "Report with screenshot of exactly 5 MB raw bytes.",
+            "diagnostics": sample_diagnostics(),
+            "screenshot": {"content_type": "image/png", "data_base64": exact_b64},
+        },
+    )
+    assert r_exact.status_code == 201
+    assert r_exact.json()["status"] == "new"
+
+    # 3. PNG of 5_242_881 raw bytes returns 413
+    oversized_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * (5_242_881 - 8)
+    assert len(oversized_bytes) == 5_242_881
+    oversized_b64 = base64.b64encode(oversized_bytes).decode("ascii")
+    r_over = client.post(
+        "/v1/bug-reports",
+        headers=auth(token),
+        json={
+            "client_report_id": str(uuid.uuid4()),
+            "category": "ui",
+            "description": "Report with screenshot of 5 MB + 1 byte.",
+            "diagnostics": sample_diagnostics(),
+            "screenshot": {"content_type": "image/png", "data_base64": oversized_b64},
+        },
+    )
+    assert r_over.status_code == 413
+    assert r_over.json()["detail"] == "screenshot exceeds 5 MB limit"
+
+
 def test_diagnostics_validation_and_description_bounds(test_context: dict[str, Any]) -> None:
     client: TestClient = test_context["client"]  # type: ignore[assignment]
     factory = test_context["factory"]
