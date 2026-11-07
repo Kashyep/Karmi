@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../api/bug_reports/bug_reports_api.dart';
 import '../../armory/armory_controller.dart';
 import '../../auth/session.dart';
 import '../../settings/karmi_settings.dart';
@@ -9,6 +12,10 @@ import '../../widgets/focus_ring.dart';
 import '../../widgets/karmi_card.dart';
 import '../admin/admin_code_screen.dart';
 import '../admin/admin_controller.dart';
+import '../bug_report/bug_report_queue.dart';
+import '../bug_report/bug_report_screen.dart';
+import '../bug_report/bug_report_service.dart';
+import '../bug_report/screenshot_capture.dart';
 
 /// Settings (T4.3): theme mode, tier theme (Armory), reduce transparency,
 /// licences, sign out.
@@ -32,6 +39,33 @@ class SettingsScreen extends StatelessWidget {
   final VoidCallback onOpenArmory;
   final VoidCallback? onOpenPlans;
   final AdminController? admin;
+  static final GlobalKey _boundaryKey = GlobalKey();
+
+  Future<void> _openBugReport(BuildContext context) async {
+    final uid = session.userId;
+    if (uid != null && uid.isNotEmpty) {
+      unawaited(
+        BugReportService(
+          api: BugReportsApi.fromApi(session.api),
+          queue: BugReportQueue(),
+          userId: uid,
+        ).flushQueue().catchError((_) => 0),
+      );
+    }
+    final screenshotBytes = await capturePngFromRepaintBoundary(_boundaryKey);
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => BugReportScreen(
+          api: session.api,
+          session: session,
+          userId: uid,
+          initialScreen: 'settings',
+          screenshotBytes: screenshotBytes,
+        ),
+      ),
+    );
+  }
 
   void _openAdmin(BuildContext context) {
     final controller = admin;
@@ -47,8 +81,10 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = KarmiColors.of(context);
-    return ListenableBuilder(
-      listenable: Listenable.merge([
+    return RepaintBoundary(
+      key: _boundaryKey,
+      child: ListenableBuilder(
+        listenable: Listenable.merge([
         settings,
         armory,
         if (admin != null) admin!,
@@ -134,6 +170,17 @@ class SettingsScreen extends StatelessWidget {
                 const Divider(height: 1),
                 KarmiFocusRing(
                   child: ListTile(
+                    key: const ValueKey('report_bug_tile'),
+                    leading: const Icon(Icons.bug_report_outlined),
+                    title: const Text('Report a bug'),
+                    subtitle: const Text('Send diagnostics or report an issue'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _openBugReport(context),
+                  ),
+                ),
+                const Divider(height: 1),
+                KarmiFocusRing(
+                  child: ListTile(
                     leading: const Icon(Icons.description_outlined),
                     title: const Text('Licences'),
                     subtitle: const Text('Open-source and font licences'),
@@ -164,6 +211,7 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }

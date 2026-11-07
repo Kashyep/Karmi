@@ -183,8 +183,8 @@ void main() {
     await openUser(tester, 'Ada');
 
     expect(find.text('7'), findsOneWidget);
-    expect(find.text(r'$1.50'), findsOneWidget);
-    expect(find.text(r'$10.00'), findsOneWidget);
+    expect(find.text('₹1.50'), findsOneWidget);
+    expect(find.text('₹10'), findsOneWidget);
     final usage = find.ancestor(
       of: find.text('Requests today'),
       matching: find.byType(KarmiCard),

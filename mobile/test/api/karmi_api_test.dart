@@ -504,4 +504,34 @@ void main() {
       expect(FeedbackRating.fromWire(null), isNull);
     });
   });
+
+  group('PlanView', () {
+    test('parses price_inr and plan metadata from server payload', () {
+      final json = {
+        'id': 'yanta',
+        'label': 'Yanta',
+        'price_inr': 149,
+        'everyday_limit': 100,
+        'daily_token_limit': 300000,
+        'input_tokens': 8000,
+        'output_tokens': 4096,
+        'request_cost_cap_micro': 4000,
+        'period_cost_cap_micro': 80000,
+        'model_classes': ['economy', 'balanced'],
+        'min_class': 'economy',
+      };
+
+      final plan = PlanView.fromJson(json);
+      expect(plan.id, 'yanta');
+      expect(plan.label, 'Yanta');
+      expect(plan.priceInr, 149);
+      expect(plan.everydayLimit, 100);
+      expect(plan.dailyTokenLimit, 300000);
+      expect(plan.modelClasses, ['economy', 'balanced']);
+
+      final back = plan.toJson();
+      expect(back['price_inr'], 149);
+      expect(back['id'], 'yanta');
+    });
+  });
 }

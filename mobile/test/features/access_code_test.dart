@@ -81,8 +81,12 @@ void main() {
 
     expect(find.text('Unlocked Trika. Enjoy the beta!'), findsOneWidget);
     expect(refreshed, 1);
-    expect(jsonDecode(client.requests.single.body), {'code': 'TRIKA-AAAA'});
-    expect(client.requests.single.url.path, '/v1/access-code');
+    final codeRequests = client.requests
+        .where((r) => r.url.path == '/v1/access-code')
+        .toList();
+    expect(codeRequests.length, 1);
+    expect(jsonDecode(codeRequests.single.body), {'code': 'TRIKA-AAAA'});
+    expect(codeRequests.single.url.path, '/v1/access-code');
   });
 
   testWidgets('an invalid code shows a calm error and changes nothing', (

@@ -256,4 +256,67 @@ void main() {
       },
     );
   });
+  group('OnboardingFlow Plan Intro Pricing', () {
+    testWidgets('renders server price ₹0 / month and no \$', (tester) async {
+      SharedPreferences.setMockInitialValues({'onboarding_active_step': 4});
+      final prefs = await SharedPreferences.getInstance();
+      final settings = KarmiSettings(prefs);
+      final backend = FakeBackend.healthy();
+      backend.on(
+        'GET',
+        '/v1/plans',
+        (_) => jsonResponse([
+          {
+            'id': 'ananta',
+            'label': 'Ananta',
+            'price_inr': 0,
+            'everyday_limit': 20,
+          },
+        ]),
+      );
+      final session = KarmiSession(
+        api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
+        prefs: prefs,
+      );
+
+      await pumpHost(
+        tester,
+        OnboardingFlow(session: session, settings: settings),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('₹0 / month'), findsOneWidget);
+      expect(find.textContaining(r'$'), findsNothing);
+      expect(find.textContaining('USD'), findsNothing);
+    });
+
+    testWidgets(
+      'shows Price unavailable and never a fabricated number when server fails',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({'onboarding_active_step': 4});
+        final prefs = await SharedPreferences.getInstance();
+        final settings = KarmiSettings(prefs);
+        final backend = FakeBackend.healthy();
+        backend.on(
+          'GET',
+          '/v1/plans',
+          (_) => jsonResponse({'detail': 'server error'}, 500),
+        );
+        final session = KarmiSession(
+          api: KarmiApi(baseUrl: 'http://karmi.test', client: backend.client),
+          prefs: prefs,
+        );
+
+        await pumpHost(
+          tester,
+          OnboardingFlow(session: session, settings: settings),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Price unavailable'), findsOneWidget);
+        expect(find.textContaining(r'$'), findsNothing);
+        expect(find.textContaining('/ month'), findsNothing);
+      },
+    );
+  });
 }

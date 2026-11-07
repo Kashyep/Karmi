@@ -6,8 +6,23 @@
     "req_per_min": 31.0,
     "error_rate": 0.0,
     "p95_latency_ms": 572.1,
-    "spend_today_usd": 0.0,
-    "platform_budget_usd": 1.0,
+    "spend_today_inr": 0.0,
+    "platform_budget_inr": 1.0,
+    "cost_today_inr": 0.0,
+    "requests_today": 345,
+    "daily_request_cap": 2000,
+    "success_rate": 0.99,
+    "open_bug_reports": 2,
+    "model_health": [
+      {
+        "model": "claude-3-5-sonnet",
+        "provider": "anthropic",
+        "last_success_at": "2026-10-24T06:15:00.000000+00:00",
+        "error_rate": 0.01,
+        "p50_latency_ms": 450.0,
+        "runs": 100
+      }
+    ],
     "provider_health": [
       {
         "provider": "openrouter",

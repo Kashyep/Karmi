@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../api/conversations/conversations_api.dart';
 import '../../api/karmi_api.dart';
 import '../../api/stream/run_stream_client.dart';
+import '../../auth/session.dart';
 import '../../shell/bottom_chrome.dart';
 import '../../shell/breakpoints.dart';
 import '../../shell/chat_header.dart';
@@ -28,6 +29,8 @@ class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
     required this.api,
+    this.session,
+    this.userId,
     this.onOpenPlans,
     this.conversationId,
     this.chatController,
@@ -40,6 +43,8 @@ class ChatScreen extends StatefulWidget {
     this.historyCommands,
   });
   final KarmiApi api;
+  final KarmiSession? session;
+  final String? userId;
   final VoidCallback? onOpenPlans;
   final String? conversationId;
   final ChatController? chatController;
@@ -614,6 +619,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   category: bannerError,
                   onRetry: _retryLast,
                   onUpgrade: widget.onOpenPlans,
+                  session: widget.session,
+                  userId: widget.userId ?? widget.session?.userId,
                 ),
               ),
             Expanded(
@@ -679,6 +686,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                           onRetry: _retryLast,
                                           onContinue: _continueLast,
                                           onUpgrade: widget.onOpenPlans,
+                                          session: widget.session,
+                                          userId: widget.userId ??
+                                              widget.session?.userId,
                                         ),
                                       ),
                                     ],
@@ -738,6 +748,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       : _feedbackRetry,
                   onContinue: _continueLast,
                   onUpgrade: widget.onOpenPlans,
+                  session: widget.session,
+                  userId: widget.userId ?? widget.session?.userId,
                 ),
               ),
             KeyedSubtree(

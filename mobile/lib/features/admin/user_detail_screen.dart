@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../theme/karmi_colors.dart';
 import '../../widgets/feedback.dart';
 import '../../widgets/karmi_card.dart';
+import '../../widgets/money.dart';
 import 'admin_action_dialog.dart';
 import 'admin_api.dart';
 import 'admin_controller.dart';
@@ -302,6 +303,7 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                 ? kAdminUnavailable
                 : formatAdminDateTime(context, user.lastActiveAt),
           ),
+          _row('Open bug reports', '${user.openBugReports}'),
         ],
       ),
     );
@@ -388,15 +390,15 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
           ),
           _row(
             'Spend this month',
-            usage.monthSpendUsd == null
+            usage.monthSpendInr == null
                 ? kAdminUnavailable
-                : formatUsd(usage.monthSpendUsd!),
+                : formatInrRupees(usage.monthSpendInr!),
           ),
           _row(
             'Credits remaining',
             usage.creditsRemaining == null
                 ? kAdminUnavailable
-                : formatUsd(usage.creditsRemaining!),
+                : formatInrRupees(usage.creditsRemaining!),
           ),
           _row(
             'Active sessions',
@@ -527,13 +529,13 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                       label: 'Adjustment',
                       initial: 'delta',
                       options: [
-                        AdminDialogOption('delta', 'Add or remove (delta USD)'),
-                        AdminDialogOption('budget', 'Set budget (USD)'),
+                        AdminDialogOption('delta', 'Credit change (INR)'),
+                        AdminDialogOption('budget', 'Set budget (INR)'),
                       ],
                     ),
                     AdminDialogField(
                       name: 'amount',
-                      label: 'Amount in USD',
+                      label: 'Amount in INR',
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                         signed: true,
@@ -548,8 +550,8 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                     return api.adjustCredits(
                       token,
                       id,
-                      deltaUsd: isBudget ? null : amount,
-                      budgetUsd: isBudget ? amount : null,
+                      deltaInr: isBudget ? null : amount,
+                      budgetInr: isBudget ? amount : null,
                       reason: input.reason,
                     );
                   },

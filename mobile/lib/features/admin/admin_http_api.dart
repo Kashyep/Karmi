@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import 'admin_api.dart';
@@ -167,14 +167,14 @@ class HttpAdminApi implements AdminApi {
   Future<void> adjustCredits(
     String token,
     String id, {
-    double? deltaUsd,
-    double? budgetUsd,
+    double? deltaInr,
+    double? budgetInr,
     required String reason,
   }) {
-    assert((deltaUsd == null) != (budgetUsd == null));
+    assert((deltaInr == null) != (budgetInr == null));
     return _mutate(token, id, 'credits', {
-      if (deltaUsd != null) 'delta_usd': deltaUsd,
-      if (budgetUsd != null) 'budget_usd': budgetUsd,
+      if (deltaInr != null) 'delta_inr': deltaInr,
+      if (budgetInr != null) 'budget_inr': budgetInr,
       'reason': reason,
     });
   }
@@ -235,6 +235,72 @@ class HttpAdminApi implements AdminApi {
     return _parse(resp, AuditPage.fromJson);
   }
 
+  @override
+  Future<AdminBugReportPage> listBugReports(
+    String token, {
+    String? status,
+    String? category,
+    int limit = 25,
+    String? cursor,
+  }) async {
+    final resp = await _send(
+      'GET',
+      '/v1/admin/bug-reports',
+      adminToken: token,
+      query: {
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (category != null && category.isNotEmpty) 'category': category,
+        'limit': '$limit',
+        if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      },
+    );
+    return _parse(resp, AdminBugReportPage.fromJson);
+  }
+
+  @override
+  Future<AdminBugReportDetail> getBugReport(String token, String id) async {
+    final resp = await _send(
+      'GET',
+      '/v1/admin/bug-reports/${_id(id)}',
+      adminToken: token,
+    );
+    return _parse(resp, AdminBugReportDetail.fromJson);
+  }
+
+  @override
+  Future<Uint8List> getBugReportScreenshot(String token, String id) async {
+    final resp = await _send(
+      'GET',
+      '/v1/admin/bug-reports/${_id(id)}/screenshot',
+      adminToken: token,
+      accept: '*/*',
+    );
+    return Uint8List.fromList(resp.bodyBytes);
+  }
+
+  @override
+  Future<AdminBugReportDetail> patchBugReport(
+    String token,
+    String id, {
+    String? status,
+    String? adminNotes,
+    required String reason,
+  }) async {
+    assert(reason.trim().isNotEmpty);
+    assert(status != null || adminNotes != null);
+    final resp = await _send(
+      'PATCH',
+      '/v1/admin/bug-reports/${_id(id)}',
+      adminToken: token,
+      body: {
+        if (status != null) 'status': status,
+        if (adminNotes != null) 'admin_notes': adminNotes,
+        'reason': reason,
+      },
+    );
+    return _parse(resp, AdminBugReportDetail.fromJson);
+  }
+
   Future<void> _mutate(
     String token,
     String id,
@@ -271,8 +337,9 @@ class HttpAdminApi implements AdminApi {
     Object? body,
     String? adminToken,
     bool allowNoAdminSession = false,
+    String? accept,
   }) async {
-    final headers = <String, String>{'Accept': 'application/json'};
+    final headers = <String, String>{'Accept': accept ?? 'application/json'};
     final String? bearer;
     try {
       bearer = await tokenProvider().timeout(timeout);

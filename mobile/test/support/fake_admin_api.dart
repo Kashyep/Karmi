@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:karmi_app/features/admin/admin_api.dart';
 
@@ -16,7 +17,12 @@ class FakeAdminApi implements AdminApi {
     this.forbidden = false,
     this.code = '123456',
     this.sessionTtl = const Duration(minutes: 15),
-  }) : users = users ?? _defaultUsers();
+    List<AdminBugReportDetail>? bugReports,
+  }) : users = users ?? _defaultUsers() {
+    if (bugReports != null) {
+      this.bugReports.addAll(bugReports);
+    }
+  }
 
   final List<String> calls = [];
   final List<AdminUser> users;
@@ -36,19 +42,35 @@ class FakeAdminApi implements AdminApi {
     reqPerMin: 12.5,
     errorRate: 0.02,
     p95LatencyMs: 840,
-    spendTodayUsd: 3.25,
-    platformBudgetUsd: 50,
+    spendTodayInr: 3.25,
+    platformBudgetInr: 50,
+    costTodayInr: 3.25,
+    requestsToday: 120,
+    dailyRequestCap: 1000,
+    successRate: 0.98,
+    openBugReports: 1,
+    modelHealth: [
+      ModelHealth(
+        model: 'claude-3-5-sonnet',
+        provider: 'anthropic',
+        errorRate: 0.01,
+        p50LatencyMs: 650,
+        runs: 50,
+      ),
+    ],
     providerHealth: [
       ProviderHealth(provider: 'anthropic', status: 'ok'),
       ProviderHealth(provider: 'openai', status: 'degraded'),
     ],
   );
 
+  final List<AdminBugReportDetail> bugReports = [];
+  final Map<String, Uint8List> bugReportScreenshots = {};
+
   int _tokenSeq = 0;
-  int _pageSize = 25;
 
   /// Sets how many users one [listUsers] page returns.
-  set pageSize(int v) => _pageSize = v;
+  int pageSize = 25;
 
   void _record(String call) => calls.add(call);
 
@@ -160,7 +182,7 @@ class FakeAdminApi implements AdminApi {
       return true;
     }).toList();
     final start = int.tryParse(cursor ?? '') ?? 0;
-    final size = limit < _pageSize ? limit : _pageSize;
+    final size = limit < pageSize ? limit : pageSize;
     final end = (start + size) < filtered.length
         ? start + size
         : filtered.length;
@@ -178,7 +200,7 @@ class FakeAdminApi implements AdminApi {
       user: _find(id),
       usage: const AdminUsage(
         todayRequests: 7,
-        monthSpendUsd: 1.5,
+        monthSpendInr: 1.5,
         creditsRemaining: 10,
         sessions: 1,
       ),
@@ -276,12 +298,12 @@ class FakeAdminApi implements AdminApi {
   Future<void> adjustCredits(
     String token,
     String id, {
-    double? deltaUsd,
-    double? budgetUsd,
+    double? deltaInr,
+    double? budgetInr,
     required String reason,
   }) async {
     _record(
-      'credits:$id:delta=${deltaUsd ?? ''}:budget=${budgetUsd ?? ''}:$reason',
+      'credits:$id:delta=${deltaInr ?? ''}:budget=${budgetInr ?? ''}:$reason',
     );
     _maybeFail();
     _find(id);
@@ -335,6 +357,125 @@ class FakeAdminApi implements AdminApi {
     return const AuditPage(items: []);
   }
 
+  @override
+  Future<AdminBugReportPage> listBugReports(
+    String token, {
+    String? status,
+    String? category,
+    int limit = 25,
+    String? cursor,
+  }) async {
+    _record(
+      'listBugReports:status=${status ?? ''}:category=${category ?? ''}:limit=$limit:cursor=${cursor ?? ''}',
+    );
+    _maybeFail();
+    final filtered = bugReports.where((r) {
+      if (status != null &&
+          status.isNotEmpty &&
+          status != 'all' &&
+          r.status != status) {
+        return false;
+      }
+      if (category != null &&
+          category.isNotEmpty &&
+          category != 'all' &&
+          r.category != category) {
+        return false;
+      }
+      return true;
+    }).toList();
+    final start = cursor == null ? 0 : int.tryParse(cursor) ?? 0;
+    final effectiveLimit = pageSize < limit ? pageSize : limit;
+    final end = (start + effectiveLimit).clamp(0, filtered.length);
+    final page = start < filtered.length
+        ? filtered.sublist(start, end)
+        : <AdminBugReportDetail>[];
+    return AdminBugReportPage(
+      items: page
+          .map(
+            (r) => AdminBugReportItem(
+              id: r.id,
+              ticket: r.ticket,
+              category: r.category,
+              status: r.status,
+              descriptionPreview: r.description.length > 140
+                  ? r.description.substring(0, 140)
+                  : r.description,
+              userId: r.user?.id,
+              userDisplayName: r.user?.displayName,
+              hasScreenshot: r.hasScreenshot,
+              createdAt: r.createdAt,
+              updatedAt: r.updatedAt,
+            ),
+          )
+          .toList(),
+      nextCursor: end < filtered.length ? '$end' : null,
+    );
+  }
+
+  @override
+  Future<AdminBugReportDetail> getBugReport(String token, String id) async {
+    _record('getBugReport:$id');
+    _maybeFail();
+    return bugReports.firstWhere(
+      (b) => b.id == id,
+      orElse: () => throw const AdminFailure(404),
+    );
+  }
+
+  @override
+  Future<Uint8List> getBugReportScreenshot(String token, String id) async {
+    _record('getBugReportScreenshot:$id');
+    _maybeFail();
+    final bytes = bugReportScreenshots[id];
+    if (bytes == null) throw const AdminFailure(404);
+    return bytes;
+  }
+
+  @override
+  Future<AdminBugReportDetail> patchBugReport(
+    String token,
+    String id, {
+    String? status,
+    String? adminNotes,
+    required String reason,
+  }) async {
+    _record(
+      'patchBugReport:$id:status=${status ?? ''}:adminNotes=${adminNotes ?? ''}:$reason',
+    );
+    _maybeFail();
+    final index = bugReports.indexWhere((b) => b.id == id);
+    if (index < 0) throw const AdminFailure(404);
+    final current = bugReports[index];
+    if (status != null && status != current.status) {
+      final allowed = kAllowedBugReportTransitions[current.status] ?? const {};
+      if (!allowed.contains(status)) {
+        throw const AdminFailure(409);
+      }
+    }
+    final updated = AdminBugReportDetail(
+      id: current.id,
+      ticket: current.ticket,
+      category: current.category,
+      description: current.description,
+      diagnostics: current.diagnostics,
+      status: status ?? current.status,
+      adminNotes: adminNotes ?? current.adminNotes,
+      hasScreenshot: current.hasScreenshot,
+      user: current.user,
+      createdAt: current.createdAt,
+      updatedAt: DateTime.now(),
+      triagedAt: status == 'triaged'
+          ? (current.triagedAt ?? DateTime.now())
+          : current.triagedAt,
+      resolvedAt: {'fixed', 'closed', 'duplicate', 'wontfix'}.contains(status)
+          ? (current.resolvedAt ?? DateTime.now())
+          : current.resolvedAt,
+    );
+    bugReports[index] = updated;
+    return updated;
+  }
+
   static AdminUser _copy(
     AdminUser u, {
     bool? disabled,
@@ -358,5 +499,6 @@ class FakeAdminApi implements AdminApi {
     revertPlanId: u.revertPlanId,
     createdAt: u.createdAt,
     lastActiveAt: u.lastActiveAt,
+    openBugReports: u.openBugReports,
   );
 }

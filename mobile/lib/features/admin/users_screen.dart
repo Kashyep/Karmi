@@ -308,7 +308,7 @@ class _UserRow extends StatelessWidget {
               style: text.titleMedium,
             ),
             subtitle: Text(
-              '${user.email}\nTier: ${user.tier}',
+              '${user.email}\nTier: ${user.tier} · ${user.openBugReports} open bug ${user.openBugReports == 1 ? 'report' : 'reports'}',
               style: text.bodyMedium,
             ),
             isThreeLine: true,

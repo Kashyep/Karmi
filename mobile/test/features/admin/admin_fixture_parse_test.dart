@@ -170,7 +170,7 @@ void main() {
       final usage = (f['body'] as Map)['usage'] as Map;
       expect(usage['today_requests'], isA<int>());
       expect(usage['sessions'], isA<int>());
-      expect(usage['month_spend_usd'], isA<double>());
+      expect(usage['month_spend_inr'], isA<double>());
       expect(usage['credits_remaining'], isA<double>());
 
       final detail = await _fromFixture(
@@ -180,7 +180,7 @@ void main() {
       expect(detail.user.adminNotes, isNull);
       expect(detail.usage.todayRequests, 11);
       expect(detail.usage.sessions, 4);
-      expect(detail.usage.monthSpendUsd, 0.0);
+      expect(detail.usage.monthSpendInr, 0.0);
       expect(detail.usage.creditsRemaining, 0.02);
     });
 
@@ -196,7 +196,7 @@ void main() {
       expect(detail.user.lastActiveAt, isNull);
       expect(detail.usage.todayRequests, 0);
       expect(detail.usage.sessions, 2);
-      expect(detail.usage.monthSpendUsd, 0.0);
+      expect(detail.usage.monthSpendInr, 0.0);
     });
 
     test('export returns the JSON body as pretty text', () async {
@@ -224,15 +224,23 @@ void main() {
       expect(m.reqPerMin, 31.0);
       expect(m.errorRate, 0.0);
       expect(m.p95LatencyMs, 572.1);
-      expect(m.spendTodayUsd, 0.0);
-      expect(m.platformBudgetUsd, 1.0);
+      expect(m.spendTodayInr, 0.0);
+      expect(m.platformBudgetInr, 1.0);
+      expect(m.costTodayInr, 0.0);
+      expect(m.requestsToday, 345);
+      expect(m.dailyRequestCap, 2000);
+      expect(m.successRate, 0.99);
+      expect(m.openBugReports, 2);
+      expect(m.modelHealth, hasLength(1));
+      expect(m.modelHealth.single.model, 'claude-3-5-sonnet');
+      expect(m.modelHealth.single.provider, 'anthropic');
+      expect(m.modelHealth.single.runs, 100);
       expect(m.providerHealth, hasLength(1));
       expect(m.providerHealth.single.provider, 'openrouter');
       expect(m.providerHealth.single.status, 'ok');
       expect(m.generatedAt, isNotNull);
     });
   });
-
   group('audit', () {
     test('limit=50 page: int ids, object detail, null cursor', () async {
       String? query;
@@ -344,13 +352,13 @@ void main() {
         'admin_notes': null,
         'usage': {
           'today_requests': null,
-          'month_spend_usd': null,
+          'month_spend_inr': null,
           'credits_remaining': null,
           'sessions': null,
         },
       }).getUser('tok', 'u-null');
       expect(detail.usage.todayRequests, isNull);
-      expect(detail.usage.monthSpendUsd, isNull);
+      expect(detail.usage.monthSpendInr, isNull);
       expect(detail.usage.creditsRemaining, isNull);
       expect(detail.usage.sessions, isNull);
       expect(detail.user.adminNotes, isNull);
@@ -361,8 +369,14 @@ void main() {
         'req_per_min': null,
         'error_rate': null,
         'p95_latency_ms': null,
-        'spend_today_usd': null,
-        'platform_budget_usd': null,
+        'spend_today_inr': null,
+        'platform_budget_inr': null,
+        'cost_today_inr': null,
+        'requests_today': null,
+        'daily_request_cap': null,
+        'success_rate': null,
+        'open_bug_reports': null,
+        'model_health': null,
         'provider_health': null,
         'generated_at': null,
       }).monitor('tok');
@@ -399,6 +413,43 @@ void main() {
       }).audit('tok');
       expect(page.items, isEmpty);
       expect(page.nextCursor, isNull);
+    });
+
+    test('renamed JSON keys parse and old *_usd keys are NOT read', () async {
+      final detail = await _apiReturning({
+        'id': 'u1',
+        'usage': {
+          'month_spend_usd': 99.0,
+          'month_spend_inr': 42.0,
+          'credits_remaining': 10.0,
+        },
+      }).getUser('tok', 'u1');
+      expect(detail.usage.monthSpendInr, 42.0);
+
+      final detailOldOnly = await _apiReturning({
+        'id': 'u2',
+        'usage': {'month_spend_usd': 99.0, 'credits_remaining': 10.0},
+      }).getUser('tok', 'u2');
+      expect(detailOldOnly.usage.monthSpendInr, isNull);
+
+      final monitor = await _apiReturning({
+        'spend_today_usd': 99.0,
+        'platform_budget_usd': 99.0,
+        'spend_today_inr': 15.0,
+        'platform_budget_inr': 500.0,
+        'cost_today_inr': 15.0,
+      }).monitor('tok');
+      expect(monitor.spendTodayInr, 15.0);
+      expect(monitor.platformBudgetInr, 500.0);
+      expect(monitor.costTodayInr, 15.0);
+
+      final monitorOldOnly = await _apiReturning({
+        'spend_today_usd': 99.0,
+        'platform_budget_usd': 99.0,
+      }).monitor('tok');
+      expect(monitorOldOnly.spendTodayInr, isNull);
+      expect(monitorOldOnly.platformBudgetInr, isNull);
+      expect(monitorOldOnly.costTodayInr, isNull);
     });
   });
 }

@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import '../../theme/karmi_colors.dart';
 import '../../widgets/feedback.dart';
 import '../../widgets/karmi_card.dart';
+import '../../widgets/money.dart';
 import 'admin_api.dart';
 import 'admin_controller.dart';
 import 'admin_support.dart';
@@ -144,6 +145,8 @@ class _MonitorScreenState extends State<MonitorScreen>
         else if (data != null) ...[
           _metricGrid(data),
           const SizedBox(height: 12),
+          _models(data.modelHealth),
+          const SizedBox(height: 12),
           _providers(data.providerHealth),
         ],
       ],
@@ -177,9 +180,33 @@ class _MonitorScreenState extends State<MonitorScreen>
       ),
       _Metric(
         'Spend today',
-        m.spendTodayUsd == null || m.platformBudgetUsd == null
+        m.spendTodayInr == null || m.platformBudgetInr == null
             ? kAdminUnavailable
-            : '${formatUsd(m.spendTodayUsd!)} of ${formatUsd(m.platformBudgetUsd!)}',
+            : '${formatInrRupees(m.spendTodayInr!)} of ${formatInrRupees(m.platformBudgetInr!)}',
+      ),
+      _Metric(
+        'Requests today',
+        m.requestsToday == null
+            ? kAdminUnavailable
+            : (m.dailyRequestCap == null
+                  ? '${m.requestsToday}'
+                  : '${m.requestsToday} of ${m.dailyRequestCap}'),
+      ),
+      _Metric(
+        'Success rate',
+        m.successRate == null
+            ? kAdminUnavailable
+            : '${(m.successRate! * 100).toStringAsFixed(1)}%',
+      ),
+      _Metric(
+        'Open bug reports',
+        m.openBugReports?.toString() ?? kAdminUnavailable,
+      ),
+      _Metric(
+        'Cost today',
+        m.costTodayInr == null
+            ? kAdminUnavailable
+            : formatInrRupees(m.costTodayInr!),
       ),
     ];
     return LayoutBuilder(
@@ -214,6 +241,23 @@ class _MonitorScreenState extends State<MonitorScreen>
             Text(kAdminUnavailable, style: text.bodyMedium)
           else
             for (final p in providers) _ProviderRow(health: p),
+        ],
+      ),
+    );
+  }
+
+  Widget _models(List<ModelHealth> models) {
+    final text = Theme.of(context).textTheme;
+    return KarmiCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Models', style: text.titleMedium),
+          const SizedBox(height: 8),
+          if (models.isEmpty)
+            Text(kAdminUnavailable, style: text.bodyMedium)
+          else
+            for (final m in models) _ModelRow(health: m),
         ],
       ),
     );
@@ -287,6 +331,53 @@ class _ProviderRow extends StatelessWidget {
             Text(word, style: text.labelLarge?.copyWith(color: color)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ModelRow extends StatelessWidget {
+  const _ModelRow({required this.health});
+
+  final ModelHealth health;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final colors = KarmiColors.of(context);
+    final errorPct = health.errorRate == null
+        ? kAdminUnavailable
+        : '${(health.errorRate! * 100).toStringAsFixed(1)}%';
+    final p50 = health.p50LatencyMs == null
+        ? kAdminUnavailable
+        : '${health.p50LatencyMs!.round()} ms';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${health.model} (${health.provider})',
+                  style: text.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Text(
+                '${health.runs} runs',
+                style: text.labelMedium?.copyWith(
+                  color: colors.mutedForeground,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Error rate: $errorPct · p50: $p50',
+            style: text.bodyMedium?.copyWith(color: colors.mutedForeground),
+          ),
+        ],
       ),
     );
   }

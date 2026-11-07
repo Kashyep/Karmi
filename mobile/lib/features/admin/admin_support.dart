@@ -55,14 +55,16 @@ String adminErrorMessage(Object error) => switch (error) {
     'No connection to Karmi. Check your network and try again.',
   AdminFailure(kind: AdminFailureKind.timeout) =>
     'The server took too long to respond.',
+  AdminFailure(kind: AdminFailureKind.server, statusCode: 404) =>
+    'The requested item was not found.',
+  AdminFailure(kind: AdminFailureKind.server, statusCode: 409) =>
+    'This update conflicts with the current status. Refresh and try again.',
   AdminFailure(kind: AdminFailureKind.server, :final statusCode) =>
     'Karmi server error (HTTP $statusCode).',
   AdminFailure(kind: AdminFailureKind.badResponse) =>
     'Karmi returned an unexpected response.',
   _ => "Karmi couldn't complete that. Try again.",
 };
-
-String formatUsd(double value) => '\$${value.toStringAsFixed(2)}';
 
 String formatAdminDateTime(BuildContext context, DateTime? at) {
   if (at == null) return kAdminUnavailable;
