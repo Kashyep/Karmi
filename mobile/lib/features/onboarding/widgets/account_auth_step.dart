@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../auth/account_rules.dart';
 import '../../../auth/clerk_email_code_actions.dart';
+import '../../../auth/google_sign_in_button.dart';
 import '../../../theme/karmi_colors.dart';
 import 'onboarding_scaffold.dart';
 import 'otp_field.dart';
@@ -68,6 +69,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
   bool _awaitingCode = false;
   bool _busy = false;
   bool _showPassword = false;
+  bool _googleLoading = false;
   bool _offerSignIn = false;
   bool _offerCreate = false;
   final Map<AccountField, String> _errors = {};
@@ -127,6 +129,44 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
     setState(() => _busy = false);
     if (actions.isSignedIn) {
       widget.onSignedIn(_mode == _Mode.create ? _pendingDetails : null);
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    if (_busy) return;
+    final actions = widget.actions;
+    if (actions == null || actions.isNotAvailable) return;
+    setState(() {
+      _busy = true;
+      _googleLoading = true;
+      _clearErrors();
+    });
+    try {
+      final result = await actions.signInWithGoogle();
+      if (!mounted) return;
+      switch (result) {
+        case GoogleSignInSuccess():
+          widget.onSignedIn(_mode == _Mode.create ? _pendingDetails : null);
+        case GoogleSignInCancelled():
+          setState(() {
+            _errors[AccountField.form] = 'Google sign-in was cancelled.';
+          });
+        case GoogleSignInError(:final message):
+          setState(() {
+            _errors[AccountField.form] = message;
+          });
+      }
+    } catch (e) {
+      if (mounted) {
+        _onClerkError(e);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _googleLoading = false;
+        });
+      }
     }
   }
 
@@ -279,6 +319,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
     final textTheme = Theme.of(context).textTheme;
     final isCreate = _mode == _Mode.create;
     final email = _email.text.trim();
+    final actions = widget.actions;
 
     final title = _awaitingCode
         ? 'Enter verification code'
@@ -328,6 +369,32 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
               ],
             ),
           ] else ...[
+            if (actions != null && !actions.isNotAvailable) ...[
+              GoogleSignInButton(
+                key: const ValueKey('onboarding_google_button'),
+                onPressed: _busy || actions.isNotAvailable
+                    ? null
+                    : _signInWithGoogle,
+                isLoading: _googleLoading,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(child: Divider(color: colors.borderSubtle)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'or',
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colors.mutedForeground,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Divider(color: colors.borderSubtle)),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
             if (isCreate) ...[
               _field(
                 key: 'onboarding_first_name_field',
@@ -364,6 +431,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
             TextField(
               key: const ValueKey('onboarding_password_field'),
               controller: _password,
+              enabled: !_busy,
               obscureText: !_showPassword,
               autocorrect: false,
               enableSuggestions: false,
@@ -390,7 +458,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
                       setState(() => _showPassword = !_showPassword),
                 ),
               ),
-              onSubmitted: (_) => _submit(),
+              onSubmitted: _busy ? null : (_) => _submit(),
             ),
           ],
           if (!_awaitingCode && _errors[AccountField.form] != null) ...[
@@ -400,7 +468,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
             const SizedBox(height: 8),
             TextButton(
               key: const ValueKey('onboarding_offer_sign_in'),
-              onPressed: () => _switchMode(_Mode.signIn),
+              onPressed: _busy ? null : () => _switchMode(_Mode.signIn),
               child: const Text('Sign in instead'),
             ),
           ],
@@ -408,7 +476,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
             const SizedBox(height: 8),
             TextButton(
               key: const ValueKey('onboarding_offer_create'),
-              onPressed: () => _switchMode(_Mode.create),
+              onPressed: _busy ? null : () => _switchMode(_Mode.create),
               child: const Text('Create an account'),
             ),
           ],
@@ -416,8 +484,9 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
             const SizedBox(height: 12),
             TextButton(
               key: const ValueKey('onboarding_toggle_mode'),
-              onPressed: () =>
-                  _switchMode(isCreate ? _Mode.signIn : _Mode.create),
+              onPressed: _busy
+                  ? null
+                  : () => _switchMode(isCreate ? _Mode.signIn : _Mode.create),
               child: Text(
                 isCreate
                     ? 'Already have an account? Sign in'
@@ -442,13 +511,13 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
                 ? 'Create account'
                 : 'Sign in',
             isLoading: _busy,
-            onPressed: _submit,
+            onPressed: _busy ? null : _submit,
           ),
           if (widget.devAuthEnabled) ...[
             const SizedBox(height: 8),
             TextButton(
               key: const ValueKey('onboarding_dev_signin'),
-              onPressed: widget.onDevSignIn,
+              onPressed: _busy ? null : widget.onDevSignIn,
               child: const Text('Continue (development sign-in)'),
             ),
           ],
@@ -472,6 +541,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
       keyboardType: keyboardType,
       autocorrect: false,
       autofocus: autofocus,
+      enabled: !_busy,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -479,7 +549,7 @@ class _AccountAuthStepState extends State<AccountAuthStep> {
         errorStyle: _supportStyle(context, error: true),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      onSubmitted: (_) => _submit(),
+      onSubmitted: _busy ? null : (_) => _submit(),
     );
   }
 

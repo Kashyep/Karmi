@@ -22,6 +22,9 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   bool stallAfterPassword = false;
   Object? nextError;
   bool requireSecondFactor = false;
+  GoogleSignInResult googleSignInResult = const GoogleSignInSuccess();
+  GoogleSignInResult get nextGoogleResult => googleSignInResult;
+  set nextGoogleResult(GoogleSignInResult value) => googleSignInResult = value;
 
   final List<String> calls = [];
   String? lastSignUpUsername;
@@ -133,6 +136,15 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
     _signUpAwaitingCode = false;
     _signInAwaitingCode = false;
     _signInNeedsSecondFactor = false;
+  }
+
+  @override
+  Future<GoogleSignInResult> signInWithGoogle() async {
+    calls.add('signInWithGoogle');
+    if (googleSignInResult is GoogleSignInSuccess) {
+      isSignedIn = true;
+    }
+    return googleSignInResult;
   }
 }
 
