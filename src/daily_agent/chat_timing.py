@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, MutableMapping
 from datetime import UTC, datetime
 import logging
+import os
 import re
 import time
 from typing import Any
@@ -40,6 +41,16 @@ def match_chat_route(method: str, path: str) -> str | None:
         if req_method == m_upper and pattern.match(path):
             return route
     return None
+
+
+def is_chat_timing_enabled() -> bool:
+    """Return whether chat request timing logs and middleware are enabled.
+
+    Controlled via the DAILY_AGENT_CHAT_TIMING_ENABLED environment variable.
+    Defaults to True in all environments.
+    """
+    val = os.environ.get("DAILY_AGENT_CHAT_TIMING_ENABLED", "true").strip().lower()
+    return val not in ("false", "0", "no", "off")
 
 
 class ChatTimingMiddleware:
@@ -83,18 +94,23 @@ class ChatTimingMiddleware:
                 status_code = int(message.get("status", 500))
             await send(message)
 
+        inner_start = time.perf_counter()
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
+            inner_end = time.perf_counter()
             end_dt = datetime.now(UTC)
             end_iso = end_dt.isoformat()
             duration_ms = round((time.perf_counter() - start_perf) * 1000.0, 2)
+            inner_ms = round((inner_end - inner_start) * 1000.0, 2)
+            overhead_ms = round(max(0.0, duration_ms - inner_ms), 3)
 
             logger.info(
-                "chat.request.end route=%s status=%d duration_ms=%.2f start=%s end=%s",
+                "chat.request.end route=%s status=%d duration_ms=%.2f overhead_ms=%.3f start=%s end=%s",
                 route,
                 status_code,
                 duration_ms,
+                overhead_ms,
                 start_iso,
                 end_iso,
                 extra={
@@ -102,6 +118,8 @@ class ChatTimingMiddleware:
                     "route": route,
                     "status": status_code,
                     "duration_ms": duration_ms,
+                    "inner_duration_ms": inner_ms,
+                    "overhead_ms": overhead_ms,
                     "start": start_iso,
                     "end": end_iso,
                 },

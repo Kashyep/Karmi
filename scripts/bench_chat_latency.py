@@ -16,6 +16,7 @@ import json
 import os
 import re
 import signal
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -129,18 +130,25 @@ def calc_stats(samples: list[float]) -> dict[str, Any]:
     }
 
 
-def parse_server_timing_logs(log_content: str) -> tuple[list[float], list[str]]:
-    """Parse server-side timing durations (in ms) and return durations and sample log lines."""
+def parse_server_timing_logs(
+    log_content: str,
+) -> tuple[list[float], list[float], list[str]]:
+    """Parse server-side timing durations and overheads (in ms) and return durations, overheads, and log lines."""
     durations: list[float] = []
+    overheads: list[float] = []
     lines: list[str] = []
     chat_pattern = re.compile(
         r"chat\.(?:request\.)?(?:timing|end)[^\n]*duration_ms=([0-9.]+)"
     )
+    overhead_pattern = re.compile(r"overhead_ms=([0-9.]+)")
     for line in log_content.splitlines():
         m = chat_pattern.search(line)
         if m:
             durations.append(float(m.group(1)))
             lines.append(line.strip())
+            om = overhead_pattern.search(line)
+            if om:
+                overheads.append(float(om.group(1)))
     if not durations:
         fallback_pattern = re.compile(r"chat[^\n]*duration_ms=([0-9.]+)")
         for line in log_content.splitlines():
@@ -148,108 +156,65 @@ def parse_server_timing_logs(log_content: str) -> tuple[list[float], list[str]]:
             if m:
                 durations.append(float(m.group(1)))
                 lines.append(line.strip())
-    return durations, lines
+    return durations, overheads, lines
 
-def run_benchmark(
+
+def run_single_pass(
     *,
-    requests: int,
-    warmup: int,
-    fake_port: int,
     backend_port: int,
+    fake_port: int,
     endpoint: str,
     text: str,
     token_delay: float,
-    json_out: Path | None = None,
-) -> int:
-    validate_port_allowed(fake_port, "Fake provider")
-    validate_port_allowed(backend_port, "Backend")
+    requests: int,
+    warmup: int,
+    timing: bool,
+    label: str = "",
+) -> tuple[list[float], list[float], list[float], list[str]]:
+    """Run a single pass of the backend (with timing enabled or disabled).
 
-    fake_base_url = f"http://127.0.0.1:{fake_port}/api/v1"
-    backend_base_url = f"http://127.0.0.1:{backend_port}"
-
-    validate_localhost(fake_base_url, "Fake provider base URL")
-    validate_localhost(backend_base_url, "Backend base URL")
-
-    # Double check environment if already set
-    existing_openrouter = os.environ.get("OPENROUTER_BASE_URL", "")
-    if existing_openrouter:
-        validate_localhost(existing_openrouter, "OPENROUTER_BASE_URL")
-
-    print("=== Karmi Chat Request Latency Benchmark ===")
-    print(f"Endpoint: {endpoint}")
-    print(f"Requests: {requests} (warmup: {warmup})")
-    print(f"Fake provider port: {fake_port}")
-    print(f"Backend port: {backend_port}")
-    print(f"Fake token delay: {token_delay}s")
-
+    Returns (client_latencies, server_durations, server_overheads, sample_lines).
+    """
     tmp_dir = Path(os.environ.get("TMPDIR", tempfile.gettempdir())).expanduser().resolve()
     tmp_dir.mkdir(parents=True, exist_ok=True)
     stamp = int(time.time() * 1000)
     db_path = tmp_dir / f"karmi_bench_{stamp}.db"
     log_path = tmp_dir / f"karmi_bench_backend_{stamp}.log"
+    backend_base_url = f"http://127.0.0.1:{backend_port}"
 
-    fake_proc: subprocess.Popen[bytes] | None = None
+    backend_env = dict(os.environ)
+    backend_env["PYTHONPATH"] = os.pathsep.join(
+        filter(
+            None,
+            [
+                str(ROOT / "src"),
+                str(ROOT / "scripts"),
+                backend_env.get("PYTHONPATH"),
+            ],
+        )
+    )
+    backend_env["FAKE_PROVIDER_PORT"] = str(fake_port)
+    backend_env["FAKE_PROVIDER_HOST"] = "127.0.0.1"
+    backend_env["FAKE_TOKEN_DELAY"] = str(token_delay)
+    backend_env["DAILY_AGENT_ENVIRONMENT"] = "development"
+    backend_env["DAILY_AGENT_DATABASE_URL"] = f"sqlite+pysqlite:///{db_path.resolve()}"
+    backend_env["DAILY_AGENT_DATA_DIR"] = str(tmp_dir)
+    backend_env["DAILY_AGENT_ALLOW_DEVELOPMENT_AUTH"] = "true"
+    backend_env["DAILY_AGENT_GATEWAY_DAILY_REQUEST_LIMIT"] = "1000000"
+    backend_env["DAILY_AGENT_GATEWAY_PAID_RESERVED_REQUESTS"] = "0"
+    backend_env["DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO"] = "100000000"
+    backend_env["DAILY_AGENT_RATE_LIMIT_PER_MINUTE"] = "10000"
+    backend_env["DAILY_AGENT_LIVE_MODELS_ENABLED"] = "true"
+    backend_env["DAILY_AGENT_OPENROUTER_ENABLED"] = "true"
+    backend_env["DAILY_AGENT_OPENROUTER_API_KEY"] = "fake-local-key"
+    backend_env["DAILY_AGENT_CHAT_TIMING_ENABLED"] = "true" if timing else "false"
+    backend_env["LOAD_APP_LOG_LEVEL"] = "INFO"
+
+    log_file = open(log_path, "w", encoding="utf-8")
     backend_proc: subprocess.Popen[str] | None = None
+    client_latencies: list[float] = []
 
     try:
-        # 1. Start fake provider if not already running
-        if not wait_for_url(f"{fake_base_url}/models", timeout_s=0.5):
-            print(f"Starting local fake provider on port {fake_port}...")
-            fake_env = dict(os.environ)
-            fake_env["FAKE_TOKEN_DELAY"] = str(token_delay)
-            fake_proc = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "dev_fake_provider.py"),
-                    "fake",
-                    "--host",
-                    "127.0.0.1",
-                    "--port",
-                    str(fake_port),
-                ],
-                cwd=str(ROOT),
-                env=fake_env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            if not wait_for_url(f"{fake_base_url}/models", timeout_s=5.0):
-                # Try simple GET on root/completions
-                if not wait_for_url(f"http://127.0.0.1:{fake_port}/", timeout_s=5.0):
-                    raise RuntimeError("Fake provider failed to start")
-            print("Fake provider is ready.")
-        else:
-            print(f"Fake provider already running on port {fake_port}.")
-
-        # 2. Start backend
-        print(f"Starting backend on port {backend_port}...")
-        backend_env = dict(os.environ)
-        backend_env["PYTHONPATH"] = os.pathsep.join(
-            filter(
-                None,
-                [
-                    str(ROOT / "src"),
-                    str(ROOT / "scripts"),
-                    backend_env.get("PYTHONPATH"),
-                ],
-            )
-        )
-        backend_env["FAKE_PROVIDER_PORT"] = str(fake_port)
-        backend_env["FAKE_PROVIDER_HOST"] = "127.0.0.1"
-        backend_env["FAKE_TOKEN_DELAY"] = str(token_delay)
-        backend_env["DAILY_AGENT_ENVIRONMENT"] = "development"
-        backend_env["DAILY_AGENT_DATABASE_URL"] = f"sqlite+pysqlite:///{db_path.resolve()}"
-        backend_env["DAILY_AGENT_DATA_DIR"] = str(tmp_dir)
-        backend_env["DAILY_AGENT_ALLOW_DEVELOPMENT_AUTH"] = "true"
-        backend_env["DAILY_AGENT_GATEWAY_DAILY_REQUEST_LIMIT"] = "1000000"
-        backend_env["DAILY_AGENT_GATEWAY_PAID_RESERVED_REQUESTS"] = "0"
-        backend_env["DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO"] = "100000000"
-        backend_env["DAILY_AGENT_RATE_LIMIT_PER_MINUTE"] = "10000"
-        backend_env["DAILY_AGENT_LIVE_MODELS_ENABLED"] = "true"
-        backend_env["DAILY_AGENT_OPENROUTER_ENABLED"] = "true"
-        backend_env["DAILY_AGENT_OPENROUTER_API_KEY"] = "fake-local-key"
-        backend_env["LOAD_APP_LOG_LEVEL"] = "INFO"
-
-        log_file = open(log_path, "w", encoding="utf-8")
         backend_proc = subprocess.Popen(
             [
                 sys.executable,
@@ -279,15 +244,12 @@ def run_benchmark(
             log_file.flush()
             err_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
             raise RuntimeError(f"Backend failed to start / ready check timed out. Backend log:\n{err_text}")
-        print("Backend is ready.")
 
-        # 3. Issue dev token
+        # Issue dev token
         with httpx.Client(base_url=backend_base_url, timeout=10.0) as client:
             token_res = client.post("/dev/token?role=customer")
             token_res.raise_for_status()
             token = token_res.json()["token"]
-            user_id = token_res.json().get("user_id", "")
-            print(f"Obtained dev token for user: {user_id}")
 
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -333,13 +295,11 @@ def run_benchmark(
                 t1 = time.perf_counter()
                 return (t1 - t0) * 1000.0
 
-            # 4. Warmup requests
             if warmup > 0:
-                print(f"Warming up ({warmup} requests)...")
+                print(f"[{label}] Warming up ({warmup} requests)...")
                 for i in range(warmup):
                     issue_one(i)
                     if i == 0:
-                        # After the first request creates the usage window, expand limits on the scratch DB
                         import sqlite3
                         with sqlite3.connect(str(db_path)) as conn:
                             conn.execute("UPDATE subscriptions SET plan_id = 'parth'")
@@ -349,19 +309,15 @@ def run_benchmark(
                             )
                             conn.execute("UPDATE usage_periods SET spend_limit_micro = 1000000000")
                             conn.execute("UPDATE platform_budgets SET spend_limit_micro = 1000000000")
-                print("Warmup complete.")
 
-            # 5. Measured sequential requests
-            print(f"Running {requests} sequential requests...")
-            client_latencies: list[float] = []
+            print(f"[{label}] Running {requests} sequential requests...")
             for i in range(requests):
                 lat = issue_one(warmup + i)
                 client_latencies.append(lat)
                 if (i + 1) % 50 == 0 or (i + 1) == requests:
-                    print(f"  [{i + 1}/{requests}] latest: {lat:.1f} ms")
+                    print(f"  [{label}] [{i + 1}/{requests}] latest: {lat:.1f} ms")
 
     finally:
-        # Tear down backend
         if backend_proc is not None:
             backend_proc.send_signal(signal.SIGINT)
             try:
@@ -371,6 +327,303 @@ def run_benchmark(
                 backend_proc.wait()
             log_file.close()
 
+        if db_path.exists():
+            db_path.unlink(missing_ok=True)
+
+    backend_log_content = ""
+    if log_path.exists():
+        backend_log_content = log_path.read_text(encoding="utf-8", errors="replace")
+        log_path.unlink(missing_ok=True)
+
+    all_durations, all_overheads, sample_lines = parse_server_timing_logs(backend_log_content)
+    if len(all_durations) > requests:
+        server_durations = all_durations[-requests:]
+        display_lines = sample_lines[-requests:]
+    else:
+        server_durations = all_durations
+        display_lines = sample_lines
+
+    if len(all_overheads) > requests:
+        server_overheads = all_overheads[-requests:]
+    else:
+        server_overheads = all_overheads
+
+    return client_latencies, server_durations, server_overheads, display_lines
+
+
+def run_benchmark(
+    *,
+    requests: int,
+    warmup: int,
+    fake_port: int,
+    backend_port: int,
+    endpoint: str,
+    text: str,
+    token_delay: float,
+    timing: bool = True,
+    compare: bool = False,
+    rounds: int = 3,
+    json_out: Path | None = None,
+) -> int:
+    validate_port_allowed(fake_port, "Fake provider")
+    validate_port_allowed(backend_port, "Backend")
+
+    fake_base_url = f"http://127.0.0.1:{fake_port}/api/v1"
+    backend_base_url = f"http://127.0.0.1:{backend_port}"
+
+    validate_localhost(fake_base_url, "Fake provider base URL")
+    validate_localhost(backend_base_url, "Backend base URL")
+
+    # Double check environment if already set
+    existing_openrouter = os.environ.get("OPENROUTER_BASE_URL", "")
+    if existing_openrouter:
+        validate_localhost(existing_openrouter, "OPENROUTER_BASE_URL")
+
+    print("=== Karmi Chat Request Latency Benchmark ===")
+    print(f"Endpoint: {endpoint}")
+    print(f"Requests per pass: {requests} (warmup: {warmup})")
+    print(f"Fake provider port: {fake_port}")
+    print(f"Backend port: {backend_port}")
+    print(f"Fake token delay: {token_delay}s")
+    if compare:
+        print(f"Mode: A/B Comparison ({rounds} rounds of [BEFORE, AFTER])")
+    else:
+        print(f"Mode: Single Pass (timing={'enabled' if timing else 'disabled'})")
+
+    fake_proc: subprocess.Popen[bytes] | None = None
+
+    try:
+        # Start fake provider if not already running
+        if not wait_for_url(f"{fake_base_url}/models", timeout_s=0.5):
+            print(f"Starting local fake provider on port {fake_port}...")
+            fake_env = dict(os.environ)
+            fake_env["FAKE_TOKEN_DELAY"] = str(token_delay)
+            fake_proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "dev_fake_provider.py"),
+                    "fake",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(fake_port),
+                ],
+                cwd=str(ROOT),
+                env=fake_env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if not wait_for_url(f"{fake_base_url}/models", timeout_s=5.0):
+                if not wait_for_url(f"http://127.0.0.1:{fake_port}/", timeout_s=5.0):
+                    raise RuntimeError("Fake provider failed to start")
+            print("Fake provider is ready.")
+        else:
+            print(f"Fake provider already running on port {fake_port}.")
+
+        if not compare:
+            client_lats, server_durs, server_ovhs, sample_lines = run_single_pass(
+                backend_port=backend_port,
+                fake_port=fake_port,
+                endpoint=endpoint,
+                text=text,
+                token_delay=token_delay,
+                requests=requests,
+                warmup=warmup,
+                timing=timing,
+                label="PASS",
+            )
+            client_stats = calc_stats(client_lats)
+            server_stats = calc_stats(server_durs)
+            overhead_stats = calc_stats(server_ovhs)
+
+            print("\n" + "=" * 50)
+            print("BENCHMARK RESULTS")
+            print("=" * 50)
+            print(f"Endpoint: {endpoint}")
+            print(f"Completed requests: {len(client_lats)} (target: {requests})")
+            print("\nClient-Observed Latency (ms):")
+            print(f"  Count: {client_stats['count']}")
+            print(f"  p50:   {client_stats['p50']} ms")
+            print(f"  p95:   {client_stats['p95']} ms")
+            print(f"  p99:   {client_stats['p99']} ms")
+            print(f"  Min:   {client_stats['min']} ms")
+            print(f"  Max:   {client_stats['max']} ms")
+            print(f"  Mean:  {client_stats['mean']} ms")
+
+            print("\nServer-Side Timing Log Durations (ms):")
+            if server_stats["count"] > 0:
+                print(f"  Count: {server_stats['count']}")
+                print(f"  p50:   {server_stats['p50']} ms")
+                print(f"  p95:   {server_stats['p95']} ms")
+                print(f"  p99:   {server_stats['p99']} ms")
+                print(f"  Min:   {server_stats['min']} ms")
+                print(f"  Max:   {server_stats['max']} ms")
+                print(f"  Mean:  {server_stats['mean']} ms")
+            else:
+                print("  None detected (timing middleware disabled)")
+
+            if overhead_stats["count"] > 0:
+                print("\nServer-Side Per-Request Middleware Overhead (ms):")
+                print(f"  Count: {overhead_stats['count']}")
+                print(f"  p50:   {overhead_stats['p50']} ms")
+                print(f"  p95:   {overhead_stats['p95']} ms")
+                print(f"  Mean:  {overhead_stats['mean']} ms")
+
+            if sample_lines:
+                print("\nSample Server Timing Log Lines (first 3):")
+                for line in sample_lines[:3]:
+                    print(f"  {line}")
+
+            print("=" * 50)
+
+            if json_out is not None:
+                report = {
+                    "endpoint": endpoint,
+                    "requests": requests,
+                    "warmup": warmup,
+                    "client_stats": client_stats,
+                    "server_stats": server_stats,
+                    "overhead_stats": overhead_stats,
+                    "client_latencies": client_lats,
+                    "server_durations": server_durs,
+                }
+                json_out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+                print(f"Wrote JSON report to {json_out}")
+            return 0
+
+        # Compare mode: alternating rounds
+        print(f"\nRunning {rounds} alternating rounds of (BEFORE, AFTER)...")
+        round_results: list[dict[str, Any]] = []
+        for r in range(1, rounds + 1):
+            print(f"\n>>> ROUND {r}/{rounds}: BEFORE (timing disabled) <<<")
+            b_client, b_server, b_overhead, b_samples = run_single_pass(
+                backend_port=backend_port,
+                fake_port=fake_port,
+                endpoint=endpoint,
+                text=text,
+                token_delay=token_delay,
+                requests=requests,
+                warmup=warmup,
+                timing=False,
+                label=f"R{r}-BEFORE",
+            )
+            print(f"\n>>> ROUND {r}/{rounds}: AFTER (timing enabled) <<<")
+            a_client, a_server, a_overhead, a_samples = run_single_pass(
+                backend_port=backend_port,
+                fake_port=fake_port,
+                endpoint=endpoint,
+                text=text,
+                token_delay=token_delay,
+                requests=requests,
+                warmup=warmup,
+                timing=True,
+                label=f"R{r}-AFTER",
+            )
+            round_results.append({
+                "round": r,
+                "before": {
+                    "client": calc_stats(b_client),
+                    "server": calc_stats(b_server),
+                    "client_latencies": b_client,
+                    "server_durations": b_server,
+                },
+                "after": {
+                    "client": calc_stats(a_client),
+                    "server": calc_stats(a_server),
+                    "overhead": calc_stats(a_overhead),
+                    "client_latencies": a_client,
+                    "server_durations": a_server,
+                    "server_overheads": a_overhead,
+                    "samples": a_samples[:3],
+                },
+            })
+
+        print("\n" + "=" * 65)
+        print("A/B COMPARISON ROUND-BY-ROUND RESULTS")
+        print("=" * 65)
+        for rr in round_results:
+            r = rr["round"]
+            bc = rr["before"]["client"]
+            ac = rr["after"]["client"]
+            asv = rr["after"]["server"]
+            aov = rr["after"]["overhead"]
+            print(f"\nRound {r}:")
+            print(f"  BEFORE: Client p50={bc['p50']} ms, p95={bc['p95']} ms | Server: N/A (middleware disabled)")
+            print(f"  AFTER:  Client p50={ac['p50']} ms, p95={ac['p95']} ms | Server p50={asv['p50']} ms, p95={asv['p95']} ms")
+            if aov["count"] > 0:
+                print(f"  Direct Middleware Overhead: p50={aov['p50']} ms, p95={aov['p95']} ms, mean={aov['mean']} ms")
+
+        # Median calculations
+        b_c_p50s = [rr["before"]["client"]["p50"] for rr in round_results if rr["before"]["client"]["p50"] is not None]
+        b_c_p95s = [rr["before"]["client"]["p95"] for rr in round_results if rr["before"]["client"]["p95"] is not None]
+        a_c_p50s = [rr["after"]["client"]["p50"] for rr in round_results if rr["after"]["client"]["p50"] is not None]
+        a_c_p95s = [rr["after"]["client"]["p95"] for rr in round_results if rr["after"]["client"]["p95"] is not None]
+        a_s_p50s = [rr["after"]["server"]["p50"] for rr in round_results if rr["after"]["server"]["p50"] is not None]
+        a_s_p95s = [rr["after"]["server"]["p95"] for rr in round_results if rr["after"]["server"]["p95"] is not None]
+        a_o_p50s = [rr["after"]["overhead"]["p50"] for rr in round_results if rr["after"]["overhead"]["p50"] is not None]
+        a_o_p95s = [rr["after"]["overhead"]["p95"] for rr in round_results if rr["after"]["overhead"]["p95"] is not None]
+        a_o_means = [rr["after"]["overhead"]["mean"] for rr in round_results if rr["after"]["overhead"]["mean"] is not None]
+
+        med_b_c_p50 = round(statistics.median(b_c_p50s), 2) if b_c_p50s else None
+        med_b_c_p95 = round(statistics.median(b_c_p95s), 2) if b_c_p95s else None
+        med_a_c_p50 = round(statistics.median(a_c_p50s), 2) if a_c_p50s else None
+        med_a_c_p95 = round(statistics.median(a_c_p95s), 2) if a_c_p95s else None
+        med_a_s_p50 = round(statistics.median(a_s_p50s), 2) if a_s_p50s else None
+        med_a_s_p95 = round(statistics.median(a_s_p95s), 2) if a_s_p95s else None
+        med_a_o_p50 = round(statistics.median(a_o_p50s), 3) if a_o_p50s else None
+        med_a_o_p95 = round(statistics.median(a_o_p95s), 3) if a_o_p95s else None
+        med_a_o_mean = round(statistics.median(a_o_means), 3) if a_o_means else None
+
+        print("\n" + "=" * 65)
+        print("MEDIAN OF ROUNDS SUMMARY")
+        print("=" * 65)
+        print("BEFORE (Timing Middleware Disabled):")
+        print(f"  Client Latency p50:  {med_b_c_p50} ms")
+        print(f"  Client Latency p95:  {med_b_c_p95} ms")
+        print("  Server Timing Logs:  N/A (middleware disabled)")
+        print("\nAFTER (Timing Middleware Enabled):")
+        print(f"  Client Latency p50:  {med_a_c_p50} ms")
+        print(f"  Client Latency p95:  {med_a_c_p95} ms")
+        print(f"  Server Duration p50: {med_a_s_p50} ms")
+        print(f"  Server Duration p95: {med_a_s_p95} ms")
+        if med_a_o_p50 is not None:
+            print("\nPer-Request Middleware Overhead (Direct):")
+            print(f"  Overhead p50:        {med_a_o_p50} ms")
+            print(f"  Overhead p95:        {med_a_o_p95} ms")
+            print(f"  Overhead Mean:       {med_a_o_mean} ms")
+
+        if round_results and round_results[-1]["after"]["samples"]:
+            print("\nSample Server Timing Log Lines (from last AFTER run):")
+            for line in round_results[-1]["after"]["samples"]:
+                print(f"  {line}")
+
+        print("=" * 65)
+
+        if json_out is not None:
+            report = {
+                "endpoint": endpoint,
+                "requests_per_pass": requests,
+                "warmup": warmup,
+                "rounds": rounds,
+                "round_results": round_results,
+                "median_summary": {
+                    "before_client_p50": med_b_c_p50,
+                    "before_client_p95": med_b_c_p95,
+                    "after_client_p50": med_a_c_p50,
+                    "after_client_p95": med_a_c_p95,
+                    "after_server_p50": med_a_s_p50,
+                    "after_server_p95": med_a_s_p95,
+                    "overhead_p50": med_a_o_p50,
+                    "overhead_p95": med_a_o_p95,
+                    "overhead_mean": med_a_o_mean,
+                },
+            }
+            json_out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            print(f"Wrote JSON report to {json_out}")
+
+        return 0
+
+    finally:
         # Tear down fake provider
         if fake_proc is not None:
             fake_proc.send_signal(signal.SIGINT)
@@ -379,74 +632,6 @@ def run_benchmark(
             except subprocess.TimeoutExpired:
                 fake_proc.kill()
                 fake_proc.wait()
-
-        # Clean up database
-        if db_path.exists():
-            db_path.unlink(missing_ok=True)
-
-    # Read backend logs to extract server-side timing durations
-    backend_log_content = ""
-    if log_path.exists():
-        backend_log_content = log_path.read_text(encoding="utf-8", errors="replace")
-        log_path.unlink(missing_ok=True)
-
-    all_server_durations, sample_lines = parse_server_timing_logs(backend_log_content)
-    # Exclude warmup server durations if present
-    if len(all_server_durations) > requests:
-        server_durations = all_server_durations[-requests:]
-        display_lines = sample_lines[-requests:]
-    else:
-        server_durations = all_server_durations
-        display_lines = sample_lines
-    client_stats = calc_stats(client_latencies)
-    server_stats = calc_stats(server_durations)
-
-    print("\n" + "=" * 50)
-    print("BENCHMARK RESULTS")
-    print("=" * 50)
-    print(f"Endpoint: {endpoint}")
-    print(f"Completed requests: {len(client_latencies)} (target: {requests})")
-    print("\nClient-Observed Latency (ms):")
-    print(f"  Count: {client_stats['count']}")
-    print(f"  p50:   {client_stats['p50']} ms")
-    print(f"  p95:   {client_stats['p95']} ms")
-    print(f"  p99:   {client_stats['p99']} ms")
-    print(f"  Min:   {client_stats['min']} ms")
-    print(f"  Max:   {client_stats['max']} ms")
-    print(f"  Mean:  {client_stats['mean']} ms")
-
-    print("\nServer-Side Timing Log Durations (ms):")
-    if server_stats["count"] > 0:
-        print(f"  Count: {server_stats['count']}")
-        print(f"  p50:   {server_stats['p50']} ms")
-        print(f"  p95:   {server_stats['p95']} ms")
-        print(f"  p99:   {server_stats['p99']} ms")
-        print(f"  Min:   {server_stats['min']} ms")
-        print(f"  Max:   {server_stats['max']} ms")
-        print(f"  Mean:  {server_stats['mean']} ms")
-    else:
-        print("  None detected (unmodified backend before timing logs were added)")
-    if display_lines:
-        print("\nSample Server Timing Log Lines (first 3):")
-        for line in display_lines[:3]:
-            print(f"  {line}")
-
-    print("=" * 50)
-
-    if json_out is not None:
-        report = {
-            "endpoint": endpoint,
-            "requests": requests,
-            "warmup": warmup,
-            "client_stats": client_stats,
-            "server_stats": server_stats,
-            "client_latencies": client_latencies,
-            "server_durations": server_durations,
-        }
-        json_out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-        print(f"Wrote JSON report to {json_out}")
-
-    return 0
 
 
 def main() -> int:
@@ -496,6 +681,22 @@ def main() -> int:
         help="Token delay in seconds for fake provider (default: 0.005)",
     )
     parser.add_argument(
+        "--no-timing",
+        action="store_true",
+        help="Disable chat timing middleware (single-pass mode)",
+    )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Run alternating A/B rounds (BEFORE vs AFTER) and report round stats and medians",
+    )
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=3,
+        help="Number of alternating rounds for --compare mode (default: 3)",
+    )
+    parser.add_argument(
         "--json-out",
         type=Path,
         default=None,
@@ -506,6 +707,8 @@ def main() -> int:
 
     if args.requests < 1:
         parser.error("--requests must be at least 1")
+    if args.rounds < 1:
+        parser.error("--rounds must be at least 1")
 
     return run_benchmark(
         requests=args.requests,
@@ -515,6 +718,9 @@ def main() -> int:
         endpoint=args.endpoint,
         text=args.text,
         token_delay=args.token_delay,
+        timing=not args.no_timing,
+        compare=args.compare,
+        rounds=args.rounds,
         json_out=args.json_out,
     )
 

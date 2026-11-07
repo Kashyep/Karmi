@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_for_code
 from daily_agent.admin_metrics import MetricsMiddleware
 from daily_agent.bug_reports import create_bug_report, get_bug_report
-from daily_agent.chat_timing import ChatTimingMiddleware
+from daily_agent.chat_timing import ChatTimingMiddleware, is_chat_timing_enabled
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_engine, get_session
 from daily_agent.db_admission import DatabaseBusy
@@ -163,7 +163,8 @@ def create_app() -> FastAPI:
     app.include_router(conversations_router)
     app.include_router(admin_router)
     app.add_middleware(MetricsMiddleware)
-    app.add_middleware(ChatTimingMiddleware)
+    if is_chat_timing_enabled():
+        app.add_middleware(ChatTimingMiddleware)
 
     @app.exception_handler(InputTooLarge)
     def input_too_large(_request: Request, exc: InputTooLarge) -> JSONResponse:
