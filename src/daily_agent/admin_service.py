@@ -823,13 +823,19 @@ def build_monitor(
     )
 
     since_24h = now - timedelta(hours=24)
-    recent_runs = session.scalars(
-        select(Run).where(
+    recent_runs = session.execute(
+        select(
+            Run.served_model,
+            Run.served_provider,
+            Run.status,
+            Run.created_at,
+            Run.latency_ms,
+        ).where(
             Run.created_at >= since_24h,
             Run.served_model.is_not(None),
         )
     ).all()
-    models_map: dict[tuple[str, str], list[Run]] = {
+    models_map: dict[tuple[str, str], list[Any]] = {
         (m.model_id, m.provider): [] for m in gateway.registry.models
     }
     for r in recent_runs:

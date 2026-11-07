@@ -107,19 +107,18 @@ def create_bug_report(
     # 3. Rate limit check: max 3 new reports per rolling 24 hours per user
     now = datetime.now(UTC)
     window_start = now - timedelta(hours=24)
-    recent_reports = session.scalars(
-        select(BugReport)
-        .where(
+    report_count, oldest_created = session.execute(
+        select(
+            func.count(BugReport.id),
+            func.min(BugReport.created_at),
+        ).where(
             BugReport.user_id == principal.user_id,
             BugReport.created_at >= window_start,
         )
-        .order_by(BugReport.created_at.asc())
-    ).all()
+    ).one()
 
-    if len(recent_reports) >= 3:
-        oldest_in_window = recent_reports[0]
-        oldest_created = oldest_in_window.created_at
-        if oldest_created.tzinfo is None:
+    if report_count >= 3:
+        if oldest_created is not None and oldest_created.tzinfo is None:
             oldest_created = oldest_created.replace(tzinfo=UTC)
         reset_time = oldest_created + timedelta(hours=24)
         retry_after = max(1, int((reset_time - now).total_seconds()))

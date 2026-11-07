@@ -398,6 +398,20 @@ def test_monitor_new_keys_present_with_correct_values_on_seeded_db(env: Env) -> 
     assert mon["open_bug_reports"] == 2
     assert isinstance(mon["cost_today_inr"], float)
     assert isinstance(mon["model_health"], list)
+    assert len(mon["model_health"]) > 0
+    expected_model_health_keys = {
+        "model",
+        "provider",
+        "last_success_at",
+        "error_rate",
+        "p50_latency_ms",
+        "runs",
+    }
+    forbidden_key_substrings = ("prompt", "reply", "token", "secret", "message")
+    for entry in mon["model_health"]:
+        assert set(entry.keys()) == expected_model_health_keys
+        for key in entry.keys():
+            assert not any(forbidden in key for forbidden in forbidden_key_substrings)
 
     # Check model health entry for fake-economy
     economy_health = [m for m in mon["model_health"] if m["model"] == "fake-economy"]
