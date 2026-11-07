@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_for_code
 from daily_agent.admin_metrics import MetricsMiddleware
+from daily_agent.body_limit import BugReportBodyLimitMiddleware
 from daily_agent.bug_reports import create_bug_report, get_bug_report
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import create_schema, get_engine, get_session
@@ -127,6 +128,7 @@ def _profile_user(session: Session, principal: Principal) -> User:
 
 def create_app() -> FastAPI:
     install_log_redaction()
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         settings = get_settings()
@@ -157,7 +159,7 @@ def create_app() -> FastAPI:
     app_settings = get_settings()
     if app_settings.gzip_enabled:
         app.add_middleware(SSEAwareGZip, minimum_size=app_settings.gzip_min_size)
-
+    app.add_middleware(BugReportBodyLimitMiddleware)
     app.include_router(stream_router)
     app.include_router(conversations_router)
     app.include_router(admin_router)
@@ -209,7 +211,8 @@ def create_app() -> FastAPI:
     @app.post("/dev/token")
     def development_token(
         role: str = "customer",
-        session: Session = Depends(get_session), settings: Settings = Depends(get_settings)
+        session: Session = Depends(get_session),
+        settings: Settings = Depends(get_settings),
     ) -> dict[str, str]:
         if not settings.allow_development_auth or not settings.is_development:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -571,7 +574,11 @@ def create_app() -> FastAPI:
             session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": exc.reset_at.isoformat()},
+                detail={
+                    "code": "ALLOWANCE_EXHAUSTED",
+                    "message": str(exc),
+                    "reset_at": exc.reset_at.isoformat(),
+                },
             ) from exc
         except ReservationInFlight as exc:
             session.rollback()
@@ -703,7 +710,6 @@ def create_app() -> FastAPI:
     ) -> MessageView:
         return execute_message(body, principal, session, settings, gateway)
 
-
     @app.post("/v1/access-code", response_model=AccessCodeView)
     def redeem_access_code(
         body: AccessCodeRedeem,
@@ -742,7 +748,9 @@ def create_app() -> FastAPI:
             session.commit()
             logger.info("access code upgraded account %s to %s", principal.account_id, plan_id)
         policy = SYNTHETIC_POLICIES[subscription.plan_id]
-        return AccessCodeView(plan_id=policy.plan_id, plan_label=policy.display_name, changed=changed)
+        return AccessCodeView(
+            plan_id=policy.plan_id, plan_label=policy.display_name, changed=changed
+        )
 
     @app.post("/v1/runs/{run_id}/feedback", response_model=FeedbackView)
     def rate_reply(
@@ -899,9 +907,7 @@ def create_app() -> FastAPI:
         if not stale:
             subscription.event_version = payload["version"]
             subscription.plan_id = payload["plan_id"]
-            subscription.status = (
-                "cancelled" if payload["type"] == "cancelled" else "active"
-            )
+            subscription.status = "cancelled" if payload["type"] == "cancelled" else "active"
             sync_account_progression(session, payload["account_id"])
             rebase_usage_window(session, payload["account_id"], plan_policy(subscription))
         try:
@@ -941,6 +947,7 @@ def create_app() -> FastAPI:
             content=json.dumps(data, indent=2),
             media_type="application/manifest+json",
         )
+
     return app
 
 

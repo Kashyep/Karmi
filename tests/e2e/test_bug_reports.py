@@ -92,6 +92,40 @@ def test_create_bug_report_and_replay_and_conflict(test_context: dict[str, Any])
     assert "screenshot" not in detail
 
 
+def test_replay_returns_200_and_does_not_increment_count(
+    test_context: dict[str, Any],
+) -> None:
+    client: TestClient = test_context["client"]  # type: ignore[assignment]
+    factory = test_context["factory"]
+    settings = test_context["settings"]
+
+    with factory() as session:  # type: ignore[operator]
+        _acc, user, token = create_identity(session, settings, name="replay-count-tester")  # type: ignore[arg-type]
+
+    report_id = str(uuid.uuid4())
+    payload = {
+        "client_report_id": report_id,
+        "category": "chat",
+        "description": "Report submitted then immediately replayed.",
+        "diagnostics": sample_diagnostics(),
+    }
+
+    # First submission -> 201 Created
+    r1 = client.post("/v1/bug-reports", headers=auth(token), json=payload)
+    assert r1.status_code == 201
+    created_ticket = r1.json()["ticket"]
+
+    # Replay submission -> 200 OK with same ticket
+    r2 = client.post("/v1/bug-reports", headers=auth(token), json=payload)
+    assert r2.status_code == 200
+    assert r2.json()["ticket"] == created_ticket
+
+    # Verify database count is exactly 1 (not incremented)
+    with factory() as session:  # type: ignore[operator]
+        reports = session.scalars(select(BugReport).where(BugReport.user_id == user.id)).all()
+        assert len(reports) == 1
+
+
 def test_rate_limit_and_replay_exemption(test_context: dict[str, Any]) -> None:
     client: TestClient = test_context["client"]  # type: ignore[assignment]
     factory = test_context["factory"]
@@ -153,6 +187,10 @@ def test_rate_limit_and_replay_exemption(test_context: dict[str, Any]) -> None:
     # Replay of an existing report still returns 200 (replays do not count against rate limit)
     replay = client.post("/v1/bug-reports", headers=auth(token), json=first_payload)
     assert replay.status_code == 200
+
+    with factory() as session:  # type: ignore[operator]
+        user_reports = session.scalars(select(BugReport).where(BugReport.user_id == _user.id)).all()
+        assert len(user_reports) == 3
 
 
 def test_screenshot_size_413_and_type_415(test_context: dict[str, Any]) -> None:
