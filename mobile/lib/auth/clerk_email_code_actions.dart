@@ -343,7 +343,7 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
             ?.firstFactorVerification
             ?.externalVerificationRedirectUrl;
         final redirectStarted = redirectUrl is String && redirectUrl.isNotEmpty;
-        if (!redirectStarted) {
+        if (!redirectStarted && !isTransferring && !ssoCallbackReceived) {
           finish(
             const GoogleSignInError(
               'Google sign-in could not start. Please try again.',
