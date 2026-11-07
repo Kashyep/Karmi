@@ -489,7 +489,7 @@
    * token once it is held. Any 401/403 while an admin session is held ends it.
    */
   async function api(method, path, options = {}) {
-    const { body, raw = false } = options;
+    const { body, raw = false, headers: extraHeaders } = options;
     if (state.adminToken && isExpired(state.expiresAt)) {
       endAdminSession('Your admin session expired. Enter the code again.');
       throw new ApiError(401, messageForStatus(401));
@@ -501,7 +501,7 @@
       resetToSignIn('Your sign-in ended. Sign in again to continue.');
       throw new ApiError(401, messageForStatus(401));
     }
-    const headers = { Accept: raw ? '*/*' : 'application/json', Authorization: `Bearer ${jwt}` };
+    const headers = { Accept: raw ? '*/*' : 'application/json', Authorization: `Bearer ${jwt}`, ...extraHeaders };
     if (state.adminToken) headers['X-Admin-Session'] = state.adminToken;
     const init = { method, headers, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' };
     if (body !== undefined) {
@@ -946,12 +946,14 @@
     return state.detailUser;
   }
 
-  /** Download the user's export. The reason is sent as ?reason= and recorded server-side. */
+  /** Download the user's export. The reason is sent via X-Admin-Reason header and recorded server-side. */
   async function exportUser(reason) {
     const user = requireDetailUser();
     if (!user) throw new Error('No user selected.');
-    const query = `?${new URLSearchParams({ reason }).toString()}`;
-    const res = await api('GET', `/users/${encodeId(user.id)}/export${query}`, { raw: true });
+    const res = await api('GET', `/users/${encodeId(user.id)}/export`, {
+      raw: true,
+      headers: { 'X-Admin-Reason': reason },
+    });
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

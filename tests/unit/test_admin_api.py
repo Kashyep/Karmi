@@ -410,7 +410,10 @@ def test_export_returns_json_and_is_audited(env: Env) -> None:
         session.commit()
     headers = env.headers()
     assert env.client.get(f"/v1/admin/users/{uid}/export", headers=headers).status_code == 422
-    r = env.client.get(f"/v1/admin/users/{uid}/export?reason=subject+access+request", headers=headers)
+    r = env.client.get(
+        f"/v1/admin/users/{uid}/export",
+        headers={**headers, "X-Admin-Reason": "subject access request"},
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["user"]["id"] == uid and body["conversations"][0]["title"] == "Trip"

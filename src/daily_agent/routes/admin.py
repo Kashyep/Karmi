@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, StrictInt, StringConstraints, model_validator
 from sqlalchemy.orm import Session
@@ -257,12 +257,16 @@ def set_user_credits(
 @router.get("/users/{user_id}/export")
 def export_user_data(
     user_id: str,
-    reason: Annotated[str, Query(min_length=3, max_length=500)],
+    x_admin_reason: Annotated[str | None, Header(alias="X-Admin-Reason")] = None,
+    reason: Annotated[str | None, Query(min_length=3, max_length=500)] = None,
     admin: AdminContext = Depends(require_admin_session),
     session: Session = Depends(get_session),
 ) -> JSONResponse:
+    effective_reason = (x_admin_reason or reason or "").strip()
+    if len(effective_reason) < 3 or len(effective_reason) > 500:
+        raise HTTPException(status_code=422, detail="Reason must be between 3 and 500 characters")
     return JSONResponse(
-        svc.export_user(session, admin.user.id, user_id, reason.strip()),
+        svc.export_user(session, admin.user.id, user_id, effective_reason),
         headers={
             "Content-Disposition": f'attachment; filename="user-{user_id}.json"',
             "Cache-Control": "no-store",
