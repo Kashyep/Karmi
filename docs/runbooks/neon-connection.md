@@ -5,7 +5,7 @@ Step 6: operator reported successful read-only pooled connection to neondb, Post
 Step 7: prepare private configuration:
 
 ```bash
-cd /home/rosso/Projects/Karmi
+cd <repo-root>
 .venv/bin/python -m scripts.setup_neon
 ```
 

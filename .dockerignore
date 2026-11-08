@@ -18,3 +18,7 @@ node_modules
 gh_2.55.0_linux_amd64*
 test_hotrow.py
 test_settlement.py
+*.jks
+*.keystore
+key.properties
+**/key.properties
