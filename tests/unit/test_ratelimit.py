@@ -30,6 +30,8 @@ def test_limiter_blocks_after_the_limit_per_key_and_recovers() -> None:
     [
         "Bearer abcdefghijklmnopqrstuvwxyz",
         "sk-or-v1-abcdef0123456789",
+        "sk_" + "live_" + "1234567890abcdef12345678",
+        "sk_" + "test_" + "1234567890abcdef12345678",
         "AIza" + "A" * 35,
         "api-key=hunter2hunter2",
         "apikey=hunter2hunter2",
@@ -89,6 +91,8 @@ def test_redact_leaves_non_matching_messages_unchanged() -> None:
     [
         ("Bearer abcdefghijklmnopqrstuvwxyz", "abcdefghijkl"),
         ("sk-or-v1-abcdef0123456789", "abcdef0123456789"),
+        ("sk_" + "live_" + "1234567890abcdef12345678", "abcdef12345678"),
+        ("sk_" + "test_" + "1234567890abcdef12345678", "abcdef12345678"),
         ("AIza" + "A" * 35, "A" * 20),
         ("api-key=supersecretapikey123", "supersecretapikey123"),
         ("apikey=supersecretapikey456", "supersecretapikey456"),
