@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/auth/clerk_email_code_actions.dart';
+import 'package:karmi_app/auth/account_rules.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../support/fake_clerk_actions.dart';
 
 void main() {
   group('missingFieldsMessage', () {
@@ -326,6 +329,75 @@ void main() {
         ssoCallbackReceived: true,
       );
       expect(failure, isNull);
+    });
+  });
+
+  group('SsoCallbackHandler', () {
+    final callback = Uri.parse(
+      'ai.karmi.app://sso-callback?rotating_token_nonce=abc',
+    );
+
+    late List<Uri> parsed;
+    late List<GoogleSignInError> failures;
+    late int started;
+    late int processed;
+
+    SsoCallbackHandler build(Future<Object?> Function(Uri) parse) {
+      parsed = [];
+      failures = [];
+      started = 0;
+      processed = 0;
+      return SsoCallbackHandler(
+        parse: (uri) {
+          parsed.add(uri);
+          return parse(uri);
+        },
+        onStarted: () => started++,
+        onFailure: failures.add,
+        onProcessed: () async {
+          processed++;
+        },
+      );
+    }
+
+    test('successful exchange hands over to the state check', () async {
+      final handler = build((_) async => true);
+      await handler.handle(callback);
+      expect(parsed, [callback]);
+      expect(started, 1);
+      expect(processed, 1);
+      expect(failures, isEmpty);
+    });
+
+    test('failed exchange surfaces the mapped error without waiting', () async {
+      final error = clerkErrorWithCodes(['form_code_incorrect']);
+      final handler = build((_) => Future.error(error));
+      await handler.handle(callback);
+      expect(failures, hasLength(1));
+      expect(failures.single.message, issueFromClerkError(error).message);
+      expect(processed, 0);
+    });
+
+    test(
+      'unrelated links are ignored and do not consume the attempt',
+      () async {
+        final handler = build((_) async => true);
+        await handler.handle(Uri.parse('https://example.com/?x=1'));
+        await handler.handle(Uri.parse('ai.karmi.app://other'));
+        expect(parsed, isEmpty);
+        expect(started, 0);
+        await handler.handle(callback);
+        expect(parsed, [callback]);
+      },
+    );
+
+    test('duplicate callbacks are processed only once', () async {
+      final handler = build((_) async => true);
+      await Future.wait([handler.handle(callback), handler.handle(callback)]);
+      await handler.handle(callback);
+      expect(parsed, hasLength(1));
+      expect(started, 1);
+      expect(processed, 1);
     });
   });
 }

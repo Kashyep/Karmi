@@ -204,4 +204,73 @@ void main() {
       await eventController.close();
     });
   });
+
+  group('cold-start SSO callback', () {
+    final link = Uri.parse(
+      'ai.karmi.app://sso-callback?rotating_token_nonce=n',
+    );
+
+    test('readInitialSsoCallback returns only valid SSO links', () async {
+      expect(
+        await readInitialSsoCallback(
+          getInitialLink: () async => link.toString(),
+        ),
+        link,
+      );
+      expect(
+        await readInitialSsoCallback(getInitialLink: () async => null),
+        isNull,
+      );
+      expect(
+        await readInitialSsoCallback(getInitialLink: () async => ''),
+        isNull,
+      );
+      expect(
+        await readInitialSsoCallback(
+          getInitialLink: () async => 'https://x.test/',
+        ),
+        isNull,
+      );
+      expect(
+        await readInitialSsoCallback(
+          getInitialLink: () => throw StateError('x'),
+        ),
+        isNull,
+      );
+    });
+
+    test('exchanges the link once on success', () async {
+      final parsed = <Uri>[];
+      final ok = await exchangeColdStartSsoCallback(link, (u) async {
+        parsed.add(u);
+        return true;
+      });
+      expect(ok, isTrue);
+      expect(parsed, [link]);
+    });
+
+    test('swallows and reports failure without leaking the nonce', () async {
+      final reports = <String>[];
+      final ok = await exchangeColdStartSsoCallback(
+        link,
+        (_) => Future.error(StateError('nonce n rejected')),
+        report: reports.add,
+      );
+      expect(ok, isFalse);
+      expect(reports, hasLength(1));
+      expect(reports.single, isNot(contains('rotating_token_nonce')));
+      expect(reports.single, isNot(contains('nonce n')));
+    });
+
+    test('does nothing for null or non-SSO links', () async {
+      var calls = 0;
+      Future<Object?> parse(Uri _) async => ++calls;
+      expect(await exchangeColdStartSsoCallback(null, parse), isFalse);
+      expect(
+        await exchangeColdStartSsoCallback(Uri.parse('https://x.test/'), parse),
+        isFalse,
+      );
+      expect(calls, 0);
+    });
+  });
 }
