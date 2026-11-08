@@ -207,7 +207,7 @@ void main() {
     expect(fake.lastResetCode, '123456');
     expect(fake.lastResetPassword, 'Sunrise#42');
     expect(fake.isSignedIn, isTrue);
-    expect(find.text('What should we call you?'), findsOneWidget);
+    expect(find.text('Choose your plan'), findsOneWidget);
   });
 
   testWidgets('reset that needs a second factor reuses the email code step', (
@@ -232,7 +232,7 @@ void main() {
     await _enter(tester, const ValueKey('onboarding_otp_field'), '424242');
     await _tapCta(tester);
     expect(fake.calls.last, 'verifySignIn');
-    expect(find.text('What should we call you?'), findsOneWidget);
+    expect(find.text('Choose your plan'), findsOneWidget);
   });
 
   testWidgets('incorrect code error appears under the code field', (

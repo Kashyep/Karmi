@@ -210,7 +210,7 @@ void main() {
   );
 
   testWidgets(
-    'sign-in with password completes and advances to the profile step',
+    'sign-in with password completes and advances to the plan chooser step',
     (tester) async {
       final fake = FakeClerkEmailCodeActions();
       await _pumpFlow(tester, fake: fake);
@@ -232,7 +232,7 @@ void main() {
       expect(fake.calls, ['signIn']);
       expect(fake.lastSignInIdentifier, 'alice_k');
       expect(fake.lastPassword, 'Sunrise#42');
-      expect(find.text('What should we call you?'), findsOneWidget);
+      expect(find.text('Choose your plan'), findsOneWidget);
     },
   );
 
@@ -267,7 +267,7 @@ void main() {
     );
     await _tapCta(tester);
     expect(fake.calls.last, 'verifySignIn');
-    expect(find.text('What should we call you?'), findsOneWidget);
+    expect(find.text('Choose your plan'), findsOneWidget);
   });
 
   testWidgets(
@@ -357,41 +357,25 @@ void main() {
     expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
   });
 
-  testWidgets('profile save backend error is shown and does not advance', (
-    tester,
-  ) async {
-    // Signed-in session; PATCH /v1/user/profile is unrouted, so it fails.
+  testWidgets('sign-up with details advances to plan chooser', (tester) async {
     final fake = FakeClerkEmailCodeActions();
     final backend = FakeBackend()
-      ..on(
-        'POST',
-        '/dev/token',
-        (_) => jsonResponse({'token': 't', 'user_id': 'u'}),
-      );
-    await _pumpFlow(
-      tester,
-      fake: fake,
-      step: 2,
-      signedIn: true,
-      backend: backend,
-    );
-    expect(find.text('What should we call you?'), findsOneWidget);
+      ..on('PATCH', '/v1/user/profile', (_) => jsonResponse({'status': 'ok'}));
+    await _pumpFlow(tester, fake: fake, backend: backend);
 
-    await tester.enterText(
-      find.byKey(const ValueKey('onboarding_first_name_field')),
-      'Alice',
-    );
-    await tester.tap(find.byKey(const ValueKey('onboarding_profile_continue')));
+    await _fillCreateForm(tester);
+    await _tapCta(tester);
     await settle(tester);
 
-    expect(
-      find.text(
-        'Could not save your name. Check your connection and try again.',
-      ),
-      findsOneWidget,
+    // Verify OTP step
+    await tester.enterText(
+      find.byKey(const ValueKey('onboarding_otp_field')),
+      '424242',
     );
-    expect(find.text('What should we call you?'), findsOneWidget);
-    expect(find.text('Choose your model approach'), findsNothing);
+    await _tapCta(tester);
+    await settle(tester);
+
+    expect(find.text('Choose your plan'), findsOneWidget);
   });
 
   group('DEV-001 & DEV-002 auth form navigation and error display', () {
