@@ -236,6 +236,7 @@ class _KarmiAppState extends State<KarmiApp> {
                     armory: widget.armory,
                     admin: widget.admin,
                     historyCommands: _historyCommands,
+                    conversationListController: _ensureConversationController(),
                     historyRailBuilder: (context) => Builder(
                       builder: (innerContext) =>
                           ValueListenableBuilder<String?>(

@@ -20,6 +20,7 @@ import '../widgets/focus_ring.dart';
 import 'bottom_chrome.dart';
 import 'history_panel.dart';
 import 'chat_history_commands.dart';
+import '../features/history/conversation_list_controller.dart';
 
 class _Destination {
   const _Destination(this.label, this.icon, this.selectedIcon);
@@ -48,6 +49,7 @@ class KarmiShell extends StatefulWidget {
     required this.armory,
     this.historyRailBuilder,
     this.historyCommands,
+    this.conversationListController,
     this.clock,
     this.admin,
   });
@@ -58,6 +60,11 @@ class KarmiShell extends StatefulWidget {
   final ArmoryController armory;
   final WidgetBuilder? historyRailBuilder;
   final ChatHistoryCommands? historyCommands;
+
+  /// Shared [ConversationListController] from [KarmiApp]; when provided,
+  /// [ChatScreen] will use this controller instead of creating its own so that
+  /// the history drawer/rail and the chat tab stay in sync.
+  final ConversationListController? conversationListController;
 
   /// Injected into the chat empty-state greeting; null uses the wall clock.
   final DateTime Function()? clock;
@@ -83,7 +90,9 @@ class _KarmiShellState extends State<KarmiShell> {
   @override
   void didUpdateWidget(KarmiShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.historyCommands != oldWidget.historyCommands) {
+    if (widget.historyCommands != oldWidget.historyCommands ||
+        widget.conversationListController !=
+            oldWidget.conversationListController) {
       _pages[0] = null;
     }
   }
@@ -155,6 +164,7 @@ class _KarmiShellState extends State<KarmiShell> {
           onOpenPlans: _openPlans,
           draftStore: widget.session.draftStore,
           historyCommands: widget.historyCommands,
+          conversationListController: widget.conversationListController,
           clock: widget.clock,
         );
       case 1:
@@ -244,7 +254,10 @@ class _KarmiShellState extends State<KarmiShell> {
       return mainContent;
     }
 
-    final navRail = SizedBox(width: 80, child: _buildNavRail());
+    final navRail = SizedBox(
+      width: 80 + MediaQuery.paddingOf(context).left,
+      child: _buildNavRail(),
+    );
 
     if (isDesktop && widget.historyRailBuilder != null) {
       return Row(
