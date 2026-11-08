@@ -184,6 +184,39 @@ abstract interface class ClerkEmailCodeActions {
   Future<GoogleSignInResult> signInWithGoogle();
 }
 
+/// Processes the first Karmi SSO callback link of one Google sign-in attempt.
+///
+/// The app (not the Clerk SDK) exchanges the rotating token nonce so a failed
+/// exchange is reported through [onFailure] right away instead of being lost.
+/// Unrelated links and any link after the first are ignored.
+class SsoCallbackHandler {
+  SsoCallbackHandler({
+    required this.parse,
+    required this.onStarted,
+    required this.onFailure,
+    required this.onProcessed,
+  });
+
+  final Future<Object?> Function(Uri uri) parse;
+  final void Function() onStarted;
+  final void Function(GoogleSignInError error) onFailure;
+  final Future<void> Function() onProcessed;
+  bool _handled = false;
+
+  Future<void> handle(Uri uri) async {
+    if (_handled || !isSsoCallbackLink(uri)) return;
+    _handled = true;
+    onStarted();
+    try {
+      await parse(uri);
+    } catch (e) {
+      onFailure(GoogleSignInError(issueFromClerkError(e).message));
+      return;
+    }
+    await onProcessed();
+  }
+}
+
 class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
   ClerkSdkEmailCodeActions(
     this.auth,
@@ -378,21 +411,29 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
 
     final callbackStream = _callbackLinks ?? ssoCallbackStream;
     StreamSubscription<Uri>? callbackSub;
-    callbackSub = callbackStream.listen((uri) {
-      ssoCallbackReceived = true;
-      cancelTimer?.cancel();
-      cancelTimer = null;
-      callbackTimeoutTimer ??= Timer(const Duration(seconds: 45), () {
-        if (!completer.isCompleted) {
-          finish(
-            const GoogleSignInError(
-              'Google sign-in did not finish. Please try again.',
-            ),
-          );
-        }
-      });
-      unawaited(checkState());
-    });
+    final callbackHandler = SsoCallbackHandler(
+      parse: auth.parseDeepLink,
+      onStarted: () {
+        ssoCallbackReceived = true;
+        cancelTimer?.cancel();
+        cancelTimer = null;
+        // Last resort only: failures below surface immediately.
+        callbackTimeoutTimer ??= Timer(const Duration(seconds: 45), () {
+          if (!completer.isCompleted) {
+            finish(
+              const GoogleSignInError(
+                'Google sign-in did not finish. Please try again.',
+              ),
+            );
+          }
+        });
+      },
+      onFailure: finish,
+      onProcessed: checkState,
+    );
+    callbackSub = callbackStream.listen(
+      (uri) => unawaited(callbackHandler.handle(uri)),
+    );
 
     AppLifecycleListener? lifecycleListener;
     lifecycleListener = AppLifecycleListener(
