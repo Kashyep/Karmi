@@ -89,3 +89,52 @@ Stream<Uri> createSsoDeepLinkStream({
 
   return controller.stream;
 }
+
+/// Starts the native deep-link bridge that feeds [ssoCallbackStream].
+/// Call once at startup; links received while no Google sign-in is listening
+/// are dropped. The cold-start link is NOT replayed here: it is claimed
+/// separately via [readInitialSsoCallback] so it is never processed twice.
+void startSsoCallbackBridge() {
+  unawaited(
+    createSsoDeepLinkStream(getInitialLink: () async => null).drain<void>(),
+  );
+}
+
+/// Returns the SSO callback that launched the process (cold start after the
+/// OS killed Karmi during the browser trip), or null when there is none.
+Future<Uri?> readInitialSsoCallback({
+  Future<String?> Function()? getInitialLink,
+}) async {
+  try {
+    final raw =
+        await (getInitialLink ??
+            () => _deepLinkMethodChannel.invokeMethod<String>(
+              'getInitialLink',
+            ))();
+    final uri = raw == null || raw.isEmpty ? null : Uri.tryParse(raw);
+    return uri != null && isSsoCallbackLink(uri) ? uri : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Exchanges a cold-start SSO callback exactly once. Never throws; a failed
+/// exchange is reported via [report] (without token or nonce) and the user
+/// stays on the sign-in screen to retry. Returns true if the exchange ran
+/// and succeeded.
+Future<bool> exchangeColdStartSsoCallback(
+  Uri? link,
+  Future<Object?> Function(Uri uri) parse, {
+  void Function(String message)? report,
+}) async {
+  if (link == null || !isSsoCallbackLink(link)) return false;
+  try {
+    await parse(link);
+    return true;
+  } catch (e) {
+    report?.call(
+      'Cold-start Google sign-in exchange failed (${e.runtimeType}).',
+    );
+    return false;
+  }
+}
