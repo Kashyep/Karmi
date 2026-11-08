@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:clerk_auth/clerk_auth.dart' as clerk;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/api/karmi_api.dart';
+import 'package:karmi_app/auth/clerk_email_code_actions.dart';
 import 'package:karmi_app/auth/session.dart';
 import 'package:karmi_app/features/onboarding/onboarding.dart';
 import 'package:karmi_app/settings/karmi_settings.dart';
@@ -206,7 +210,7 @@ void main() {
   );
 
   testWidgets(
-    'sign-in with password completes and advances to the profile step',
+    'sign-in with password completes and advances to the plan chooser step',
     (tester) async {
       final fake = FakeClerkEmailCodeActions();
       await _pumpFlow(tester, fake: fake);
@@ -228,7 +232,7 @@ void main() {
       expect(fake.calls, ['signIn']);
       expect(fake.lastSignInIdentifier, 'alice_k');
       expect(fake.lastPassword, 'Sunrise#42');
-      expect(find.text('What should we call you?'), findsOneWidget);
+      expect(find.text('Choose your plan'), findsOneWidget);
     },
   );
 
@@ -263,7 +267,7 @@ void main() {
     );
     await _tapCta(tester);
     expect(fake.calls.last, 'verifySignIn');
-    expect(find.text('What should we call you?'), findsOneWidget);
+    expect(find.text('Choose your plan'), findsOneWidget);
   });
 
   testWidgets(
@@ -353,40 +357,294 @@ void main() {
     expect(find.byKey(const ValueKey('onboarding_otp_field')), findsOneWidget);
   });
 
-  testWidgets('profile save backend error is shown and does not advance', (
-    tester,
-  ) async {
-    // Signed-in session; PATCH /v1/user/profile is unrouted, so it fails.
+  testWidgets('sign-up with details advances to plan chooser', (tester) async {
     final fake = FakeClerkEmailCodeActions();
     final backend = FakeBackend()
-      ..on(
-        'POST',
-        '/dev/token',
-        (_) => jsonResponse({'token': 't', 'user_id': 'u'}),
-      );
-    await _pumpFlow(
-      tester,
-      fake: fake,
-      step: 2,
-      signedIn: true,
-      backend: backend,
-    );
-    expect(find.text('What should we call you?'), findsOneWidget);
+      ..on('PATCH', '/v1/user/profile', (_) => jsonResponse({'status': 'ok'}));
+    await _pumpFlow(tester, fake: fake, backend: backend);
 
-    await tester.enterText(
-      find.byKey(const ValueKey('onboarding_first_name_field')),
-      'Alice',
-    );
-    await tester.tap(find.byKey(const ValueKey('onboarding_profile_continue')));
+    await _fillCreateForm(tester);
+    await _tapCta(tester);
     await settle(tester);
 
-    expect(
-      find.text(
-        'Could not save your name. Check your connection and try again.',
-      ),
-      findsOneWidget,
+    // Verify OTP step
+    await tester.enterText(
+      find.byKey(const ValueKey('onboarding_otp_field')),
+      '424242',
     );
-    expect(find.text('What should we call you?'), findsOneWidget);
-    expect(find.text('Choose your model approach'), findsNothing);
+    await _tapCta(tester);
+    await settle(tester);
+
+    expect(find.text('Choose your plan'), findsOneWidget);
   });
+
+  group('DEV-001 & DEV-002 auth form navigation and error display', () {
+    testWidgets(
+      'DEV-002: long validation error on email wraps without ellipsis on narrow screen',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        final fake = FakeClerkEmailCodeActions()
+          ..nextError = _clerkError('form_identifier_exists');
+        await _pumpFlow(tester, fake: fake);
+
+        await _fillCreateForm(tester);
+        await _tapCta(tester);
+
+        const fullMessage =
+            'An account already exists for this email. Sign in instead.';
+        expect(find.text(fullMessage), findsOneWidget);
+
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(fullMessage),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse);
+      },
+    );
+
+    bool isFocused(WidgetTester tester, Key key) {
+      final editable = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byKey(key),
+          matching: find.byType(EditableText),
+        ),
+      );
+      return editable.focusNode.hasFocus;
+    }
+
+    testWidgets(
+      'DEV-001: Next on sign-in identifier moves focus to password; Done on password submits',
+      (tester) async {
+        final fake = FakeClerkEmailCodeActions();
+        await _pumpFlow(tester, fake: fake);
+
+        await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
+        await settle(tester);
+
+        // Focus identifier field and enter text
+        await tester.tap(find.byKey(const ValueKey('onboarding_email_field')));
+        await tester.pump();
+        expect(
+          isFocused(tester, const ValueKey('onboarding_email_field')),
+          isTrue,
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_email_field')),
+          'alice_k',
+        );
+
+        // Trigger Next action on the identifier field
+        await tester.testTextInput.receiveAction(TextInputAction.next);
+        await tester.pump();
+
+        // Form must NOT be submitted on non-last field
+        expect(fake.calls, isEmpty);
+        expect(
+          find.text('Enter your password.'),
+          findsNothing,
+          reason: 'Next on email field must not trigger form submit',
+        );
+
+        // Password field is now focused
+        expect(
+          isFocused(tester, const ValueKey('onboarding_password_field')),
+          isTrue,
+        );
+
+        // Enter password and trigger Done action
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_password_field')),
+          'Sunrise#42',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await settle(tester);
+
+        // Last field Done submits the form
+        expect(fake.calls, ['signIn']);
+      },
+    );
+
+    testWidgets(
+      'DEV-001: Create account Next moves sequentially through fields until Password Done submits',
+      (tester) async {
+        final fake = FakeClerkEmailCodeActions();
+        await _pumpFlow(tester, fake: fake);
+
+        await _fillCreateForm(tester);
+
+        // Focus first name and send Next
+        await tester.showKeyboard(
+          find.byKey(const ValueKey('onboarding_first_name_field')),
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.next);
+        await tester.pump();
+        expect(
+          isFocused(tester, const ValueKey('onboarding_last_name_field')),
+          isTrue,
+        );
+        expect(fake.calls, isEmpty);
+
+        // Send Next to username
+        await tester.testTextInput.receiveAction(TextInputAction.next);
+        await tester.pump();
+        expect(
+          isFocused(tester, const ValueKey('onboarding_username_field')),
+          isTrue,
+        );
+        expect(fake.calls, isEmpty);
+
+        // Send Next to email
+        await tester.testTextInput.receiveAction(TextInputAction.next);
+        await tester.pump();
+        expect(
+          isFocused(tester, const ValueKey('onboarding_email_field')),
+          isTrue,
+        );
+        expect(fake.calls, isEmpty);
+
+        // Send Next to password
+        await tester.testTextInput.receiveAction(TextInputAction.next);
+        await tester.pump();
+        expect(
+          isFocused(tester, const ValueKey('onboarding_password_field')),
+          isTrue,
+        );
+        expect(fake.calls, isEmpty);
+
+        // Done on password submits the create account form
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await settle(tester);
+        expect(fake.calls, ['signUp']);
+      },
+    );
+
+    testWidgets(
+      'DEV-001: password and form fields are disabled while submission is busy',
+      (tester) async {
+        final fake = _BlockingFakeClerk();
+        await _pumpFlow(tester, fake: fake);
+
+        await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
+        await settle(tester);
+
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_email_field')),
+          'alice_k',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_password_field')),
+          'Sunrise#42',
+        );
+
+        // Submit form via Done action on password
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+
+        // While request is in flight, fields must be disabled
+        final pwField = tester.widget<TextField>(
+          find.byKey(const ValueKey('onboarding_password_field')),
+        );
+        final emailField = tester.widget<TextField>(
+          find.byKey(const ValueKey('onboarding_email_field')),
+        );
+        expect(pwField.enabled, isFalse);
+        expect(emailField.enabled, isFalse);
+
+        // Complete the in-flight request
+        fake.completer.complete();
+        await settle(tester);
+      },
+    );
+    testWidgets(
+      'DEV-001: reset flow IME actions (email Done submits, new password Next moves focus, confirm Done submits)',
+      (tester) async {
+        final fake = FakeClerkEmailCodeActions();
+        await _pumpFlow(tester, fake: fake);
+
+        // Switch to sign-in, then open forgot password
+        await tester.tap(find.byKey(const ValueKey('onboarding_toggle_mode')));
+        await settle(tester);
+        await tester.tap(
+          find.byKey(const ValueKey('onboarding_forgot_password')),
+        );
+        await settle(tester);
+
+        // Enter email and send Done
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_reset_email_field')),
+          'alice@example.com',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await settle(tester);
+
+        expect(fake.calls, ['startPasswordReset']);
+        expect(fake.lastResetEmail, 'alice@example.com');
+        expect(
+          find.byKey(const ValueKey('onboarding_reset_otp_field')),
+          findsOneWidget,
+        );
+
+        // Enter code and passwords
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_reset_otp_field')),
+          '123456',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_reset_new_password_field')),
+          'Sunrise#42',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('onboarding_reset_confirm_password_field')),
+          'Sunrise#42',
+        );
+
+        // Focus new password and send Next
+        await tester.tap(
+          find.byKey(const ValueKey('onboarding_reset_new_password_field')),
+        );
+        await tester.pump();
+        expect(
+          isFocused(
+            tester,
+            const ValueKey('onboarding_reset_new_password_field'),
+          ),
+          isTrue,
+        );
+
+        await tester.testTextInput.receiveAction(TextInputAction.next);
+        await tester.pump();
+        expect(
+          isFocused(
+            tester,
+            const ValueKey('onboarding_reset_confirm_password_field'),
+          ),
+          isTrue,
+        );
+
+        // Send Done on confirm password field
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await settle(tester);
+
+        expect(fake.calls, ['startPasswordReset', 'completePasswordReset']);
+        expect(fake.lastResetPassword, 'Sunrise#42');
+      },
+    );
+  });
+}
+
+class _BlockingFakeClerk extends FakeClerkEmailCodeActions {
+  final completer = Completer<void>();
+
+  @override
+  Future<void> signIn({
+    required String identifier,
+    required String password,
+    required ClerkFlowErrorHandler onError,
+  }) async {
+    calls.add('signIn');
+    await completer.future;
+    isSignedIn = true;
+  }
 }

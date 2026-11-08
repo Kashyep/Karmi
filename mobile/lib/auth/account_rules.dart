@@ -51,6 +51,17 @@ class AccountIssue {
   final bool offerCreate;
 }
 
+/// True when a password-reset request failed because the account does not
+/// exist or cannot use email-code reset. The UI treats this exactly like a
+/// sent code so the form does not reveal which emails have accounts.
+bool isResetUnavailableError(Object error) {
+  return _clerkCodes(error).any(
+    (c) =>
+        c.contains('identifier_not_found') ||
+        c.contains('strategy_for_user_invalid'),
+  );
+}
+
 /// Maps a Clerk error to the field it belongs to, with a user-facing message.
 AccountIssue issueFromClerkError(Object error) {
   final codes = _clerkCodes(error);

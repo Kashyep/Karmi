@@ -11,8 +11,10 @@ import 'features/admin/admin_shell.dart';
 import 'features/history/conversation_list.dart';
 import 'features/history/conversation_list_controller.dart';
 import 'features/onboarding/onboarding.dart';
+import 'features/plans/plan_selection_screen.dart';
 import 'features/welcome/tester_notice.dart';
 import 'features/welcome/tester_notice_screen.dart';
+import 'notifications/karmi_notifications.dart';
 import 'settings/karmi_settings.dart';
 import 'shell/karmi_shell.dart';
 import 'shell/chat_history_commands.dart';
@@ -34,6 +36,7 @@ class KarmiApp extends StatefulWidget {
     this.adaptiveGlassQuality = true,
     this.clock,
     this.admin,
+    this.requestNotificationPermission,
   });
 
   final KarmiSettings settings;
@@ -49,6 +52,10 @@ class KarmiApp extends StatefulWidget {
   /// Admin console controller; null disables the admin entry point.
   final AdminController? admin;
 
+  /// Injected notification permission requester; null defaults to
+  /// [KarmiNotifications.instance.requestPermission].
+  final Future<bool> Function()? requestNotificationPermission;
+
   @override
   State<KarmiApp> createState() => _KarmiAppState();
 }
@@ -59,6 +66,30 @@ class _KarmiAppState extends State<KarmiApp> {
   final _historyCommands = ChatHistoryCommands();
   ConversationsApi? _conversationsApi;
   ConversationListController? _conversationListController;
+
+  bool _notificationPromptScheduled = false;
+
+  Future<bool> _requestNotificationPermission() {
+    final requester =
+        widget.requestNotificationPermission ??
+        KarmiNotifications.instance.requestPermission;
+    return requester();
+  }
+
+  void _checkAndPromptNotificationPermission(bool isShowingShell) {
+    if (isShowingShell &&
+        !widget.settings.notificationPermissionRequested &&
+        !_notificationPromptScheduled) {
+      _notificationPromptScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        if (widget.settings.notificationPermissionRequested) return;
+        await widget.settings.setNotificationPermissionRequested(true);
+        if (!mounted) return;
+        await _requestNotificationPermission();
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -126,6 +157,22 @@ class _KarmiAppState extends State<KarmiApp> {
     setState(() => _signedIn = signedIn);
   }
 
+  void _openPlanSelection([String? preselectedPlanId]) {
+    final nav = _navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(
+      KarmiMotion.route<void>(
+        nav.context,
+        (_) => PlanSelectionScreen(
+          currentPlanId: widget.armory.unlockedTier.planId,
+          preselectedPlanId: preselectedPlanId,
+          api: widget.session.api,
+          onPlanChanged: widget.armory.load,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -136,6 +183,15 @@ class _KarmiAppState extends State<KarmiApp> {
       ]),
       builder: (context, _) {
         final tier = widget.armory.effectiveTier;
+        final bool showTesterNotice = !widget.settings
+            .isTesterNoticeAcknowledged(kTesterNoticeVersion);
+        final bool showAdminShell = _signedIn && widget.admin?.isActive == true;
+        final bool showShell =
+            _signedIn && widget.settings.hasCompletedOnboarding;
+        final bool isShowingShell =
+            !showTesterNotice && !showAdminShell && showShell;
+
+        _checkAndPromptNotificationPermission(isShowingShell);
         return LiquidGlassWidgets.wrap(
           theme: KarmiGlass.themeData(tier),
           brightnessResolver: Theme.maybeBrightnessOf,
@@ -159,21 +215,18 @@ class _KarmiAppState extends State<KarmiApp> {
             themeMode: widget.settings.themeMode,
             themeAnimationDuration: Duration.zero,
             builder: karmiAccessibilityBuilder(widget.settings),
-            home:
-                !widget.settings.isTesterNoticeAcknowledged(
-                  kTesterNoticeVersion,
-                )
+            home: showTesterNotice
                 ? TesterNoticeScreen(
                     key: const ValueKey('tester_notice'),
                     onAcknowledge: () => widget.settings
                         .acknowledgeTesterNotice(kTesterNoticeVersion),
                   )
-                : _signedIn && widget.admin?.isActive == true
+                : showAdminShell
                 ? AdminShell(
                     key: const ValueKey('admin_shell'),
                     controller: widget.admin!,
                   )
-                : _signedIn && widget.settings.hasCompletedOnboarding
+                : showShell
                 ? KarmiShell(
                     key: const ValueKey('shell'),
                     api: widget.session.api,
@@ -183,6 +236,7 @@ class _KarmiAppState extends State<KarmiApp> {
                     armory: widget.armory,
                     admin: widget.admin,
                     historyCommands: _historyCommands,
+                    conversationListController: _ensureConversationController(),
                     historyRailBuilder: (context) => Builder(
                       builder: (innerContext) =>
                           ValueListenableBuilder<String?>(
@@ -219,8 +273,27 @@ class _KarmiAppState extends State<KarmiApp> {
                     key: const ValueKey('onboarding_flow'),
                     session: widget.session,
                     settings: widget.settings,
-                    onComplete: () {
-                      setState(() {});
+                    requestNotificationPermission: () async {
+                      _notificationPromptScheduled = true;
+                      await widget.settings.setNotificationPermissionRequested(
+                        true,
+                      );
+                      return _requestNotificationPermission();
+                    },
+                    onComplete: (selectedPlanId) {
+                      _notificationPromptScheduled = true;
+                      unawaited(
+                        widget.settings.setNotificationPermissionRequested(
+                          true,
+                        ),
+                      );
+                      if (selectedPlanId != null &&
+                          selectedPlanId != 'ananta') {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _openPlanSelection(selectedPlanId);
+                        });
+                        WidgetsBinding.instance.ensureVisualUpdate();
+                      }
                     },
                   ),
           ),

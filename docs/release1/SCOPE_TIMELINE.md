@@ -1,7 +1,7 @@
 # Release 1 Scope and Timeline
 
 Owner: Manager-ProgramDirector. Branch: `release1/chat-redesign` (from `origin/main` dcf4f75).
-Source plan: `/home/rosso/Downloads/ai_chat_ui_ux_redesign_plan_2026.md` §7 (roadmap). Repo (Flutter + Python) is source of truth; web libraries in the plan are adapted.
+Source plan: `~/Downloads/ai_chat_ui_ux_redesign_plan_2026.md` §7 (roadmap). Repo (Flutter + Python) is source of truth; web libraries in the plan are adapted.
 
 ## In scope for R1 (plan IDs)
 

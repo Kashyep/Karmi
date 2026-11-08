@@ -10,6 +10,8 @@ class KarmiSettings extends ChangeNotifier {
         orElse: () => ThemeMode.system,
       ),
       _acknowledgedNoticeVersion = _prefs.getInt(_keyTesterNoticeVersion) ?? 0,
+      _notificationPermissionRequested =
+          _prefs.getBool(_keyNotificationPermissionRequested) ?? false,
       _apiBaseUrl = _prefs.getString(_keyApiBaseUrl);
   static const _keyReduceTransparency = 'reduce_transparency';
   static const _keyThemeMode = 'theme_mode';
@@ -18,12 +20,13 @@ class KarmiSettings extends ChangeNotifier {
   static const _keyTesterNoticeVersion = 'acknowledged_tester_notice_version';
   static const _keyOnboardingStep = 'onboarding_active_step';
   static const _keyHasCompletedOnboarding = 'has_completed_onboarding';
-  static const _keyPreferredLanguage = 'preferred_language';
-  static const _keyPromptMode = 'prompt_mode';
+  static const _keyNotificationPermissionRequested =
+      'notification_permission_requested';
   final SharedPreferences _prefs;
   bool _reduceTransparency;
   ThemeMode _themeMode;
   int _acknowledgedNoticeVersion;
+  bool _notificationPermissionRequested;
   String? _apiBaseUrl;
 
   /// Tester-chosen server address; applies from the next app start.
@@ -93,17 +96,11 @@ class KarmiSettings extends ChangeNotifier {
     await _prefs.setBool(_keyHasCompletedOnboarding, value);
   }
 
-  String? get preferredLanguage => _prefs.getString(_keyPreferredLanguage);
+  bool get notificationPermissionRequested => _notificationPermissionRequested;
 
-  Future<void> setPreferredLanguage(String lang) async {
+  Future<void> setNotificationPermissionRequested(bool value) async {
+    _notificationPermissionRequested = value;
     notifyListeners();
-    await _prefs.setString(_keyPreferredLanguage, lang);
-  }
-
-  String? get promptMode => _prefs.getString(_keyPromptMode);
-
-  Future<void> setPromptMode(String mode) async {
-    notifyListeners();
-    await _prefs.setString(_keyPromptMode, mode);
+    await _prefs.setBool(_keyNotificationPermissionRequested, value);
   }
 }

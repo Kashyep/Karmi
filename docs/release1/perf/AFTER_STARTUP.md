@@ -36,6 +36,6 @@ The proxy is `pumpApp` (test harness), which builds the app directly. It bypasse
 ## Reproduce once unblocked
 
 ```
-export PYTHON=/home/rosso/Projects/Karmi/.venv/bin/python
+export PYTHON=.venv/bin/python
 cd <worktree> && TZ=Asia/Kolkata docs/release1/perf/measure.sh <worktree>
 ```

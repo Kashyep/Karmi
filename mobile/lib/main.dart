@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -12,6 +14,7 @@ import 'auth/session.dart';
 import 'auth/clerk_sso.dart';
 import 'fonts.dart';
 import 'settings/karmi_settings.dart';
+import 'notifications/karmi_notifications.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,23 +25,43 @@ Future<void> main() async {
   // KarmiApp is built. No deferred (`deferred as`) imports: every first-frame
   // screen (Welcome, Shell, TesterNotice) is imported eagerly by app.dart, so
   // there is no startup-path screen to defer.
+  // The SDK is deliberately NOT given a deepLinkStream: signInWithGoogle
+  // exchanges the callback itself so failures surface (see SsoCallbackHandler).
+  startSsoCallbackBridge();
+  final initialSsoLinkFuture = readInitialSsoCallback();
   const publishableKey = String.fromEnvironment('CLERK_PUBLISHABLE_KEY');
   final glassInitFuture = LiquidGlassWidgets.initialize();
   final prefsFuture = SharedPreferences.getInstance();
+  final notifInitFuture = KarmiNotifications.instance.init();
   final clerkAuthFuture = publishableKey.isEmpty
       ? Future<ClerkAuthState?>.value(null)
       : ClerkAuthState.create(
           config: ClerkAuthConfig(
             publishableKey: publishableKey,
             redirectionGenerator: clerkRedirectionGenerator,
-            deepLinkStream: createSsoDeepLinkStream(),
           ),
         );
 
-  await Future.wait<dynamic>([glassInitFuture, prefsFuture, clerkAuthFuture]);
+  await Future.wait<dynamic>([
+    glassInitFuture,
+    prefsFuture,
+    clerkAuthFuture,
+    notifInitFuture,
+  ]);
 
   final prefs = await prefsFuture;
   final clerkAuth = await clerkAuthFuture;
+  if (clerkAuth case final auth?) {
+    unawaited(
+      initialSsoLinkFuture.then(
+        (link) => exchangeColdStartSsoCallback(
+          link,
+          auth.parseDeepLink,
+          report: debugPrint,
+        ),
+      ),
+    );
+  }
   final settings = KarmiSettings(prefs);
   final api = KarmiApi(baseUrl: settings.apiBaseUrl ?? KarmiApi.defaultBaseUrl);
   final session = KarmiSession(api: api, prefs: prefs, clerkAuth: clerkAuth);

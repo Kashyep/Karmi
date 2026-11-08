@@ -153,6 +153,26 @@ abstract interface class ClerkEmailCodeActions {
   /// Ask Clerk to email the second-factor code for the current sign-in.
   Future<void> sendSignInCode(ClerkFlowErrorHandler onError);
 
+  /// True while Clerk waits for the emailed code of a password reset
+  /// (the code has been sent).
+  bool get passwordResetAwaitingCode;
+
+  /// Start a password reset: Clerk creates a sign-in for [email] and emails a
+  /// six-digit code. Calling it again sends a fresh code.
+  Future<void> startPasswordReset({
+    required String email,
+    required ClerkFlowErrorHandler onError,
+  });
+
+  /// Finish the reset with the emailed [code] and [newPassword]. On success
+  /// Clerk signs the user in, or asks for a second factor like a normal
+  /// password sign-in.
+  Future<void> completePasswordReset({
+    required String code,
+    required String newPassword,
+    required ClerkFlowErrorHandler onError,
+  });
+
   /// Create the account (password strategy). Clerk then emails a code.
   Future<void> signUp({
     required String email,
@@ -182,6 +202,39 @@ abstract interface class ClerkEmailCodeActions {
   /// Initiates Google OAuth sign-in via external browser, handling any
   /// subsequent sign-in to sign-up transfer so new users are never dead-ended.
   Future<GoogleSignInResult> signInWithGoogle();
+}
+
+/// Processes the first Karmi SSO callback link of one Google sign-in attempt.
+///
+/// The app (not the Clerk SDK) exchanges the rotating token nonce so a failed
+/// exchange is reported through [onFailure] right away instead of being lost.
+/// Unrelated links and any link after the first are ignored.
+class SsoCallbackHandler {
+  SsoCallbackHandler({
+    required this.parse,
+    required this.onStarted,
+    required this.onFailure,
+    required this.onProcessed,
+  });
+
+  final Future<Object?> Function(Uri uri) parse;
+  final void Function() onStarted;
+  final void Function(GoogleSignInError error) onFailure;
+  final Future<void> Function() onProcessed;
+  bool _handled = false;
+
+  Future<void> handle(Uri uri) async {
+    if (_handled || !isSsoCallbackLink(uri)) return;
+    _handled = true;
+    onStarted();
+    try {
+      await parse(uri);
+    } catch (e) {
+      onFailure(GoogleSignInError(issueFromClerkError(e).message));
+      return;
+    }
+    await onProcessed();
+  }
 }
 
 class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
@@ -242,6 +295,44 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
   @override
   Future<void> sendSignInCode(ClerkFlowErrorHandler onError) => _safely(
     () => auth.attemptSignIn(strategy: clerk.Strategy.emailCode),
+    onError,
+  );
+
+  @override
+  bool get passwordResetAwaitingCode =>
+      auth.signIn?.isVerifying(
+        clerk.Stage.first,
+        clerk.Strategy.resetPasswordEmailCode,
+      ) ==
+      true;
+
+  // initiatePasswordReset creates a fresh sign-in with the reset strategy,
+  // which makes Clerk email the code (auth.dart initiatePasswordReset).
+  @override
+  Future<void> startPasswordReset({
+    required String email,
+    required ClerkFlowErrorHandler onError,
+  }) => _safely(
+    () => auth.initiatePasswordReset(
+      identifier: email,
+      strategy: clerk.Strategy.resetPasswordEmailCode,
+    ),
+    onError,
+  );
+
+  // No identifier: the sign-in created by startPasswordReset is reused, so
+  // the SDK attempts the reset factor instead of creating a new sign-in.
+  @override
+  Future<void> completePasswordReset({
+    required String code,
+    required String newPassword,
+    required ClerkFlowErrorHandler onError,
+  }) => _safely(
+    () => auth.attemptSignIn(
+      strategy: clerk.Strategy.resetPasswordEmailCode,
+      code: code,
+      password: newPassword,
+    ),
     onError,
   );
 
@@ -378,21 +469,29 @@ class ClerkSdkEmailCodeActions implements ClerkEmailCodeActions {
 
     final callbackStream = _callbackLinks ?? ssoCallbackStream;
     StreamSubscription<Uri>? callbackSub;
-    callbackSub = callbackStream.listen((uri) {
-      ssoCallbackReceived = true;
-      cancelTimer?.cancel();
-      cancelTimer = null;
-      callbackTimeoutTimer ??= Timer(const Duration(seconds: 45), () {
-        if (!completer.isCompleted) {
-          finish(
-            const GoogleSignInError(
-              'Google sign-in did not finish. Please try again.',
-            ),
-          );
-        }
-      });
-      unawaited(checkState());
-    });
+    final callbackHandler = SsoCallbackHandler(
+      parse: auth.parseDeepLink,
+      onStarted: () {
+        ssoCallbackReceived = true;
+        cancelTimer?.cancel();
+        cancelTimer = null;
+        // Last resort only: failures below surface immediately.
+        callbackTimeoutTimer ??= Timer(const Duration(seconds: 45), () {
+          if (!completer.isCompleted) {
+            finish(
+              const GoogleSignInError(
+                'Google sign-in did not finish. Please try again.',
+              ),
+            );
+          }
+        });
+      },
+      onFailure: finish,
+      onProcessed: checkState,
+    );
+    callbackSub = callbackStream.listen(
+      (uri) => unawaited(callbackHandler.handle(uri)),
+    );
 
     AppLifecycleListener? lifecycleListener;
     lifecycleListener = AppLifecycleListener(

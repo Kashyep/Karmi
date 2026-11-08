@@ -173,10 +173,18 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (widget.conversationListController !=
         oldWidget.conversationListController) {
+      // Remove listener from whatever controller was previously external.
       oldWidget.conversationListController?.removeListener(
         _onConversationListChanged,
       );
       if (widget.conversationListController != null) {
+        // If we owned the previous controller, dispose it before switching.
+        if (_ownsConversationListController) {
+          _conversationListController.removeListener(
+            _onConversationListChanged,
+          );
+          _conversationListController.dispose();
+        }
         _conversationListController = widget.conversationListController!;
         _ownsConversationListController = false;
         _conversationListController.addListener(_onConversationListChanged);
@@ -236,6 +244,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final phase = _chatController.phase;
     if (phase == ChatRunPhase.error && _lastPhase != ChatRunPhase.error) {
       _composerRefocus.value++;
+    }
+    if (phase == ChatRunPhase.finished && _lastPhase != ChatRunPhase.finished) {
+      _conversationListController.refresh();
     }
     _lastPhase = phase;
     setState(() {});

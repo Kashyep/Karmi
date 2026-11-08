@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../../api/debug_meta.dart';
 import '../../../api/models.dart';
 import '../../../api/stream/run_stream_client.dart';
+import '../../../notifications/karmi_notifications.dart';
 
 /// Phase of a chat run in the controller state machine.
 enum ChatRunPhase { idle, sending, streaming, stalled, finished, error }
@@ -23,6 +24,8 @@ class ChatController extends ChangeNotifier {
     Duration retryDelay = const Duration(milliseconds: 500),
     String Function()? idGenerator,
     Duration slowReplyAfter = const Duration(seconds: 10),
+    KarmiNotifications? notifications,
+    AppLifecycleState? Function()? lifecycleProvider,
   }) : _client = client,
        _conversationId = conversationId,
        _messages = initialMessages != null
@@ -33,7 +36,9 @@ class ChatController extends ChangeNotifier {
        _maxResumeRetries = maxResumeRetries,
        _retryDelay = retryDelay,
        _idGenerator = idGenerator,
-       _slowReplyAfter = slowReplyAfter;
+       _slowReplyAfter = slowReplyAfter,
+       _notifications = notifications ?? KarmiNotifications.instance,
+       _lifecycleProvider = lifecycleProvider;
 
   final RunStreamClient _client;
   final Duration _stallTimeout;
@@ -42,6 +47,9 @@ class ChatController extends ChangeNotifier {
   final Duration _retryDelay;
   final String Function()? _idGenerator;
   final Duration _slowReplyAfter;
+  final KarmiNotifications _notifications;
+  final AppLifecycleState? Function()? _lifecycleProvider;
+  bool _terminalNotified = false;
   Timer? _slowTimer;
   bool _isSlow = false;
 
@@ -134,6 +142,7 @@ class ChatController extends ChangeNotifier {
     _terminalReceived = false;
     _stopping = false;
     _resumeAttempts = 0;
+    _terminalNotified = false;
 
     final prompt = attachmentTexts.isEmpty
         ? text
@@ -254,6 +263,7 @@ class ChatController extends ChangeNotifier {
     _terminalReceived = false;
     _stopping = false;
     _resumeAttempts = 0;
+    _terminalNotified = false;
 
     _messages[index] = target.copyWith(
       status: MessageStatus.streaming,
@@ -313,6 +323,7 @@ class ChatController extends ChangeNotifier {
     _terminalReceived = false;
     _stopping = false;
     _resumeAttempts = 0;
+    _terminalNotified = false;
 
     _setPhase(ChatRunPhase.sending);
 
@@ -340,6 +351,7 @@ class ChatController extends ChangeNotifier {
       _error = null;
       _resumeAttempts = 0;
       _terminalReceived = false;
+      _terminalNotified = false;
       _setPhase(ChatRunPhase.streaming);
       _resetStallTimer();
 
@@ -360,6 +372,7 @@ class ChatController extends ChangeNotifier {
       _error = null;
       _resumeAttempts = 0;
       _terminalReceived = false;
+      _terminalNotified = false;
       _setPhase(ChatRunPhase.sending);
 
       try {
@@ -488,6 +501,7 @@ class ChatController extends ChangeNotifier {
             model: event.model,
           );
           _setPhase(ChatRunPhase.error);
+          _notifyIfBackgroundFailure();
           break;
         }
 
@@ -521,6 +535,17 @@ class ChatController extends ChangeNotifier {
           model: event.model,
         );
         _setPhase(ChatRunPhase.finished);
+        if (event.finishReason == FinishReason.error ||
+            event.finishReason == FinishReason.interrupted ||
+            event.finishReason == FinishReason.cancelled) {
+          _notifyIfBackgroundFailure();
+        } else {
+          final targetId =
+              event.assistantMessageId ?? _currentAssistantMessageId;
+          final index = _messages.indexWhere((m) => m.id == targetId);
+          final replyText = index != -1 ? _messages[index].content : '';
+          _notifyIfBackgroundReady(replyText);
+        }
         break;
 
       case RunErrorEvent():
@@ -537,6 +562,7 @@ class ChatController extends ChangeNotifier {
           finishReason: FinishReason.error,
         );
         _setPhase(ChatRunPhase.error);
+        _notifyIfBackgroundFailure();
         break;
     }
   }
@@ -707,6 +733,7 @@ class ChatController extends ChangeNotifier {
       finishReason: FinishReason.error,
     );
     _setPhase(ChatRunPhase.error);
+    _notifyIfBackgroundFailure();
   }
 
   void _handleStreamException(RunStreamException e) {
@@ -726,6 +753,7 @@ class ChatController extends ChangeNotifier {
         finishReason: FinishReason.error,
       );
       _setPhase(ChatRunPhase.error);
+      _notifyIfBackgroundFailure();
       return;
     }
 
@@ -787,5 +815,44 @@ class ChatController extends ChangeNotifier {
     if (!_disposed) {
       notifyListeners();
     }
+  }
+
+  void _notifyIfBackgroundReady(String replyText) {
+    if (_stopping || _terminalNotified) return;
+    _terminalNotified = true;
+    final lifecycle = _getLifecycleState();
+    if (_isBackgroundLifecycle(lifecycle)) {
+      unawaited(
+        _notifications.notifyReplyReady(
+          conversationId: _conversationId ?? '',
+          body: replyText,
+        ),
+      );
+    }
+  }
+
+  void _notifyIfBackgroundFailure() {
+    if (_stopping || _terminalNotified) return;
+    _terminalNotified = true;
+    final lifecycle = _getLifecycleState();
+    if (_isBackgroundLifecycle(lifecycle)) {
+      unawaited(
+        _notifications.notifyReplyFailed(conversationId: _conversationId ?? ''),
+      );
+    }
+  }
+
+  bool _isBackgroundLifecycle(AppLifecycleState state) {
+    return state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached;
+  }
+
+  AppLifecycleState _getLifecycleState() {
+    final provider = _lifecycleProvider;
+    if (provider != null) {
+      return provider() ?? AppLifecycleState.resumed;
+    }
+    return WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
   }
 }

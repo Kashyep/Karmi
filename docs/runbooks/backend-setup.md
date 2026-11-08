@@ -1,9 +1,9 @@
 # Backend connection setup (Linux)
 
-Run everything from `/home/rosso/Projects/Karmi` so the app loads the right `.env`.
+Run everything from the repo root so the app loads the right `.env`.
 
 ```bash
-cd /home/rosso/Projects/Karmi
+cd <repo-root>
 python3 -m venv .venv
 .venv/bin/python -m pip install -c requirements.lock -e '.[dev]'
 .venv/bin/python scripts/setup_backend.py
@@ -36,7 +36,7 @@ In production, use host secrets.
 In another terminal:
 
 ```bash
-cd /home/rosso/Projects/Karmi
+cd <repo-root>
 curl --fail http://127.0.0.1:8000/health
 curl --fail http://127.0.0.1:8000/ready
 .venv/bin/python scripts/tasks.py worker
@@ -49,7 +49,7 @@ Open `http://127.0.0.1:8000/` for the web shell or `/docs` for the API. The web/
 Android emulator:
 
 ```bash
-cd /home/rosso/Projects/Karmi/mobile
+cd <repo-root>/mobile
 flutter pub get
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000 --dart-define=KARMI_DEV_AUTH=true
 ```
@@ -109,7 +109,7 @@ The helper reads only the publishable key for Flutter; it does not print or copy
 From the mobile project directory, with the Pixel unlocked and USB debugging authorized:
 
 ```bash
-cd /home/rosso/Projects/Karmi/mobile
+cd <repo-root>/mobile
 adb reverse tcp:8000 tcp:8000
 python tool/run_android_dev.py run -d 5B271XEBF3XDF0 --dart-define=API_BASE_URL=http://127.0.0.1:8000
 ```
@@ -160,7 +160,7 @@ personal or confidential data. Use synthetic benchmark prompts only.
 In a terminal, save the key without putting it in shell history or chat:
 
 ```bash
-cd /home/rosso/Projects/Karmi
+cd <repo-root>
 .venv/bin/python scripts/setup_opencode.py
 ```
 
