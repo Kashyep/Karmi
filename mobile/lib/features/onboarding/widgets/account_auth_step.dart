@@ -70,6 +70,14 @@ class AccountAuthStepState extends State<AccountAuthStep> {
   final _code = TextEditingController();
   final _newPassword = TextEditingController();
   final _confirmPassword = TextEditingController();
+  final _firstFocus = FocusNode();
+  final _lastFocus = FocusNode();
+  final _usernameFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+  final _resetEmailFocus = FocusNode();
+  final _newPasswordFocus = FocusNode();
+  final _confirmPasswordFocus = FocusNode();
 
   late _Mode _mode = widget.startInSignIn ? _Mode.signIn : _Mode.create;
   bool _awaitingCode = false;
@@ -100,6 +108,18 @@ class AccountAuthStepState extends State<AccountAuthStep> {
       _confirmPassword,
     ]) {
       c.dispose();
+    }
+    for (final f in [
+      _firstFocus,
+      _lastFocus,
+      _usernameFocus,
+      _emailFocus,
+      _passwordFocus,
+      _resetEmailFocus,
+      _newPasswordFocus,
+      _confirmPasswordFocus,
+    ]) {
+      f.dispose();
     }
     super.dispose();
   }
@@ -511,181 +531,216 @@ class AccountAuthStepState extends State<AccountAuthStep> {
                 : (_awaitingCode ? _changeDetails : widget.onBack)),
       title: title,
       subtitle: subtitle,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (resetting)
-            ..._resetBody(context)
-          else if (_awaitingCode) ...[
-            IgnorePointer(
-              key: const ValueKey('onboarding_otp_ignore'),
-              ignoring: _busy,
-              child: OtpField(
-                key: const ValueKey('onboarding_otp_field'),
-                controller: _code,
-                hasError: _errors[AccountField.code] != null,
-                onCompleted: _busy ? null : (_) => _verifyCode(),
-              ),
-            ),
-            if (_errors[AccountField.code] != null)
-              _ErrorText(_errors[AccountField.code]!),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                TextButton(
-                  key: const ValueKey('onboarding_resend_code'),
-                  onPressed: _cooldown > 0 || _busy ? null : _resend,
-                  child: Text(
-                    _cooldown > 0 ? 'Resend in ${_cooldown}s' : 'Resend code',
-                  ),
+      body: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (resetting)
+              ..._resetBody(context)
+            else if (_awaitingCode) ...[
+              IgnorePointer(
+                key: const ValueKey('onboarding_otp_ignore'),
+                ignoring: _busy,
+                child: OtpField(
+                  key: const ValueKey('onboarding_otp_field'),
+                  controller: _code,
+                  hasError: _errors[AccountField.code] != null,
+                  onCompleted: _busy ? null : (_) => _verifyCode(),
                 ),
-                const Spacer(),
-                TextButton(
-                  key: const ValueKey('onboarding_change_details'),
-                  onPressed: _busy ? null : _changeDetails,
-                  child: const Text('Change details'),
-                ),
-              ],
-            ),
-          ] else ...[
-            if (actions != null && !actions.isNotAvailable) ...[
-              GoogleSignInButton(
-                key: const ValueKey('onboarding_google_button'),
-                onPressed: _busy || actions.isNotAvailable
-                    ? null
-                    : _signInWithGoogle,
-                isLoading: _googleLoading,
               ),
-              const SizedBox(height: 16),
+              if (_errors[AccountField.code] != null)
+                _ErrorText(_errors[AccountField.code]!),
+              const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(child: Divider(color: colors.borderSubtle)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  TextButton(
+                    key: const ValueKey('onboarding_resend_code'),
+                    onPressed: _cooldown > 0 || _busy ? null : _resend,
                     child: Text(
-                      'or',
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: colors.mutedForeground,
-                      ),
+                      _cooldown > 0 ? 'Resend in ${_cooldown}s' : 'Resend code',
                     ),
                   ),
-                  Expanded(child: Divider(color: colors.borderSubtle)),
+                  const Spacer(),
+                  TextButton(
+                    key: const ValueKey('onboarding_change_details'),
+                    onPressed: _busy ? null : _changeDetails,
+                    child: const Text('Change details'),
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-            ],
-            if (isCreate) ...[
-              _field(
-                key: 'onboarding_first_name_field',
-                controller: _first,
-                label: 'First name',
-                autofocus: true,
-              ),
-              const SizedBox(height: 12),
-              _field(
-                key: 'onboarding_last_name_field',
-                controller: _last,
-                label: 'Last name (optional)',
-              ),
-              const SizedBox(height: 12),
-              _field(
-                key: 'onboarding_username_field',
-                controller: _username,
-                label: 'Username',
-                hint: '4–64 letters, numbers, _ or -',
-                error: _errors[AccountField.username],
-              ),
-              const SizedBox(height: 12),
-            ],
-            _field(
-              key: 'onboarding_email_field',
-              controller: _email,
-              label: isCreate ? 'Email address' : 'Email or username',
-              hint: isCreate ? 'name@example.com' : null,
-              keyboardType: TextInputType.emailAddress,
-              error: _errors[AccountField.email],
-              autofocus: !isCreate,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('onboarding_password_field'),
-              controller: _password,
-              enabled: !_busy,
-              obscureText: !_showPassword,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: InputDecoration(
-                labelText: 'Password',
-                helperText: isCreate
-                    ? '8+ characters with uppercase, lowercase, a number and a symbol.'
-                    : null,
-                helperStyle: _supportStyle(context),
-                helperMaxLines: 2,
-                errorText: _errors[AccountField.password],
-                errorStyle: _supportStyle(context, error: true),
-                errorMaxLines: 3,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+            ] else ...[
+              if (actions != null && !actions.isNotAvailable) ...[
+                GoogleSignInButton(
+                  key: const ValueKey('onboarding_google_button'),
+                  onPressed: _busy || actions.isNotAvailable
+                      ? null
+                      : _signInWithGoogle,
+                  isLoading: _googleLoading,
                 ),
-                suffixIcon: IconButton(
-                  key: const ValueKey('onboarding_password_visibility'),
-                  tooltip: _showPassword ? 'Hide password' : 'Show password',
-                  icon: Icon(
-                    _showPassword ? Icons.visibility_off : Icons.visibility,
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: colors.borderSubtle)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'or',
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colors.mutedForeground,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: colors.borderSubtle)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (isCreate) ...[
+                _field(
+                  key: 'onboarding_first_name_field',
+                  controller: _first,
+                  focusNode: _firstFocus,
+                  label: 'First name',
+                  autofocus: true,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.givenName],
+                  onSubmitted: _busy ? null : (_) => _lastFocus.requestFocus(),
+                ),
+                const SizedBox(height: 12),
+                _field(
+                  key: 'onboarding_last_name_field',
+                  controller: _last,
+                  focusNode: _lastFocus,
+                  label: 'Last name (optional)',
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.familyName],
+                  onSubmitted: _busy
+                      ? null
+                      : (_) => _usernameFocus.requestFocus(),
+                ),
+                const SizedBox(height: 12),
+                _field(
+                  key: 'onboarding_username_field',
+                  controller: _username,
+                  focusNode: _usernameFocus,
+                  label: 'Username',
+                  hint: '4–64 letters, numbers, _ or -',
+                  error: _errors[AccountField.username],
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.username],
+                  onSubmitted: _busy ? null : (_) => _emailFocus.requestFocus(),
+                ),
+                const SizedBox(height: 12),
+              ],
+              _field(
+                key: 'onboarding_email_field',
+                controller: _email,
+                focusNode: _emailFocus,
+                label: isCreate ? 'Email address' : 'Email or username',
+                hint: isCreate ? 'name@example.com' : null,
+                keyboardType: TextInputType.emailAddress,
+                error: _errors[AccountField.email],
+                autofocus: !isCreate,
+                textInputAction: TextInputAction.next,
+                autofillHints: isCreate
+                    ? const [AutofillHints.email]
+                    : const [AutofillHints.username, AutofillHints.email],
+                onSubmitted: _busy
+                    ? null
+                    : (_) => _passwordFocus.requestFocus(),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey('onboarding_password_field'),
+                controller: _password,
+                focusNode: _passwordFocus,
+                enabled: !_busy,
+                obscureText: !_showPassword,
+                autocorrect: false,
+                enableSuggestions: false,
+                textInputAction: TextInputAction.done,
+                autofillHints: [
+                  isCreate ? AutofillHints.newPassword : AutofillHints.password,
+                ],
+                scrollPadding: const EdgeInsets.only(
+                  top: 20,
+                  left: 20,
+                  right: 20,
+                  bottom: 80,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  helperText: isCreate
+                      ? '8+ characters with uppercase, lowercase, a number and a symbol.'
+                      : null,
+                  helperStyle: _supportStyle(context),
+                  helperMaxLines: 2,
+                  errorText: _errors[AccountField.password],
+                  errorStyle: _supportStyle(context, error: true),
+                  errorMaxLines: 3,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  onPressed: () =>
-                      setState(() => _showPassword = !_showPassword),
+                  suffixIcon: IconButton(
+                    key: const ValueKey('onboarding_password_visibility'),
+                    tooltip: _showPassword ? 'Hide password' : 'Show password',
+                    icon: Icon(
+                      _showPassword ? Icons.visibility_off : Icons.visibility,
+                    ),
+                    onPressed: () =>
+                        setState(() => _showPassword = !_showPassword),
+                  ),
+                ),
+                onSubmitted: _busy ? null : (_) => _submit(),
+              ),
+              if (!isCreate)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    key: const ValueKey('onboarding_forgot_password'),
+                    onPressed: _busy ? null : _openReset,
+                    child: const Text('Forgot password?'),
+                  ),
+                ),
+            ],
+            if (!_awaitingCode && _errors[AccountField.form] != null) ...[
+              _ErrorText(_errors[AccountField.form]!),
+            ],
+            if (_offerSignIn) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                key: const ValueKey('onboarding_offer_sign_in'),
+                onPressed: _busy ? null : () => _switchMode(_Mode.signIn),
+                child: const Text('Sign in instead'),
+              ),
+            ],
+            if (_offerCreate) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                key: const ValueKey('onboarding_offer_create'),
+                onPressed: _busy ? null : () => _switchMode(_Mode.create),
+                child: const Text('Create an account'),
+              ),
+            ],
+            if (!_awaitingCode && !resetting) ...[
+              const SizedBox(height: 12),
+              TextButton(
+                key: const ValueKey('onboarding_toggle_mode'),
+                onPressed: _busy
+                    ? null
+                    : () => _switchMode(isCreate ? _Mode.signIn : _Mode.create),
+                child: Text(
+                  isCreate
+                      ? 'Already have an account? Sign in'
+                      : 'New to Karmi? Create an account',
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colors.primaryText,
+                  ),
                 ),
               ),
-              onSubmitted: _busy ? null : (_) => _submit(),
-            ),
-            if (!isCreate)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  key: const ValueKey('onboarding_forgot_password'),
-                  onPressed: _busy ? null : _openReset,
-                  child: const Text('Forgot password?'),
-                ),
-              ),
+            ],
           ],
-          if (!_awaitingCode && _errors[AccountField.form] != null) ...[
-            _ErrorText(_errors[AccountField.form]!),
-          ],
-          if (_offerSignIn) ...[
-            const SizedBox(height: 8),
-            TextButton(
-              key: const ValueKey('onboarding_offer_sign_in'),
-              onPressed: _busy ? null : () => _switchMode(_Mode.signIn),
-              child: const Text('Sign in instead'),
-            ),
-          ],
-          if (_offerCreate) ...[
-            const SizedBox(height: 8),
-            TextButton(
-              key: const ValueKey('onboarding_offer_create'),
-              onPressed: _busy ? null : () => _switchMode(_Mode.create),
-              child: const Text('Create an account'),
-            ),
-          ],
-          if (!_awaitingCode && !resetting) ...[
-            const SizedBox(height: 12),
-            TextButton(
-              key: const ValueKey('onboarding_toggle_mode'),
-              onPressed: _busy
-                  ? null
-                  : () => _switchMode(isCreate ? _Mode.signIn : _Mode.create),
-              child: Text(
-                isCreate
-                    ? 'Already have an account? Sign in'
-                    : 'New to Karmi? Create an account',
-                style: textTheme.bodyMedium?.copyWith(
-                  color: colors.primaryText,
-                ),
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
       bottomBar: Column(
         mainAxisSize: MainAxisSize.min,
@@ -729,11 +784,15 @@ class AccountAuthStepState extends State<AccountAuthStep> {
         _field(
           key: 'onboarding_reset_email_field',
           controller: _email,
+          focusNode: _resetEmailFocus,
           label: 'Email address',
           hint: 'name@example.com',
           keyboardType: TextInputType.emailAddress,
           error: _errors[AccountField.email],
           autofocus: true,
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.email],
+          onSubmitted: _busy ? null : (_) => _submit(),
         ),
         Align(alignment: Alignment.centerLeft, child: backButton),
       ];
@@ -756,18 +815,26 @@ class AccountAuthStepState extends State<AccountAuthStep> {
       _resetPasswordField(
         key: 'onboarding_reset_new_password_field',
         controller: _newPassword,
+        focusNode: _newPasswordFocus,
         label: 'New password',
         helper:
             '8+ characters with uppercase, lowercase, a number and a symbol.',
         error: _errors[AccountField.password],
         showToggle: true,
+        textInputAction: TextInputAction.next,
+        autofillHints: const [AutofillHints.newPassword],
+        onSubmitted: _busy ? null : (_) => _confirmPasswordFocus.requestFocus(),
       ),
       const SizedBox(height: 12),
       _resetPasswordField(
         key: 'onboarding_reset_confirm_password_field',
         controller: _confirmPassword,
+        focusNode: _confirmPasswordFocus,
         label: 'Confirm new password',
         error: _confirmError,
+        textInputAction: TextInputAction.done,
+        autofillHints: const [AutofillHints.newPassword],
+        onSubmitted: _busy ? null : (_) => _submit(),
       ),
       const SizedBox(height: 4),
       Row(
@@ -790,17 +857,31 @@ class AccountAuthStepState extends State<AccountAuthStep> {
     required String key,
     required TextEditingController controller,
     required String label,
+    FocusNode? focusNode,
     String? helper,
     String? error,
     bool showToggle = false,
+    TextInputAction textInputAction = TextInputAction.done,
+    Iterable<String>? autofillHints,
+    ValueChanged<String>? onSubmitted,
+    EdgeInsets scrollPadding = const EdgeInsets.only(
+      top: 20,
+      left: 20,
+      right: 20,
+      bottom: 80,
+    ),
   }) {
     return TextField(
       key: ValueKey(key),
       controller: controller,
+      focusNode: focusNode,
       enabled: !_busy,
       obscureText: !_showPassword,
       autocorrect: false,
       enableSuggestions: false,
+      textInputAction: textInputAction,
+      autofillHints: autofillHints,
+      scrollPadding: scrollPadding,
       decoration: InputDecoration(
         labelText: label,
         helperText: helper,
@@ -821,7 +902,7 @@ class AccountAuthStepState extends State<AccountAuthStep> {
               )
             : null,
       ),
-      onSubmitted: _busy ? null : (_) => _submit(),
+      onSubmitted: onSubmitted,
     );
   }
 
@@ -831,13 +912,22 @@ class AccountAuthStepState extends State<AccountAuthStep> {
     required String label,
     String? hint,
     String? error,
+    FocusNode? focusNode,
     bool autofocus = false,
     TextInputType? keyboardType,
+    TextInputAction textInputAction = TextInputAction.next,
+    Iterable<String>? autofillHints,
+    ValueChanged<String>? onSubmitted,
+    EdgeInsets scrollPadding = const EdgeInsets.all(20.0),
   }) {
     return TextField(
       key: ValueKey(key),
       controller: controller,
+      focusNode: focusNode,
       keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      autofillHints: autofillHints,
+      scrollPadding: scrollPadding,
       autocorrect: false,
       autofocus: autofocus,
       enabled: !_busy,
@@ -846,9 +936,10 @@ class AccountAuthStepState extends State<AccountAuthStep> {
         hintText: hint,
         errorText: error,
         errorStyle: _supportStyle(context, error: true),
+        errorMaxLines: 3,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      onSubmitted: _busy ? null : (_) => _submit(),
+      onSubmitted: onSubmitted,
     );
   }
 
