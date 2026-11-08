@@ -155,6 +155,8 @@ Future<AppHandle> pumpApp(
   Env env = const Env(),
   bool signedIn = true,
   Size size = kPhoneSize,
+  bool notificationPermissionRequested = true,
+  Future<bool> Function()? requestNotificationPermission,
 }) async {
   _applyView(tester, env, size);
   backend ??= FakeBackend.healthy(unlocked: env.tier, active: env.tier);
@@ -196,6 +198,8 @@ Future<AppHandle> pumpApp(
     if (signedIn) ...{
       'dev_session_token': 'test-token',
       'has_completed_onboarding': true,
+      if (notificationPermissionRequested)
+        'notification_permission_requested': true,
     },
   });
   final prefs = await SharedPreferences.getInstance();
@@ -219,6 +223,7 @@ Future<AppHandle> pumpApp(
       adaptiveGlassQuality: false,
       // Fixed clock keeps the time-of-day greeting identical across runs.
       clock: () => FakeBackend.pinnedNow,
+      requestNotificationPermission: requestNotificationPermission,
     ),
   );
   await settle(tester);
