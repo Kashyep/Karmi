@@ -11,9 +11,7 @@ const _newChatKey = ValueKey('chat-header-new-chat');
 void main() {
   group('Shell glass vs solid layout parity', () {
     setUpAll(() async {
-      try {
-        await LiquidGlassWidgets.initialize();
-      } catch (_) {}
+      await LiquidGlassWidgets.initialize();
     });
     Future<void> fontsReady(WidgetTester tester) async {
       await tester.runAsync(GoogleFonts.pendingFonts);
