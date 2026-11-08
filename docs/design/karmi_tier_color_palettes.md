@@ -5,15 +5,17 @@ This document outlines the specific color palettes and UI application rules for 
 ---
 
 ## Tier 1: Ananta (The Foundation)
-**Vibe:** Organic growth, approachability, and foundational balance.
+**Vibe:** Calm teal, approachability, and foundational balance.
 
 | Color | Hex Code | Usage Context |
 | :--- | :--- | :--- |
-| **Active Accent** | `#66C796` | Bright Mint Green. Used for primary calls-to-action (CTAs), progress bars, active icons, and glowing highlights in dark mode. |
-| **Primary Base** | `#1E422C` | Deep Green. Used for primary app headers, solid structural blocks, and the app icon background. |
-| **Light Background** | `#F2F7F4` | Mint White. The main canvas color for Light Mode, providing a soft, organic alternative to pure white. |
-| **Dark Background**| `#0B1A11` | Near Black Green. The main canvas color for Dark Mode. Deep and rich to make the mint accents pop. |
-| **Text/Structural** | `#050806` | Pure Dark. Used for high-contrast primary text in light mode and subtle structural borders. |
+| **Active Accent** | `#14B8A6` | Teal. Used for primary calls-to-action (CTAs), progress bars, active icons, and glowing highlights in dark mode. |
+| **Primary Base** | `#0B3D3B` | Deep Teal. Used for primary app headers, solid structural blocks, and the app icon background. |
+| **Secondary Accent** | `#99F6E4` | Pale Aqua. Used for secondary elements, badges, and accent surfaces in light mode. |
+| **Surface** | `#E6FFFB` | Pale Teal Mint. Used for cards and elevated surface containers in light mode. |
+| **Light Background** | `#F8FFFE` | Teal White. The main canvas color for Light Mode, providing an ultra-light, clean canvas. |
+| **Dark Background (derived)** | `#051B1B` | Deep Near-Black Teal (derived from Primary Base). The main canvas color for Dark Mode. Deep and rich to make the teal accents pop. |
+| **Text Ink** | `#042321` | Deep Teal-Black. Used for high-contrast primary text in light mode and subtle structural borders. |
 
 ---
 

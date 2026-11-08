@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+- Ananta (free tier) palette changed to teal
+
 ## [0.1.0] - unreleased (build 5)
 
 ### Added

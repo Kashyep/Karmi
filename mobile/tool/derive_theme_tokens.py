@@ -24,8 +24,16 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # docs/design/karmi_tier_color_palettes.md, verbatim.
 PALETTES: dict[str, dict[str, str]] = {
-    "ananta": {"accent": "#66C796", "base": "#1E422C", "light": "#F2F7F4",
-               "dark": "#0B1A11", "text": "#050806"},
+    "ananta": {
+        "accent": "#14B8A6",
+        "base": "#0B3D3B",
+        "light": "#F8FFFE",
+        # mix('#0B3D3B', '#000000', 0.55); derived from Primary because the palette has no dark background
+        "dark": "#051B1B",
+        "text": "#042321",
+        "secondary": "#99F6E4",
+        "surface": "#E6FFFB",
+    },
     "yanta": {"accent": "#00D4FF", "base": "#1A365D", "light": "#F4F6F9",
               "dark": "#0A111C", "text": "#8BA2C4"},
     "trika": {"accent": "#FF5722", "base": "#8C3B20", "light": "#FCF8F5",
@@ -105,7 +113,7 @@ def derive(tier: str, mode: str) -> dict[str, str]:
         # Palette text is the primary ink only where the palette says so (Ananta,
         # Parth); Yanta/Trika text colours are secondary/dark-mode inks.
         fg = p["text"] if contrast(p["text"], bg) >= 7 else p["dark"]
-        card = "#FFFFFF"
+        card = p.get("surface", "#FFFFFF")
         muted = mix(bg, accent if tier == "parth" else base, 0.06)
         surfaces = [bg, card, muted]
         muted_fg = ensure(mix(fg, bg, 0.45), fg, surfaces, 4.5)
@@ -113,7 +121,7 @@ def derive(tier: str, mode: str) -> dict[str, str]:
         accent_text = base if tier != "parth" and passes(base, surfaces, 4.5) else ensure(
             accent, fg, surfaces, 4.5)
         ring = accent_text
-        secondary = mix(bg, accent, 0.35)
+        secondary = p.get("secondary", mix(bg, accent, 0.35))
         secondary_fg = fg
         on_accent2 = ensure(bg, "#FFFFFF", [accent2], 4.5)
         border = ensure(mix(fg, bg, 0.55), fg, [bg, card, muted], 3.0)
