@@ -2,8 +2,8 @@
 
 ## Key custody
 
-The release keystore is kept outside the repository at `/home/rosso/.karmi-keys/karmi-release.jks`.
-The password file is `/home/rosso/.karmi-keys/key.properties`; both the directory and password file MUST remain private. A copy is maintained at `/home/rosso/.karmi-keys/backup/karmi-release.jks`.
+The release keystore is kept outside the repository at `~/.karmi-keys/karmi-release.jks`.
+The password file is `~/.karmi-keys/key.properties`; both the directory and password file MUST remain private. A copy is maintained at `~/.karmi-keys/backup/karmi-release.jks`.
 Never commit `key.properties` or a keystore, and never paste passwords into logs or chat.
 
 ## Local setup
@@ -11,7 +11,7 @@ Never commit `key.properties` or a keystore, and never paste passwords into logs
 Create `mobile/android/key.properties` with the absolute keystore path and the credentials issued by the release owner:
 
 ```properties
-storeFile=/home/rosso/.karmi-keys/karmi-release.jks
+storeFile=~/.karmi-keys/karmi-release.jks
 storePassword=<release-store-password>
 keyAlias=karmi-release
 keyPassword=<release-key-password>

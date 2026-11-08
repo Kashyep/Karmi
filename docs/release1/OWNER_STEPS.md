@@ -27,7 +27,7 @@ All commands and configurations are cited from repository source files or marked
 Before deploying or tagging Release 1, verify the local branch state, application versioning, and remote sync status.
 
 ### 1.1 Verify Branch and HEAD Commit
-- Target branch: `release1/final` (worktree: `/home/rosso/Projects/Karmi-release/final`).
+- Target branch: `release1/final` (worktree: `~/Projects/Karmi-release/final`).
 - Release HEAD commit: Cut from `release1/final` HEAD containing merged release branches (`r1f/webadmin`, `r1f/fix`, `r1f/perf`, `r1f/p3-app`, `r1f/p3-backend`, `r1f/release`).
 - Inspect HEAD commit:
   ```bash

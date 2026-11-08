@@ -42,3 +42,13 @@ docs/release1/onboarding-ref/
 .pytest-tmp/
 .admin-local/
 backups/
+
+# sqlite sidecars and signing material
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+key.properties
+**/key.properties
+*.jks
+*.keystore
+mobile/android/local.properties

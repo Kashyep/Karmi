@@ -1,7 +1,7 @@
 # Karmi R1 — Execution Contract
 
 Status: v1, 2026-10-21. Owner: Manager-IntegrationLead. Branch `release1/chat-redesign`.
-Discovery inputs: `docs/release1/discovery/01–05`. Plan source: `/home/rosso/Downloads/ai_chat_ui_ux_redesign_plan_2026.md`.
+Discovery inputs: `docs/release1/discovery/01–05`. Plan source: `~/Downloads/ai_chat_ui_ux_redesign_plan_2026.md`.
 Changes to this contract require IntegrationLead approval and a commit that edits this file.
 
 ## 0. Decisions that deviate from the plan (and why)
