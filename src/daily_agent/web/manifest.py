@@ -6,8 +6,8 @@ from typing import Any, Final
 
 TIER_PALETTES: Final[dict[str, dict[str, str]]] = {
     "ananta": {
-        "theme_color": "#66C796",
-        "background_color": "#F2F7F4",
+        "theme_color": "#14B8A6",
+        "background_color": "#F8FFFE",
     },
     "yanta": {
         "theme_color": "#00D4FF",

@@ -107,6 +107,10 @@ void main() {
         } else {
           expect(hex(light.header), p['base']);
           expect(hex(dark.header), p['base']);
+          if (tier == KarmiTier.ananta) {
+            expect(hex(light.secondary), p['secondary']);
+            expect(hex(light.card), p['surface']);
+          }
         }
       });
     });

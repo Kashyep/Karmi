@@ -163,8 +163,8 @@ void main() {
         size: const Size(420, 900),
       );
       expect(find.text('Tasks are under construction'), findsOneWidget);
-      // Text contrast is asserted by inspection (foreground 0x050806 on
-      // background 0xF2F7F4 = 18.9:1). `textContrastGuideline` mis-samples the
+      // Text contrast is asserted by inspection (foreground 0x042321 on
+      // background 0xF8FFFE = 16.4:1). `textContrastGuideline` mis-samples the
       // backdrop for this static page and reports a false 2.66:1, so only the
       // tap-target and labelling guidelines run here.
       final handle = tester.ensureSemantics();

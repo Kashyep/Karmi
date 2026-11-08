@@ -25,6 +25,7 @@ def test_shell_has_accessible_navigation_and_pwa_metadata() -> None:
     assert "Skip to main content" in html
     assert 'aria-label="Primary navigation"' in html
     assert 'rel="manifest"' in html
+    assert '<meta name="theme-color" content="#14B8A6">' in html
     assert 'href="#armory"' in html
     assert "provider" not in html.lower()
     assert "model picker" not in html.lower()
@@ -148,6 +149,14 @@ def test_web_routes_and_static_assets() -> None:
     assert css_res.status_code == 200
     assert "text/css" in css_res.headers["content-type"]
     assert "--color-glass-base" in css_res.text
+
+    # GET /manifest.webmanifest?tier=ananta returns ananta colours
+    ananta_res = client.get("/manifest.webmanifest?tier=ananta")
+    assert ananta_res.status_code == 200
+    assert "application/manifest+json" in ananta_res.headers["content-type"]
+    ananta_manifest = ananta_res.json()
+    assert ananta_manifest["theme_color"] == "#14B8A6"
+    assert ananta_manifest["background_color"] == "#F8FFFE"
 
     # GET /manifest.webmanifest?tier=trika returns trika colours
     trika_res = client.get("/manifest.webmanifest?tier=trika")
