@@ -153,7 +153,7 @@ def render_shell(*, tasks: tuple[WebTask, ...] = ()) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#66C796">
+  <meta name="theme-color" content="#14B8A6">
   <meta name="description" content="Daily assistant: your work, tasks, and plan status.">
   <title>Daily assistant</title>
   <link rel="manifest" href="/manifest.webmanifest?tier=ananta">
@@ -337,7 +337,7 @@ _SCRIPT = r"""(() => {
   let token = null;
 
   const TIER_ACCENT_COLORS = {
-    ananta: '#66C796',
+    ananta: '#14B8A6',
     yanta: '#00D4FF',
     trika: '#FF5722',
     parth: '#D4AF37'

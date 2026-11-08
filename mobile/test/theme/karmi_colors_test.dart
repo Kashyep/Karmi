@@ -29,11 +29,13 @@ String hex(Color c) =>
 /// docs/design/karmi_tier_color_palettes.md, verbatim.
 const palettes = <KarmiTier, Map<String, String>>{
   KarmiTier.ananta: {
-    'accent': '#66c796',
-    'base': '#1e422c',
-    'light': '#f2f7f4',
-    'dark': '#0b1a11',
-    'text': '#050806',
+    'accent': '#14b8a6',
+    'base': '#0b3d3b',
+    'light': '#f8fffe',
+    'dark': '#051b1b',
+    'text': '#042321',
+    'secondary': '#99f6e4',
+    'surface': '#e6fffb',
   },
   KarmiTier.yanta: {
     'accent': '#00d4ff',
@@ -105,6 +107,10 @@ void main() {
         } else {
           expect(hex(light.header), p['base']);
           expect(hex(dark.header), p['base']);
+          if (tier == KarmiTier.ananta) {
+            expect(hex(light.secondary), p['secondary']);
+            expect(hex(light.card), p['surface']);
+          }
         }
       });
     });
