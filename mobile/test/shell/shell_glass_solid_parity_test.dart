@@ -10,6 +10,9 @@ const _newChatKey = ValueKey('chat-header-new-chat');
 
 void main() {
   group('Shell glass vs solid layout parity', () {
+    setUpAll(() async {
+      await LiquidGlassWidgets.initialize();
+    });
     Future<void> fontsReady(WidgetTester tester) async {
       await tester.runAsync(GoogleFonts.pendingFonts);
       await settle(tester);
@@ -168,7 +171,6 @@ void main() {
         }
       },
     );
-
     for (final brightness in Brightness.values) {
       for (final (mode, solid) in [('glass', false), ('solid', true)]) {
         for (final tab in ['chat', 'usage', 'settings']) {
@@ -191,7 +193,7 @@ void main() {
                 goldenPath('shell_parity_${tab}_${mode}_${brightness.name}'),
               ),
             );
-          });
+          }, tags: ['golden']);
         }
       }
     }

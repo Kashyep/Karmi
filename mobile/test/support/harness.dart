@@ -64,6 +64,8 @@ Future<KarmiSettings> _settings(Env env) async {
     'reduce_transparency': env.reduceTransparency,
     'theme_mode': env.brightness == Brightness.dark ? 'dark' : 'light',
     'acknowledged_tester_notice_version': kTesterNoticeVersion,
+    'armory_unlocked_tier': env.tier.id,
+    'armory_active_theme': env.tier.id,
   });
   return KarmiSettings(await SharedPreferences.getInstance());
 }
@@ -189,6 +191,8 @@ Future<AppHandle> pumpApp(
     'reduce_transparency': env.reduceTransparency,
     'theme_mode': env.brightness == Brightness.dark ? 'dark' : 'light',
     'acknowledged_tester_notice_version': kTesterNoticeVersion,
+    'armory_unlocked_tier': env.tier.id,
+    'armory_active_theme': env.tier.id,
     if (signedIn) ...{
       'dev_session_token': 'test-token',
       'has_completed_onboarding': true,
