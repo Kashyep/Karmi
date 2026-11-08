@@ -13,7 +13,7 @@ All commands and configurations are cited from repository source files or marked
 | **1. Pre-flight (local)** | Verify local branch `release1/final` HEAD, pubspec version `0.1.0+5`, and zero push status | Ready for owner execution |
 | **2. Deploy + migration `a5b6c7d8e9f0`** | Perform BACKUP-FIRST, apply Alembic migration, verify schema, and deploy container | Ready for owner execution (BACKUP-FIRST) |
 | **3. Clerk Google SSO** | Enable Google connection in Clerk dashboard & add redirect URL allowlist | Configured in repo; Device testing: **NOT VERIFIED (device testing paused by owner)** |
-| **4. Disable CI reviewer workflow** | Disable `.github/workflows/jules-pr-reviewer.yml` in GitHub Actions UI | Ready for owner action in GitHub UI |
+| **4. Disable CI reviewer workflow** | `.github/workflows/jules-pr-reviewer.yml` is deleted in the repository-quality CI PR; `jules-agent.yml` is manual-dispatch only | No GitHub UI action needed after that PR merges |
 | **5. Close issues #39, #40, #41** | Close automated mock/reviewer issues in GitHub UI or CLI | Ready for owner closure |
 | **6. R-9 golden review** | Visually inspect diffs of regenerated Flutter golden images | Pending visual review by owner |
 | **7. PR #34 decision** | Review Phase 2 model router ordering PR (close, merge, or leave open) | Pending owner decision (do not merge without review) |

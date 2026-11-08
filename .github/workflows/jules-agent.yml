@@ -1,9 +1,8 @@
 name: Daily Codebase Maintenance & Security Agent
 
 on:
-  schedule:
-    - cron: '0 6 * * *'
-  workflow_dispatch: # Allow manual triggering from the GitHub Actions UI
+  # Manual runs only. The former daily schedule was removed.
+  workflow_dispatch:
 
 jobs:
   scan-and-fix:
