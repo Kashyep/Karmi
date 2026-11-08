@@ -316,7 +316,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
                 key: const ValueKey('bug-report-ticket-display'),
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
-                  color: colors.accent,
+                  color: colors.primaryText,
                 ),
               ),
               const SizedBox(height: 4),
