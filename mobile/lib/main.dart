@@ -14,6 +14,7 @@ import 'auth/session.dart';
 import 'auth/clerk_sso.dart';
 import 'fonts.dart';
 import 'settings/karmi_settings.dart';
+import 'notifications/karmi_notifications.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +32,7 @@ Future<void> main() async {
   const publishableKey = String.fromEnvironment('CLERK_PUBLISHABLE_KEY');
   final glassInitFuture = LiquidGlassWidgets.initialize();
   final prefsFuture = SharedPreferences.getInstance();
+  final notifInitFuture = KarmiNotifications.instance.init();
   final clerkAuthFuture = publishableKey.isEmpty
       ? Future<ClerkAuthState?>.value(null)
       : ClerkAuthState.create(
@@ -40,7 +42,12 @@ Future<void> main() async {
           ),
         );
 
-  await Future.wait<dynamic>([glassInitFuture, prefsFuture, clerkAuthFuture]);
+  await Future.wait<dynamic>([
+    glassInitFuture,
+    prefsFuture,
+    clerkAuthFuture,
+    notifInitFuture,
+  ]);
 
   final prefs = await prefsFuture;
   final clerkAuth = await clerkAuthFuture;

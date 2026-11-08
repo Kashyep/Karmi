@@ -20,6 +20,7 @@ dependencies:
   clerk_auth: 0.0.18-beta
   markdown: ^7.3.1
   url_launcher: ^6.3.3
+  flutter_local_notifications: 22.3.3
 
 dev_dependencies:
   flutter_test:
