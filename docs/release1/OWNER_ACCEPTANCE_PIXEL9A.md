@@ -2,7 +2,7 @@
 
 This document is the authoritative physical device acceptance checklist for the Karmi Release 1 candidate. The repository owner executes these verification steps on a Google Pixel 9a handset against the hosted Azure Container App beta backend (`karmi-beta`).
 
-Every test item cites its authoritative source file. Unresolved environment parameters and credentials are explicitly marked with `<filled by Boss>` or `TBD (Boss)` placeholders.
+Every test item cites its authoritative source file. All environment parameters, release commit SHAs, signing certificate digests, and artifact checksums are verified and filled by the Boss; sensitive operator credentials remain owner-held and are not recorded in the repository.
 
 ---
 
@@ -13,9 +13,10 @@ Every test item cites its authoritative source file. Unresolved environment para
 - **Target Release Branch**: `origin/release1/final-clean` (PR #43).
 - **Target Release APK**: `mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk` (built via `flutter build apk --release --split-per-abi` per `docs/release1/SHA256_AND_SIGNING.md` §1).
 - **Hosted Beta Backend**: Azure Container App `karmi-beta` (`https://karmi-beta.gentlepebble-6595a0fa.eastasia.azurecontainerapps.io`).
-- **Release Signing Certificate SHA-256 Digest**: `<filled by Boss>` *(Prefix: `14a65fff` ... Suffix: `8ba1` per `docs/release1/SHA256_AND_SIGNING.md` §2)*.
-- **Release Main Commit SHA**: `<filled by Boss>`.
-- **Hosted Backend Container Image Tag**: `<filled by Boss>`.
+- **Release Signing Certificate SHA-256 Digest**: `14a65fffbc383685c3460aee7ad9df03ac58d628427b87e606cfd90c12f88ba1` (CN=Karmi Release, OU=Mobile, O=Karmi; APK Signature Scheme v2).
+- **Release Main Commit SHA**: `3326303` (merge of PR #44, palette; on top of the PR #43 merge c1ec00c).
+- **Hosted Backend Container Image Tag**: `karmiprod49bem0.azurecr.io/karmi-backend:3326303` (rollback: `54582e4`).
+- **Release APK**: `~/karmi-release-artifacts/r1-3326303/karmi-0.1.0+5-3326303-arm64-v8a-release.apk`, sha256 `8ac586a41a0c1ab3f729b8bcb7623ba9620f68409487b7237c1344d96908bd80`, package `ai.karmi.app` versionName 0.1.0 versionCode 2005 (arm64 split; build number 5).
 
 ### 0.2 Critical Reinstallation Warning (Local Data Wipe)
 > **WARNING: UNINSTALL WIPES ALL LOCAL APP DATA**
@@ -63,7 +64,7 @@ Before starting the device test run, the owner must confirm the following config
 Admin endpoints (`/v1/admin/*`) and the web dashboard (`/admin`) enforce four independent gates (`docs/runbooks/admin-backend.md` lines 3-15):
 1. **Valid Clerk Token**: Sign in with the owner's Clerk user account.
 2. **Allowlisted Clerk Subject**:
-   - The owner's Clerk User ID (`user_...`, `TBD (Boss)`) must be configured in `DAILY_AGENT_ADMIN_CLERK_USER_IDS` on the Azure Container App (`src/daily_agent/config.py:137-140`, `docs/release1/OWNER_STEPS.md` §2.6).
+   - The owner's Clerk User ID (`user_...`, owner-held; not recorded in the repo) must be configured in `DAILY_AGENT_ADMIN_CLERK_USER_IDS` on the Azure Container App (`src/daily_agent/config.py:137-140`, `docs/release1/OWNER_STEPS.md` §2.6). `DAILY_AGENT_ADMIN_CLERK_USER_IDS` is already set on karmi-beta (value not shown).
    - If setting multiple IDs, use a comma-separated list.
 3. **Database Role Flag**:
    - The user row in the Neon database must have `users.role = 'admin'` (`docs/runbooks/admin-backend.md` line 8).
@@ -391,11 +392,11 @@ Review all test steps above. Record the final verdict below:
 
 ---
 
-## 9. Summary of Unresolved Placeholders & TBDs
+## 9. Summary of Verified Release Values & Owner Credentials
 
-The following values require input from the repository owner or Boss:
-1. **Release Signing Certificate SHA-256 Digest**: `<filled by Boss>` *(Prefix `14a65fff` ... Suffix `8ba1` in `docs/release1/SHA256_AND_SIGNING.md`)*.
-2. **Release Candidate Main Commit SHA**: `<filled by Boss>`.
-3. **Hosted Backend Container Image Tag**: `<filled by Boss>`.
-4. **Owner Clerk User ID (`user_...`)**: `TBD (Boss)` *(Retrieve from Clerk dashboard)*.
-5. **Admin Personal Code**: `TBD (Boss)` *(Enroll using `scripts/admin_set_code.py`)*.
+All release environment parameters and build artifacts have been verified by the Boss:
+1. **Release Signing Certificate SHA-256 Digest**: `14a65fffbc383685c3460aee7ad9df03ac58d628427b87e606cfd90c12f88ba1` (CN=Karmi Release, OU=Mobile, O=Karmi; APK Signature Scheme v2).
+2. **Release Candidate Main Commit SHA**: `3326303` (merge of PR #44, palette; on top of the PR #43 merge c1ec00c).
+3. **Hosted Backend Container Image Tag**: `karmiprod49bem0.azurecr.io/karmi-backend:3326303` (rollback: `54582e4`).
+4. **Owner Clerk User ID (`user_...`)**: owner-held; not recorded in the repo. `DAILY_AGENT_ADMIN_CLERK_USER_IDS` is already set on karmi-beta (value not shown).
+5. **Admin Personal Code**: owner-held; not recorded in the repo. The owner enrolls it with `scripts/admin_set_code.py`.
