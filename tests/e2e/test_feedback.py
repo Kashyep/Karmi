@@ -1,6 +1,7 @@
 """Reply ratings, regenerate links and their sanitized telemetry export."""
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -187,7 +188,10 @@ def test_export_carries_sanitized_rating_and_retry_feedback(
     child = next(r for r in batch["runs"] if r is not original)
     assert child["feedback"] == []
     text = json.dumps(batch)
-    assert "roll number" not in text and "4821" not in text
+    assert "roll number" not in text
+    # Match the canary digits only as a standalone value; random hex ids
+    # (e.g. "fb-…4821…") can contain the same digits by chance.
+    assert re.search(r"(?<![0-9A-Za-z-])4821(?![0-9A-Za-z-])", text) is None
 
 
 def test_per_user_rate_limit_returns_429_with_retry_after(test_context: dict[str, object]) -> None:
