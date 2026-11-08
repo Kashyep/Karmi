@@ -1,7 +1,7 @@
 # Release 1.1 Backlog (implementation-ready, NOT in R1 scope)
 
 Owner: Manager-ProgramDirector. Status: DRAFT TICKETS, none started. Nothing in this file is implemented in Release 1.
-Source: plan `/home/rosso/Downloads/ai_chat_ui_ux_redesign_plan_2026.md` §3.8, §3.9, §5.4–5.6, §7 Phase 2 (R1.1-1..5). Repo findings are from read-only research on 2026-10-21; `[VERIFIED path:line]` = read in repo, `[PROPOSED]` = new or recommended, `[INFERENCE]` = not directly observed.
+Source: plan `~/Downloads/ai_chat_ui_ux_redesign_plan_2026.md` §3.8, §3.9, §5.4–5.6, §7 Phase 2 (R1.1-1..5). Repo findings are from read-only research on 2026-10-21; `[VERIFIED path:line]` = read in repo, `[PROPOSED]` = new or recommended, `[INFERENCE]` = not directly observed.
 
 ## Global gating rules
 
