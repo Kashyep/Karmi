@@ -11,6 +11,7 @@ import 'features/admin/admin_shell.dart';
 import 'features/history/conversation_list.dart';
 import 'features/history/conversation_list_controller.dart';
 import 'features/onboarding/onboarding.dart';
+import 'features/plans/plan_selection_screen.dart';
 import 'features/welcome/tester_notice.dart';
 import 'features/welcome/tester_notice_screen.dart';
 import 'settings/karmi_settings.dart';
@@ -126,6 +127,22 @@ class _KarmiAppState extends State<KarmiApp> {
     setState(() => _signedIn = signedIn);
   }
 
+  void _openPlanSelection([String? preselectedPlanId]) {
+    final nav = _navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(
+      KarmiMotion.route<void>(
+        nav.context,
+        (_) => PlanSelectionScreen(
+          currentPlanId: widget.armory.unlockedTier.planId,
+          preselectedPlanId: preselectedPlanId,
+          api: widget.session.api,
+          onPlanChanged: widget.armory.load,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -219,8 +236,14 @@ class _KarmiAppState extends State<KarmiApp> {
                     key: const ValueKey('onboarding_flow'),
                     session: widget.session,
                     settings: widget.settings,
-                    onComplete: () {
-                      setState(() {});
+                    onComplete: (selectedPlanId) {
+                      if (selectedPlanId != null &&
+                          selectedPlanId != 'ananta') {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _openPlanSelection(selectedPlanId);
+                        });
+                        WidgetsBinding.instance.ensureVisualUpdate();
+                      }
                     },
                   ),
           ),

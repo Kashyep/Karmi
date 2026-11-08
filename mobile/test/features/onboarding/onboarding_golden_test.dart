@@ -1,13 +1,11 @@
 /// Comprehensive golden tests for every onboarding screen.
 ///
 /// Screens covered (light + dark, x1.0 glass):
-///   welcome, create_account, sign_in, otp, name, preferences, plan_intro,
-///   notifications, completion
+///   welcome, create_account, sign_in, otp, plan_chooser, notifications
 ///
 /// Extra cases:
-///   name_error           — name step with validation error showing
-///   name_x2.0            — name step at text scale 2.0 (overflow gate)
 ///   create_account_x2.0  — create-account step at text scale 2.0 (overflow gate)
+///   plan_chooser_x2.0    — plan chooser step at text scale 2.0 (overflow gate)
 library;
 
 import 'package:flutter/material.dart';
@@ -32,9 +30,10 @@ Future<(KarmiSettings, KarmiSession, OnboardingFlow)> _setup(
   int step, {
   bool devAuthEnabled = false,
 }) async {
-  SharedPreferences.setMockInitialValues(
-    step > 0 ? {'onboarding_active_step': step} : {},
-  );
+  SharedPreferences.setMockInitialValues({
+    if (step > 0) 'onboarding_active_step': step,
+    if (step >= 2) 'dev_session_token': 'dev_user|role|9999999999|1|sig',
+  });
   final prefs = await SharedPreferences.getInstance();
   final settings = KarmiSettings(prefs);
   final backend = FakeBackend.healthy();
@@ -149,89 +148,35 @@ void main() {
       );
     });
 
-    // ── Name (step 2) ────────────────────────────────────────────────────────
-    testWidgets('golden onboarding_name_${b}_x1.0_glass', (tester) async {
+    // ── Plan chooser (step 2) ────────────────────────────────────────────────
+    testWidgets('golden onboarding_plan_chooser_${b}_x1.0_glass', (
+      tester,
+    ) async {
       final (_, _, widget) = await _setup(2);
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
-      expect(find.text('What should we call you?'), findsOneWidget);
+      expect(find.text('Choose your plan'), findsOneWidget);
       await expectLater(
         find.byType(MaterialApp),
-        matchesGoldenFile(goldenPath('onboarding_name_${b}_x1.0_glass')),
+        matchesGoldenFile(
+          goldenPath('onboarding_plan_chooser_${b}_x1.0_glass'),
+        ),
       );
     });
 
-    // ── Name — error state ───────────────────────────────────────────────────
-    testWidgets('golden onboarding_name_error_${b}_x1.0_glass', (tester) async {
-      final (_, _, widget) = await _setup(2);
-      final env = Env(brightness: brightness);
-      await pumpHost(tester, widget, env: env, size: phoneSize);
-      // Tap Continue without entering a name to trigger validation error
-      await tester.tap(
-        find.byKey(const ValueKey('onboarding_profile_continue')),
-      );
-      await settle(tester);
-      expect(
-        find.text('First name must be at least 2 characters.'),
-        findsOneWidget,
-      );
-      await expectLater(
-        find.byType(MaterialApp),
-        matchesGoldenFile(goldenPath('onboarding_name_error_${b}_x1.0_glass')),
-      );
-    });
-
-    // ── Preferences (step 3) ─────────────────────────────────────────────────
-    testWidgets('golden onboarding_preferences_${b}_x1.0_glass', (
+    // ── Notifications (step 3) ───────────────────────────────────────────────
+    testWidgets('golden onboarding_notifications_${b}_x1.0_glass', (
       tester,
     ) async {
       final (_, _, widget) = await _setup(3);
       final env = Env(brightness: brightness);
       await pumpHost(tester, widget, env: env, size: phoneSize);
-      expect(find.text('Choose your model approach'), findsOneWidget);
-      await expectLater(
-        find.byType(MaterialApp),
-        matchesGoldenFile(goldenPath('onboarding_preferences_${b}_x1.0_glass')),
-      );
-    });
-
-    // ── Plan intro (step 4) ──────────────────────────────────────────────────
-    testWidgets('golden onboarding_plan_intro_${b}_x1.0_glass', (tester) async {
-      final (_, _, widget) = await _setup(4);
-      final env = Env(brightness: brightness);
-      await pumpHost(tester, widget, env: env, size: phoneSize);
-      expect(find.text("You're starting on Ananta Free"), findsOneWidget);
-      await expectLater(
-        find.byType(MaterialApp),
-        matchesGoldenFile(goldenPath('onboarding_plan_intro_${b}_x1.0_glass')),
-      );
-    });
-
-    // ── Notifications (step 5) ───────────────────────────────────────────────
-    testWidgets('golden onboarding_notifications_${b}_x1.0_glass', (
-      tester,
-    ) async {
-      final (_, _, widget) = await _setup(5);
-      final env = Env(brightness: brightness);
-      await pumpHost(tester, widget, env: env, size: phoneSize);
-      expect(find.text('Stay updated on background tasks'), findsOneWidget);
+      expect(find.text('Know when Karmi replies'), findsOneWidget);
       await expectLater(
         find.byType(MaterialApp),
         matchesGoldenFile(
           goldenPath('onboarding_notifications_${b}_x1.0_glass'),
         ),
-      );
-    });
-
-    // ── Completion (step 6) ──────────────────────────────────────────────────
-    testWidgets('golden onboarding_completion_${b}_x1.0_glass', (tester) async {
-      final (_, _, widget) = await _setup(6);
-      final env = Env(brightness: brightness);
-      await pumpHost(tester, widget, env: env, size: phoneSize);
-      expect(find.text("You're all set!"), findsOneWidget);
-      await expectLater(
-        find.byType(MaterialApp),
-        matchesGoldenFile(goldenPath('onboarding_completion_${b}_x1.0_glass')),
       );
     });
   }
@@ -254,18 +199,18 @@ void main() {
     },
   );
 
-  // ── Name screen — text scale 2.0 (overflow gate) ──────────────────────────
-  testWidgets('golden onboarding_name_light_x2.0_glass — no overflow', (
+  // ── Plan chooser — text scale 2.0 (overflow gate) ─────────────────────────
+  testWidgets('golden onboarding_plan_chooser_light_x2.0_glass — no overflow', (
     tester,
   ) async {
     final (_, _, widget) = await _setup(2);
     const env = Env(brightness: Brightness.light, textScale: 2.0);
     await pumpHost(tester, widget, env: env, size: phoneSize);
-    expect(find.text('What should we call you?'), findsOneWidget);
+    expect(find.text('Choose your plan'), findsOneWidget);
     expectNoOverflow(tester);
     await expectLater(
       find.byType(MaterialApp),
-      matchesGoldenFile(goldenPath('onboarding_name_light_x2.0_glass')),
+      matchesGoldenFile(goldenPath('onboarding_plan_chooser_light_x2.0_glass')),
     );
   });
 }

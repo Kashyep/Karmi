@@ -18,8 +18,6 @@ class KarmiSettings extends ChangeNotifier {
   static const _keyTesterNoticeVersion = 'acknowledged_tester_notice_version';
   static const _keyOnboardingStep = 'onboarding_active_step';
   static const _keyHasCompletedOnboarding = 'has_completed_onboarding';
-  static const _keyPreferredLanguage = 'preferred_language';
-  static const _keyPromptMode = 'prompt_mode';
   final SharedPreferences _prefs;
   bool _reduceTransparency;
   ThemeMode _themeMode;
@@ -91,19 +89,5 @@ class KarmiSettings extends ChangeNotifier {
   Future<void> setHasCompletedOnboarding(bool value) async {
     notifyListeners();
     await _prefs.setBool(_keyHasCompletedOnboarding, value);
-  }
-
-  String? get preferredLanguage => _prefs.getString(_keyPreferredLanguage);
-
-  Future<void> setPreferredLanguage(String lang) async {
-    notifyListeners();
-    await _prefs.setString(_keyPreferredLanguage, lang);
-  }
-
-  String? get promptMode => _prefs.getString(_keyPromptMode);
-
-  Future<void> setPromptMode(String mode) async {
-    notifyListeners();
-    await _prefs.setString(_keyPromptMode, mode);
   }
 }

@@ -24,33 +24,32 @@ class OnboardingFlow extends StatefulWidget {
     this.clerkActions,
     this.devAuthEnabled = kDevAuthEnabled,
     this.onComplete,
+    this.requestNotificationPermission,
   });
 
   final KarmiSession session;
   final KarmiSettings? settings;
   final ClerkEmailCodeActions? clerkActions;
   final bool devAuthEnabled;
-  final VoidCallback? onComplete;
+  final void Function(String? selectedPlanId)? onComplete;
+  final Future<bool> Function()? requestNotificationPermission;
 
   @override
   State<OnboardingFlow> createState() => _OnboardingFlowState();
 }
 
 class _OnboardingFlowState extends State<OnboardingFlow> {
-  static const int _totalSteps = 7;
+  static const int _totalSteps = 4;
   late int _currentStep;
   // True when Welcome's "Already have an account?" opened the account step.
   bool _authStartsInSignIn = false;
 
-  // Step 2: Profile state
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  bool _profileLoading = false;
-  String? _profileError;
+  // Step 2: Plan chooser state
+  List<PlanInfo> _plans = kPlans;
+  String _selectedPlanId = 'ananta';
 
-  // Step 3: Preferences state
-  String _selectedMode = 'concise';
-  int? _anantaPriceInr;
+  // Step 3: Notification permission state
+  bool _permissionLoading = false;
 
   ClerkEmailCodeActions? _actions(BuildContext context) =>
       widget.clerkActions ??
@@ -62,36 +61,62 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   void initState() {
     super.initState();
     final savedStep = widget.settings?.onboardingStep ?? 0;
-    // If user is already signed in, resume at least at profile step (step 2)
-    if (widget.session.isSignedIn && savedStep < 2) {
-      _currentStep = 2;
-    } else {
-      _currentStep = savedStep.clamp(0, _totalSteps - 1);
-    }
-
-    _selectedMode = widget.settings?.promptMode ?? 'concise';
-    _loadAnantaPrice();
+    _currentStep = _resolveInitialStep(savedStep);
+    widget.session.addListener(_onSessionChanged);
+    _loadPlans();
   }
 
-  Future<void> _loadAnantaPrice() async {
-    try {
-      final plans = await widget.session.api.getPlans();
-      if (!mounted) return;
-      final ananta = plans.firstWhere(
-        (p) => p.id == 'ananta',
-        orElse: () => plans.first,
-      );
-      setState(() {
-        _anantaPriceInr = ananta.priceInr;
-      });
-    } catch (_) {}
+  @override
+  void didUpdateWidget(OnboardingFlow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session != widget.session) {
+      oldWidget.session.removeListener(_onSessionChanged);
+      widget.session.addListener(_onSessionChanged);
+    }
   }
 
   @override
   void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
+    widget.session.removeListener(_onSessionChanged);
     super.dispose();
+  }
+
+  // Step 1 advances via AccountAuthStep.onSignedIn, which also carries the
+  // sign-up name; jumping from it here would dispose the step mid-call.
+  void _onSessionChanged() {
+    if (!mounted) return;
+    if (widget.session.isSignedIn) {
+      if (_currentStep == 0) _goToStep(2);
+    } else if (_currentStep >= 2) {
+      _goToStep(0);
+    }
+  }
+
+  int _resolveInitialStep(int savedStep) {
+    if (widget.session.isSignedIn) {
+      if (savedStep == 3) return 3;
+      return 2;
+    }
+    return savedStep.clamp(0, 1);
+  }
+
+  Future<void> _loadPlans() async {
+    try {
+      final serverPlans = await widget.session.api.getPlans();
+      if (!mounted) return;
+      final planMap = {for (final p in serverPlans) p.id: p};
+      setState(() {
+        _plans = kPlans.map((k) {
+          final s = planMap[k.id] ?? (k.id == 'part' ? planMap['parth'] : null);
+          return PlanInfo(
+            k.id,
+            s?.label ?? k.label,
+            s?.everydayLimit ?? k.everydayLimit,
+            priceInr: s?.priceInr,
+          );
+        }).toList();
+      });
+    } catch (_) {}
   }
 
   void _goToStep(int step) {
@@ -101,27 +126,26 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   void _onBack() {
-    if (_currentStep > 0) _goToStep(_currentStep - 1);
+    if (_currentStep == 3) {
+      _goToStep(2);
+    } else if (_currentStep == 1) {
+      _goToStep(0);
+    }
   }
 
-  Future<void> _onSignedIn(AccountDetails? details) async {
-    if (details == null) {
-      _goToStep(2);
-      return;
+  void _onSignedIn(AccountDetails? details) {
+    if (details != null) {
+      final lastName = details.lastName;
+      final displayName = lastName == null || lastName.isEmpty
+          ? details.firstName
+          : '${details.firstName} $lastName';
+      unawaited(() async {
+        try {
+          await widget.session.api.updateProfile(displayName);
+        } catch (_) {}
+      }());
     }
-    // Sign-up already collected the name, so prefill the profile and skip it.
-    _firstNameController.text = details.firstName;
-    _lastNameController.text = details.lastName ?? '';
-    final lastName = details.lastName;
-    final displayName = lastName == null
-        ? details.firstName
-        : '${details.firstName} $lastName';
-    try {
-      await widget.session.api.updateProfile(displayName);
-    } catch (_) {
-      // Sign-up succeeded; the name can be edited later.
-    }
-    if (mounted) _goToStep(3);
+    if (mounted) _goToStep(2);
   }
 
   Future<void> _devSignIn() async {
@@ -129,76 +153,48 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (mounted) _goToStep(2);
   }
 
-  Future<void> _submitProfile() async {
-    final firstName = _firstNameController.text.trim();
-    if (firstName.length < 2) {
-      setState(
-        () => _profileError = 'First name must be at least 2 characters.',
-      );
-      return;
-    }
-
-    setState(() {
-      _profileLoading = true;
-      _profileError = null;
-    });
-
-    final lastName = _lastNameController.text.trim();
-    final displayName = lastName.isNotEmpty
-        ? '$firstName $lastName'
-        : firstName;
-
-    try {
-      if (widget.session.isSignedIn) {
-        await widget.session.api.updateProfile(displayName);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _profileLoading = false;
-          _profileError =
-              'Could not save your name. Check your connection and try again.';
-        });
-      }
-      return;
-    }
+  Future<void> _onAllowNotifications() async {
+    if (_permissionLoading) return;
     if (mounted) {
-      setState(() => _profileLoading = false);
-      _goToStep(3);
+      setState(() => _permissionLoading = true);
     }
+    try {
+      await widget.requestNotificationPermission?.call();
+    } catch (_) {}
+    await _finishOnboarding();
   }
 
-  Future<void> _submitPreferences() async {
-    // Language selection is not offered in this release; English only.
-    await widget.settings?.setPreferredLanguage('en');
-    await widget.settings?.setPromptMode(_selectedMode);
-    _goToStep(4);
-  }
-
-  void _finishOnboarding() {
-    widget.settings?.setHasCompletedOnboarding(true);
-    widget.settings?.setOnboardingStep(0);
-    widget.onComplete?.call();
+  Future<void> _finishOnboarding() async {
+    final onComplete = widget.onComplete;
+    final upgradePlan = _selectedPlanId == 'ananta' ? null : _selectedPlanId;
+    await widget.settings?.setHasCompletedOnboarding(true);
+    await widget.settings?.setOnboardingStep(0);
+    onComplete?.call(upgradePlan);
   }
 
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _currentStep == 0 || _currentStep == 2,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _onBack();
+      },
+      child: _buildCurrentStep(),
+    );
+  }
+
+  Widget _buildCurrentStep() {
     switch (_currentStep) {
       case 0:
         return _buildWelcomeStep();
       case 1:
         return _buildAuthStep();
       case 2:
-        return _buildProfileStep();
+        return _buildPlanChooserStep();
       case 3:
-        return _buildPreferencesStep();
-      case 4:
-        return _buildPlanIntroStep();
-      case 5:
-        return _buildPermissionsStep();
-      case 6:
       default:
-        return _buildCompleteStep();
+        return _buildPermissionsStep();
     }
   }
 
@@ -307,206 +303,65 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     );
   }
 
-  Widget _buildProfileStep() {
-    final colors = KarmiColors.of(context);
-    final textTheme = Theme.of(context).textTheme;
+  IconData _planIcon(String id) {
+    switch (id) {
+      case 'ananta':
+        return Icons.eco;
+      case 'yanta':
+        return Icons.flash_on;
+      case 'trika':
+        return Icons.auto_awesome;
+      case 'part':
+        return Icons.military_tech;
+      default:
+        return Icons.stars;
+    }
+  }
 
+  String _planDescription(PlanInfo plan) {
+    if (plan.id == 'ananta') {
+      return 'Free • ${plan.everydayLimit} everyday messages/day';
+    }
+    if (plan.priceInr != null) {
+      return '${formatInrRupees(plan.priceInr!.toDouble())} / month • ${plan.everydayLimit} everyday messages/day';
+    }
+    return 'Price unavailable • ${plan.everydayLimit} everyday messages/day';
+  }
+
+  Widget _buildPlanChooserStep() {
     return OnboardingScaffold(
       currentStep: 2,
       totalSteps: _totalSteps,
-      onBack: _onBack,
-      title: 'What should we call you?',
+      showBack: false,
+      title: 'Choose your plan',
       subtitle:
-          'Your name helps personalize conversations and generated drafts.',
+          'Start free with Ananta or choose a plan with more everyday messages.',
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            key: const ValueKey('onboarding_first_name_field'),
-            controller: _firstNameController,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: 'First name (required)',
-              prefixIcon: const Icon(Icons.person_outline),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+          for (final plan in _plans) ...[
+            ChoiceTile(
+              key: ValueKey('plan_choice_${plan.id}'),
+              title: plan.id == 'ananta' ? '${plan.label} (Free)' : plan.label,
+              description: _planDescription(plan),
+              icon: Icon(_planIcon(plan.id)),
+              isSelected: _selectedPlanId == plan.id,
+              onTap: () => setState(() => _selectedPlanId = plan.id),
             ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            key: const ValueKey('onboarding_last_name_field'),
-            controller: _lastNameController,
-            decoration: InputDecoration(
-              labelText: 'Last name (optional)',
-              prefixIcon: const Icon(Icons.person_outline),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          if (_profileError != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.error_outline, size: 16, color: colors.destructive),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _profileError!,
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: colors.destructive,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            const SizedBox(height: 10),
           ],
         ],
       ),
-      bottomBar: PillCta(
-        key: const ValueKey('onboarding_profile_continue'),
-        label: 'Continue',
-        isLoading: _profileLoading,
-        onPressed: _submitProfile,
-      ),
-    );
-  }
-
-  Widget _buildPreferencesStep() {
-    return OnboardingScaffold(
-      currentStep: 3,
-      totalSteps: _totalSteps,
-      onBack: _onBack,
-      title: 'Choose your model approach',
-      subtitle: 'Pick how Karmi answers.',
-      body: Column(
+      bottomBar: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Semantics(
-            header: true,
-            child: const Text(
-              'Model approach',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ChoiceTile(
-            title: 'Concise & Direct',
-            description: 'Speed-focused, short replies with minimal prose',
-            isSelected: _selectedMode == 'concise',
-            onTap: () => setState(() => _selectedMode = 'concise'),
-          ),
-          const SizedBox(height: 8),
-          ChoiceTile(
-            title: 'Detailed & Analytical',
-            description: 'In-depth explanations with complete context',
-            isSelected: _selectedMode == 'detailed',
-            onTap: () => setState(() => _selectedMode = 'detailed'),
+          PillCta(
+            key: const ValueKey('onboarding_plan_continue'),
+            label: 'Continue',
+            onPressed: () => _goToStep(3),
           ),
         ],
-      ),
-      bottomBar: PillCta(
-        key: const ValueKey('onboarding_preferences_continue'),
-        label: 'Continue',
-        onPressed: _submitPreferences,
-      ),
-    );
-  }
-
-  Widget _buildPlanIntroStep() {
-    final colors = KarmiColors.of(context);
-    final textTheme = Theme.of(context).textTheme;
-
-    return OnboardingScaffold(
-      currentStep: 4,
-      totalSteps: _totalSteps,
-      onBack: _onBack,
-      title: "You're starting on Ananta Free",
-      subtitle:
-          'Enjoy essential features, reliable local execution, and free community models.',
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: colors.card,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: colors.primary, width: 1.5),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.primary,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'ANANTA TIER',
-                        style: textTheme.labelSmall?.copyWith(
-                          color: colors.primaryForeground,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_anantaPriceInr != null)
-                      Text(
-                        '${formatInrRupees(_anantaPriceInr!.toDouble())} / month',
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: colors.foreground,
-                        ),
-                      )
-                    else
-                      Text(
-                        'Price unavailable',
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: colors.mutedForeground,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _PlanFeatureRow(
-                  icon: Icons.check_circle_outline,
-                  text: 'Unmetered everyday drafting & tasks',
-                ),
-                const SizedBox(height: 10),
-                _PlanFeatureRow(
-                  icon: Icons.check_circle_outline,
-                  text: 'Local context & secure execution',
-                ),
-                const SizedBox(height: 10),
-                _PlanFeatureRow(
-                  icon: Icons.check_circle_outline,
-                  text: 'Baseline community intelligence models',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No credit card required. Upgrade or change anytime.',
-            textAlign: TextAlign.center,
-            style: textTheme.bodyMedium?.copyWith(
-              color: colors.mutedForeground,
-            ),
-          ),
-        ],
-      ),
-      bottomBar: PillCta(
-        key: const ValueKey('onboarding_plan_continue'),
-        label: 'Continue with Ananta Free',
-        onPressed: () => _goToStep(5),
       ),
     );
   }
@@ -516,12 +371,12 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final textTheme = Theme.of(context).textTheme;
 
     return OnboardingScaffold(
-      currentStep: 5,
+      currentStep: 3,
       totalSteps: _totalSteps,
       onBack: _onBack,
-      title: 'Stay updated on background tasks',
+      title: 'Know when Karmi replies',
       subtitle:
-          'Get notified when complex generations or multi-step tasks finish.',
+          'Get a notification when a reply finishes while Karmi is in the background.',
       body: Column(
         children: [
           Container(
@@ -539,7 +394,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Notifications keep you informed when runs complete in the background so you never lose your flow.',
+            'You can turn this off any time in system settings.',
             textAlign: TextAlign.center,
             style: textTheme.bodyMedium?.copyWith(
               color: colors.mutedForeground,
@@ -554,60 +409,16 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           PillCta(
             key: const ValueKey('onboarding_allow_notifications'),
             label: 'Allow Notifications',
-            onPressed: () {
-              _goToStep(6);
-            },
+            isLoading: _permissionLoading,
+            onPressed: _onAllowNotifications,
           ),
           const SizedBox(height: 8),
           TextButton(
             key: const ValueKey('onboarding_skip_notifications'),
-            onPressed: () => _goToStep(6),
+            onPressed: _permissionLoading ? null : _finishOnboarding,
             child: const Text('Maybe Later'),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCompleteStep() {
-    final colors = KarmiColors.of(context);
-    final textTheme = Theme.of(context).textTheme;
-
-    return OnboardingScaffold(
-      currentStep: 6,
-      totalSteps: _totalSteps,
-      showBack: false,
-      title: "You're all set!",
-      subtitle: 'Welcome to Karmi. Let’s start creating together.',
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: colors.card,
-              border: Border.all(color: colors.primary, width: 2),
-            ),
-            child: Icon(
-              Icons.celebration_outlined,
-              size: 64,
-              color: colors.primaryText,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Your workspace is prepared and configured with your personalized settings.',
-            textAlign: TextAlign.center,
-            style: textTheme.bodyMedium?.copyWith(
-              color: colors.mutedForeground,
-            ),
-          ),
-        ],
-      ),
-      bottomBar: PillCta(
-        key: const ValueKey('onboarding_enter_karmi'),
-        label: 'Enter Karmi',
-        onPressed: _finishOnboarding,
       ),
     );
   }
@@ -656,32 +467,6 @@ class _ValuePropMiniCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _PlanFeatureRow extends StatelessWidget {
-  const _PlanFeatureRow({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = KarmiColors.of(context);
-    final textTheme = Theme.of(context).textTheme;
-
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: colors.primaryText),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            text,
-            style: textTheme.bodyMedium?.copyWith(color: colors.foreground),
-          ),
-        ),
-      ],
     );
   }
 }

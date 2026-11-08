@@ -134,6 +134,32 @@ void main() {
       expect(find.byType(PlanCard), findsNWidgets(4));
       expect(find.textContaining(r'$'), findsNothing);
     });
+
+    testWidgets('preselected card scrolls into view at small viewport', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        _testBed(
+          const PlanSelectionScreen(
+            currentPlanId: 'ananta',
+            preselectedPlanId: 'parth',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final parthCard = find.byKey(
+        const ValueKey('plan_card_parth_highlighted'),
+      );
+      expect(parthCard, findsOneWidget);
+      final rect = tester.getRect(parthCard);
+      expect(rect.top, greaterThanOrEqualTo(0.0));
+      expect(rect.bottom, lessThanOrEqualTo(640.0));
+    });
   });
 
   group('CustomerPlansApi extension', () {

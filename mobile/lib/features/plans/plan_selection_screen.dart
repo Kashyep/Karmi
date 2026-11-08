@@ -9,11 +9,13 @@ class PlanSelectionScreen extends StatefulWidget {
   const PlanSelectionScreen({
     super.key,
     this.currentPlanId,
+    this.preselectedPlanId,
     this.api,
     this.onPlanChanged,
   });
 
   final String? currentPlanId;
+  final String? preselectedPlanId;
   final KarmiApi? api;
   final Future<void> Function()? onPlanChanged;
 
@@ -23,6 +25,7 @@ class PlanSelectionScreen extends StatefulWidget {
 
 class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
   final _code = TextEditingController();
+  final _preselectedKey = GlobalKey();
   String? _currentPlanId;
   String? _message;
   bool _busy = false;
@@ -35,6 +38,18 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
     if (widget.api != null) {
       _loadPlans();
     }
+    if (widget.preselectedPlanId != null) {
+      _scrollToPreselected();
+    }
+  }
+
+  void _scrollToPreselected() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final currentContext = _preselectedKey.currentContext;
+      if (currentContext != null && currentContext.mounted) {
+        Scrollable.ensureVisible(currentContext, alignment: 0.5);
+      }
+    });
   }
 
   Future<void> _loadPlans() async {
@@ -150,7 +165,30 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
               const SizedBox(height: 16),
             ],
             for (final plan in _plans) ...[
-              PlanCard(plan: plan, isCurrent: plan.id == _currentPlanId),
+              if (plan.id == widget.preselectedPlanId ||
+                  (plan.id == 'part' && widget.preselectedPlanId == 'parth') ||
+                  (plan.id == 'parth' && widget.preselectedPlanId == 'part'))
+                KeyedSubtree(
+                  key: _preselectedKey,
+                  child: Container(
+                    key: ValueKey(
+                      'plan_card_${widget.preselectedPlanId}_highlighted',
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      ),
+                    ),
+                    child: PlanCard(
+                      plan: plan,
+                      isCurrent: plan.id == _currentPlanId,
+                    ),
+                  ),
+                )
+              else
+                PlanCard(plan: plan, isCurrent: plan.id == _currentPlanId),
               const SizedBox(height: 12),
             ],
           ],
