@@ -1,13 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+import 'api/conversations/conversations_api.dart';
 import 'armory/armory_controller.dart';
 import 'auth/session.dart';
-import 'features/welcome/welcome_screen.dart';
+import 'features/admin/admin_controller.dart';
+import 'features/admin/admin_shell.dart';
+import 'features/history/conversation_list.dart';
+import 'features/history/conversation_list_controller.dart';
+import 'features/onboarding/onboarding.dart';
 import 'features/welcome/tester_notice.dart';
 import 'features/welcome/tester_notice_screen.dart';
 import 'settings/karmi_settings.dart';
 import 'shell/karmi_shell.dart';
+import 'shell/chat_history_commands.dart';
+import 'shell/history_panel.dart';
 import 'theme/karmi_glass.dart';
 import 'theme/karmi_motion.dart';
 import 'theme/karmi_theme.dart';
@@ -23,6 +32,8 @@ class KarmiApp extends StatefulWidget {
     required this.session,
     required this.armory,
     this.adaptiveGlassQuality = true,
+    this.clock,
+    this.admin,
   });
 
   final KarmiSettings settings;
@@ -32,6 +43,12 @@ class KarmiApp extends StatefulWidget {
   /// Runs liquid_glass_widgets' device benchmark. Off in widget tests.
   final bool adaptiveGlassQuality;
 
+  /// Injected into the chat empty-state greeting; null uses the wall clock.
+  final DateTime Function()? clock;
+
+  /// Admin console controller; null disables the admin entry point.
+  final AdminController? admin;
+
   @override
   State<KarmiApp> createState() => _KarmiAppState();
 }
@@ -39,18 +56,44 @@ class KarmiApp extends StatefulWidget {
 class _KarmiAppState extends State<KarmiApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
   late bool _signedIn = widget.session.isSignedIn;
+  final _historyCommands = ChatHistoryCommands();
+  ConversationsApi? _conversationsApi;
+  ConversationListController? _conversationListController;
 
   @override
   void initState() {
     super.initState();
     widget.session.addListener(_onSession);
-    if (_signedIn) _loadArmory();
+    if (_signedIn) {
+      _loadArmory();
+      _ensureConversationController();
+      unawaited(widget.admin?.probe());
+    }
   }
 
   @override
   void dispose() {
     widget.session.removeListener(_onSession);
+    _historyCommands.dispose();
     super.dispose();
+    _conversationListController?.dispose();
+    _conversationsApi?.close();
+  }
+
+  ConversationListController _ensureConversationController() {
+    final existing = _conversationListController;
+    if (existing != null) return existing;
+    final api = _conversationsApi ??= ConversationsApi(
+      baseUrl: widget.session.api.baseUrl,
+      client: widget.session.api.client,
+      tokenProvider:
+          widget.session.api.tokenProvider ??
+          () async => widget.session.api.token,
+    );
+    final controller = ConversationListController(api: api);
+    _conversationListController = controller;
+    unawaited(controller.refresh());
+    return controller;
   }
 
   /// Progression is server-authoritative; a failed fetch keeps the cached
@@ -70,8 +113,15 @@ class _KarmiAppState extends State<KarmiApp> {
     if (_signedIn && !signedIn) {
       _navigatorKey.currentState?.popUntil((route) => route.isFirst);
       widget.armory.reset();
+      widget.admin?.reset();
+      _conversationListController?.dispose();
+      _conversationListController = null;
+      _conversationsApi?.close();
+      _conversationsApi = null;
     } else if (!_signedIn && signedIn) {
       _loadArmory();
+      _ensureConversationController();
+      unawaited(widget.admin?.probe());
     }
     setState(() => _signedIn = signedIn);
   }
@@ -79,7 +129,11 @@ class _KarmiAppState extends State<KarmiApp> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([widget.settings, widget.armory]),
+      listenable: Listenable.merge([
+        widget.settings,
+        widget.armory,
+        if (widget.admin != null) widget.admin!,
+      ]),
       builder: (context, _) {
         final tier = widget.armory.effectiveTier;
         return LiquidGlassWidgets.wrap(
@@ -114,18 +168,60 @@ class _KarmiAppState extends State<KarmiApp> {
                     onAcknowledge: () => widget.settings
                         .acknowledgeTesterNotice(kTesterNoticeVersion),
                   )
-                : _signedIn
+                : _signedIn && widget.admin?.isActive == true
+                ? AdminShell(
+                    key: const ValueKey('admin_shell'),
+                    controller: widget.admin!,
+                  )
+                : _signedIn && widget.settings.hasCompletedOnboarding
                 ? KarmiShell(
                     key: const ValueKey('shell'),
                     api: widget.session.api,
                     settings: widget.settings,
                     session: widget.session,
+                    clock: widget.clock,
                     armory: widget.armory,
+                    admin: widget.admin,
+                    historyCommands: _historyCommands,
+                    historyRailBuilder: (context) => Builder(
+                      builder: (innerContext) =>
+                          ValueListenableBuilder<String?>(
+                            valueListenable: _historyCommands.activeId,
+                            builder: (_, activeId, __) => ConversationList(
+                              controller: _ensureConversationController(),
+                              activeConversationId: activeId,
+                              clock: widget.clock,
+                              onOpen: (id) {
+                                _historyCommands.openConversation?.call(id);
+                                HistoryPanelScope.maybeOf(
+                                  innerContext,
+                                )?.closeHistory();
+                                final scaffold = Scaffold.maybeOf(innerContext);
+                                if (scaffold != null && scaffold.isDrawerOpen) {
+                                  scaffold.closeDrawer();
+                                }
+                              },
+                              onNewChat: () {
+                                _historyCommands.newChat?.call();
+                                HistoryPanelScope.maybeOf(
+                                  innerContext,
+                                )?.closeHistory();
+                                final scaffold = Scaffold.maybeOf(innerContext);
+                                if (scaffold != null && scaffold.isDrawerOpen) {
+                                  scaffold.closeDrawer();
+                                }
+                              },
+                            ),
+                          ),
+                    ),
                   )
-                : WelcomeScreen(
-                    key: const ValueKey('welcome'),
+                : OnboardingFlow(
+                    key: const ValueKey('onboarding_flow'),
                     session: widget.session,
                     settings: widget.settings,
+                    onComplete: () {
+                      setState(() {});
+                    },
                   ),
           ),
         );

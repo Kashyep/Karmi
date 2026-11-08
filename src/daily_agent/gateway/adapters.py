@@ -7,8 +7,10 @@ belongs to the gateway so it stays bounded and visible.
 
 from __future__ import annotations
 
+import json
+import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 
@@ -16,7 +18,7 @@ import httpx
 
 from daily_agent import opencode
 from daily_agent.gateway.registry import RegistryModel
-from daily_agent.gateway.types import ChatRequest, ChatResult, ProviderError
+from daily_agent.gateway.types import ChatRequest, ChatResult, ProviderError, StreamChunk
 from daily_agent.providers import ProviderCall
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -24,12 +26,16 @@ OPENROUTER_CHAT_URL = f"{OPENROUTER_BASE_URL}/chat/completions"
 MAX_PROMPT_CHARS = 120_000
 MAX_OUTPUT_TOKENS = 4_096
 FREE_MEASUREMENT = "registry-free-model"
+# Column widths of runs.served_model / runs.served_provider.
+SERVED_MODEL_CHARS = 200
+SERVED_PROVIDER_CHARS = 40
 
 
 class ChatProvider(Protocol):
     name: str
 
     def complete(self, request: ChatRequest, model: RegistryModel) -> ChatResult: ...
+    def stream(self, request: ChatRequest, model: RegistryModel) -> Iterator[StreamChunk]: ...
 
 
 def _validate_request(request: ChatRequest, *, max_chars: int) -> None:
@@ -75,6 +81,14 @@ def _status_error(response: httpx.Response) -> ProviderError:
     if status == 408 or status >= 500:
         return ProviderError(ProviderError.SERVER, f"provider error (HTTP {status})")
     return ProviderError(ProviderError.REJECTED, f"provider rejected the request (HTTP {status})")
+
+
+def _served_field(payload: Any, key: str, limit: int) -> str | None:
+    """The non-empty string ``key`` a provider reports at top level, bounded to the DB column."""
+    value = payload.get(key) if isinstance(payload, dict) else None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()[:limit]
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -166,6 +180,8 @@ class OpenRouterProvider:
             cost_micro=0,
             measurement=FREE_MEASUREMENT,
             rate_version=f"registry-{model.snapshot_date}",
+            served_model=_served_field(payload, "model", SERVED_MODEL_CHARS),
+            served_provider=_served_field(payload, "provider", SERVED_PROVIDER_CHARS),
         )
         return ChatResult(
             text=text,
@@ -173,6 +189,102 @@ class OpenRouterProvider:
             latency_ms=latency_ms,
             call=call,
         )
+
+    def stream(self, request: ChatRequest, model: RegistryModel) -> Iterator[StreamChunk]:
+        _validate_request(request, max_chars=MAX_PROMPT_CHARS)
+        body: dict[str, Any] = {
+            "model": request.model_id,
+            "messages": list(request.messages),
+            "max_tokens": request.max_output_tokens,
+            "temperature": 0.2,
+            "stream": True,
+        }
+        try:
+            with httpx.Client(
+                timeout=httpx.Timeout(self._timeout, read=30.0),
+                transport=self._transport,
+                follow_redirects=False,
+            ) as client, client.stream(
+                "POST",
+                OPENROUTER_CHAT_URL,
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            ) as response:
+                if response.status_code != 200:
+                    raise _status_error(response)
+                finish_reason: str | None = None
+                prompt_tokens: int | None = None
+                completion_tokens: int | None = None
+                served_model: str | None = None
+                served_provider: str | None = None
+                for line in response.iter_lines():
+                    line = line.strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if line.startswith("data:"):
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            payload = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            logging.getLogger(__name__).debug("skipped malformed provider SSE frame")
+                            continue
+                        if not isinstance(payload, dict):
+                            continue
+                        served_model = served_model or _served_field(payload, "model", SERVED_MODEL_CHARS)
+                        served_provider = served_provider or _served_field(
+                            payload, "provider", SERVED_PROVIDER_CHARS
+                        )
+                        usage = payload.get("usage")
+                        if isinstance(usage, dict):
+                            reported_cost = usage.get("cost")
+                            if reported_cost is not None:
+                                try:
+                                    nonzero = Decimal(str(reported_cost)) != 0
+                                except (InvalidOperation, ValueError):
+                                    nonzero = True
+                                if nonzero:
+                                    raise ProviderError(
+                                        ProviderError.NON_ZERO_PRICE,
+                                        "provider reported a non-zero cost for a free model",
+                                    )
+                            if "prompt_tokens" in usage:
+                                prompt_tokens = _int_or_none(usage.get("prompt_tokens"))
+                            if "completion_tokens" in usage:
+                                completion_tokens = _int_or_none(usage.get("completion_tokens"))
+                        choices = payload.get("choices")
+                        if choices and isinstance(choices, list):
+                            choice = choices[0]
+                            if isinstance(choice, dict):
+                                delta = choice.get("delta")
+                                if isinstance(delta, dict) and "content" in delta:
+                                    content = delta.get("content")
+                                    if content:
+                                        yield StreamChunk(text=content)
+                                if choice.get("finish_reason"):
+                                    finish_reason = choice.get("finish_reason")
+
+                call = ProviderCall(
+                    provider=self.name,
+                    model_id=request.model_id,
+                    operation="generate",
+                    input_tokens=prompt_tokens,
+                    output_tokens=completion_tokens,
+                    cost_micro=0,
+                    measurement=FREE_MEASUREMENT,
+                    rate_version=f"registry-{model.snapshot_date}",
+                    served_model=served_model,
+                    served_provider=served_provider,
+                )
+                yield StreamChunk(finish_reason=finish_reason, call=call)
+        except httpx.TimeoutException as exc:
+            raise ProviderError(ProviderError.TIMEOUT, "provider request timed out") from exc
+        except httpx.HTTPError as exc:
+            raise ProviderError(ProviderError.SERVER, "provider request failed") from exc
 
 
 class OpenCodeProvider:
@@ -222,3 +334,7 @@ class OpenCodeProvider:
             latency_ms=completion.latency_ms,
             call=call,
         )
+
+    def stream(self, request: ChatRequest, model: RegistryModel) -> Iterator[StreamChunk]:
+        result = self.complete(request, model)
+        yield StreamChunk(text=result.text, finish_reason=result.finish_reason, call=result.call)

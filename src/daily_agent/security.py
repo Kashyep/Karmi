@@ -5,16 +5,17 @@ import hmac
 import logging
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from daily_agent.config import Settings, get_settings
 from daily_agent.db import get_session
-from daily_agent.models import Account, Subscription, User
+from daily_agent.models import Account, ErasedClerkSubject, Subscription, User
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,39 @@ class Principal:
     user_id: str
     account_id: str
     role: str
+    # Manual server-side flag (users.tester); gates the debug serving metadata.
+    tester: bool = False
+
+
+ACTIVITY_TOUCH_INTERVAL = timedelta(seconds=60)
+
+
+def as_utc(value: datetime) -> datetime:
+    """SQLite returns naive datetimes; every stored instant is UTC."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def clerk_subject_digest(subject: str) -> str:
+    """Stored form of a Clerk subject (erasure tombstones); the raw id is never persisted."""
+    return hashlib.sha256(subject.encode()).hexdigest()
+
+
+def _admit_user(session: Session, user: User, issued_at: int | None = None) -> None:
+    """Reject suspended users and revoked tokens, then record (throttled) activity."""
+    if user.disabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "ACCOUNT_SUSPENDED", "message": "this account is suspended"},
+        )
+    revoked_at = user.sessions_revoked_at
+    if issued_at is not None and revoked_at is not None and issued_at <= int(
+        as_utc(revoked_at).timestamp()
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid session")
+    now = datetime.now(UTC)
+    if user.last_active_at is None or now - as_utc(user.last_active_at) > ACTIVITY_TOUCH_INTERVAL:
+        session.execute(update(User).where(User.id == user.id).values(last_active_at=now))
+        session.commit()
 
 
 def issue_development_token(user: User, settings: Settings, ttl_seconds: int = 3600) -> str:
@@ -55,7 +89,10 @@ def verify_token(token: str, settings: Settings, session: Session) -> Principal:
     user = session.get(User, user_id)
     if user is None or user.role != role or user.token_version != token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid session")
-    return Principal(user_id=user.id, account_id=user.account_id, role=user.role)
+    _admit_user(session, user)
+    return Principal(
+        user_id=user.id, account_id=user.account_id, role=user.role, tester=user.tester
+    )
 
 
 def verify_clerk_token(token: str, settings: Settings, session: Session) -> Principal:
@@ -85,6 +122,11 @@ def verify_clerk_token(token: str, settings: Settings, session: Session) -> Prin
 
     user = session.scalar(select(User).where(User.clerk_subject == subject))
     if user is None:
+        if session.get(ErasedClerkSubject, clerk_subject_digest(subject)) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "ACCOUNT_ERASED", "message": "this account was deleted"},
+            )
         display_name = claims.get("name")
         if not isinstance(display_name, str) or not display_name.strip():
             display_name = "Karmi user"
@@ -110,7 +152,11 @@ def verify_clerk_token(token: str, settings: Settings, session: Session) -> Prin
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="account setup temporarily unavailable",
                 ) from exc
-    return Principal(user_id=user.id, account_id=user.account_id, role=user.role)
+    issued_at = claims["iat"]
+    _admit_user(session, user, int(issued_at) if isinstance(issued_at, int | float) else None)
+    return Principal(
+        user_id=user.id, account_id=user.account_id, role=user.role, tester=user.tester
+    )
 
 
 def require_principal(
@@ -121,12 +167,6 @@ def require_principal(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication required")
     return verify_token(authorization[7:], settings, session)
-
-
-def require_admin(principal: Principal = Depends(require_principal)) -> Principal:
-    if principal.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin role required")
-    return principal
 
 
 def verify_hmac(raw_body: bytes, supplied: str | None, secret: str) -> None:

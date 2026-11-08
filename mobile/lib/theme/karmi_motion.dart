@@ -42,6 +42,16 @@ abstract final class KarmiMotion {
     Duration normal = standard,
   ]) => KarmiAccessibility.reduceMotionOf(context) ? Duration.zero : normal;
 
+  /// Composer dock/undock motion (§3.1): 220ms on the plan's
+  /// `cubic-bezier(0.22, 1, 0.36, 1)`. The 120–180ms band above is for state
+  /// changes; this is the one deliberate layout move.
+  static const composerDuration = Duration(milliseconds: 220);
+  static const composerCurve = Cubic(0.22, 1, 0.36, 1);
+
+  /// [composerDuration], or [Duration.zero] under reduced motion.
+  static Duration composerDurationOf(BuildContext context) =>
+      duration(context, composerDuration);
+
   /// A page route whose enter/exit transition honours reduced motion.
   static Route<T> route<T>(BuildContext context, WidgetBuilder builder) {
     final d = duration(context);

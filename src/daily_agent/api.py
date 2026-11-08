@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -8,20 +10,25 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
-from fastapi.responses import FileResponse, HTMLResponse
-from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from daily_agent.access_codes import PLAN_RANK, load_access_code_hashes, plan_for_code
+from daily_agent.admin_metrics import MetricsMiddleware
+from daily_agent.body_limit import BugReportBodyLimitMiddleware
+from daily_agent.bug_reports import create_bug_report, get_bug_report
+from daily_agent.chat_timing import ChatTimingMiddleware, is_chat_timing_enabled
 from daily_agent.config import Settings, get_settings
-from daily_agent.db import create_schema, get_session
-from daily_agent.gateway import Gateway, build_gateway
+from daily_agent.db import create_schema, get_engine, get_session
+from daily_agent.db_admission import DatabaseBusy
+from daily_agent.deps import gateway_dependency, limited_principal, own_run
+from daily_agent.gateway import Gateway
 from daily_agent.gateway.service import MAX_ATTEMPTS
+from daily_agent.gzip_middleware import SSEAwareGZip
 from daily_agent.models import (
-    Account,
     BillingEvent,
-    BudgetReservation,
     MessageFeedback,
     Reminder,
     RoutingRecord,
@@ -34,28 +41,37 @@ from daily_agent.models import (
 )
 from daily_agent.parakh.routing import RunTiming, record_routing_evidence, route_for_action
 from daily_agent.plans import SYNTHETIC_POLICIES
-from daily_agent.ratelimit import SlidingWindowLimiter, install_log_redaction
+from daily_agent.ratelimit import RateLimiter, build_limiter, install_log_redaction
+from daily_agent.routes.admin import router as admin_router
+from daily_agent.routes.conversations import router as conversations_router
+from daily_agent.routes.stream import router as stream_router
 from daily_agent.schemas import (
     ARMORY_TIERS,
     AccessCodeRedeem,
     AccessCodeView,
     ActiveThemeUpdate,
     ArmoryView,
+    BugReportCreate,
+    BugReportCreatedView,
+    BugReportDetailView,
     FeedbackCreate,
     FeedbackView,
     MessageCreate,
     MessageView,
     Outcome,
+    PlanView,
     RegenerateCreate,
     ReminderCreate,
     TaskCreate,
     TaskView,
     UsageView,
+    UserProfileUpdate,
+    UserProfileView,
 )
 from daily_agent.security import (
     Principal,
+    as_utc,
     issue_development_token,
-    require_admin,
     require_principal,
     verify_event_signature,
     verify_hmac,
@@ -65,12 +81,14 @@ from daily_agent.services import (
     GatewayAdmission,
     GatewayCapacityFull,
     IdempotencyConflict,
+    InputTooLarge,
     ReservationInFlight,
     accept_internal_event,
     admit_gateway_requests,
     create_task_idempotent,
     current_period_key,
     current_window_key,
+    ensure_input_fits,
     estimate_request_cost_micro,
     gateway_requests_made,
     generate_reply,
@@ -81,57 +99,101 @@ from daily_agent.services import (
     persist_completed_run,
     plan_policy,
     policy_for,
+    rebase_usage_window,
     release_budget,
     reserve_budget,
     return_gateway_requests,
+    run_debug_view,
     scoped_task_query,
     seed_development_identity,
+    served_debug,
     settle_budget,
     subscription_period,
     sync_account_progression,
     sync_theme_progression,
     trim_history,
 )
-from daily_agent.web import build_manifest, render_shell
+from daily_agent.streaming.registry import sweep_interrupted_runs
+from daily_agent.web import admin_page_headers, build_manifest, render_admin_page, render_shell
 
 logger = logging.getLogger(__name__)
 
 
+def _profile_user(session: Session, principal: Principal) -> User:
+    """Return the authenticated user provisioned by the authentication layer."""
+    user = session.get(User, principal.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+    return user
+
+
 def create_app() -> FastAPI:
     install_log_redaction()
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         settings = get_settings()
         if settings.is_development and settings.database_url.startswith("sqlite"):
             create_schema()
-        yield
+        try:
+            with Session(get_engine()) as session:
+                swept = sweep_interrupted_runs(
+                    session, older_than_seconds=settings.run_stale_seconds
+                )
+            if swept:
+                logger.info("stream.swept_interrupted runs=%s", swept)
+        except SQLAlchemyError:
+            logger.warning("stream.sweep_failed (schema not migrated?)", exc_info=True)
+        # Imported lazily: the maintenance loops are worker code, not request-path code.
+        from daily_agent.background import run_maintenance_loops
+
+        maintenance = asyncio.create_task(run_maintenance_loops(settings))
+        try:
+            yield
+        finally:
+            maintenance.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await maintenance
 
     app = FastAPI(title="Daily Agent", version="0.1.0", lifespan=lifespan)
 
-    def gateway_dependency(settings: Settings = Depends(get_settings)) -> Gateway:
-        # One gateway per app so circuit-breaker and cooldown state survive across requests.
-        gateway: Gateway | None = getattr(app.state, "gateway", None)
-        if gateway is None:
-            gateway = build_gateway(settings)
-            app.state.gateway = gateway
-        return gateway
+    app_settings = get_settings()
+    if app_settings.gzip_enabled:
+        app.add_middleware(SSEAwareGZip, minimum_size=app_settings.gzip_min_size)
+    app.add_middleware(BugReportBodyLimitMiddleware)
+    app.include_router(stream_router)
+    app.include_router(conversations_router)
+    app.include_router(admin_router)
+    app.add_middleware(MetricsMiddleware)
+    if is_chat_timing_enabled():
+        app.add_middleware(ChatTimingMiddleware)
 
-    def limited_principal(
-        principal: Principal = Depends(require_principal),
-        settings: Settings = Depends(get_settings),
-    ) -> Principal:
-        limiter: SlidingWindowLimiter | None = getattr(app.state, "limiter", None)
-        if limiter is None:
-            limiter = SlidingWindowLimiter(limit=settings.rate_limit_per_minute)
-            app.state.limiter = limiter
-        retry_after = limiter.check(principal.user_id)
-        if retry_after is not None:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={"code": "RATE_LIMITED", "message": "too many requests; slow down"},
-                headers={"Retry-After": str(retry_after)},
-            )
-        return principal
+    @app.exception_handler(InputTooLarge)
+    def input_too_large(_request: Request, exc: InputTooLarge) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            content={
+                "detail": {
+                    "code": "INPUT_TOO_LARGE",
+                    "message": str(exc),
+                    "max_input_tokens": exc.max_input_tokens,
+                }
+            },
+        )
+
+    @app.exception_handler(DatabaseBusy)
+    def database_busy(_request: Request, exc: DatabaseBusy) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            headers={"Retry-After": str(exc.retry_after_s)},
+            content={
+                "detail": {
+                    "code": "DATABASE_BUSY",
+                    "message": str(exc),
+                    "retry_after_s": exc.retry_after_s,
+                }
+            },
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -152,7 +214,8 @@ def create_app() -> FastAPI:
     @app.post("/dev/token")
     def development_token(
         role: str = "customer",
-        session: Session = Depends(get_session), settings: Settings = Depends(get_settings)
+        session: Session = Depends(get_session),
+        settings: Settings = Depends(get_settings),
     ) -> dict[str, str]:
         if not settings.allow_development_auth or not settings.is_development:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -160,44 +223,6 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
         user = seed_development_identity(session, role=role)
         return {"token": issue_development_token(user, settings), "user_id": user.id}
-
-    @app.get("/admin/overview")
-    def admin_overview(
-        _admin: Principal = Depends(require_admin),
-        session: Session = Depends(get_session),
-        settings: Settings = Depends(get_settings),
-    ) -> dict[str, object]:
-        statuses = session.execute(select(Run.status, func.count()).group_by(Run.status)).all()
-        return {
-            "customers": session.scalar(select(func.count()).select_from(Account)) or 0,
-            "runs_by_status": {str(run_status): count for run_status, count in statuses},
-            "open_reservations": session.scalar(
-                select(func.count())
-                .select_from(BudgetReservation)
-                .where(BudgetReservation.status == "reserved")
-            )
-            or 0,
-            "live_models": settings.live_models_enabled,
-            "whatsapp": "policy_disabled",
-            "raw_message_access": "not_available",
-        }
-
-    @app.get("/admin/runs")
-    def admin_runs(
-        _admin: Principal = Depends(require_admin),
-        session: Session = Depends(get_session),
-    ) -> list[dict[str, object]]:
-        runs = session.scalars(select(Run).order_by(Run.id.desc()).limit(100)).all()
-        return [
-            {
-                "run_id": run.id,
-                "status": run.status,
-                "outcome": run.outcome,
-                "account_ref": hashlib.sha256(run.account_id.encode()).hexdigest()[:12],
-                "response": "redacted",
-            }
-            for run in runs
-        ]
 
     @app.get("/v1/usage", response_model=UsageView)
     def usage(
@@ -288,6 +313,84 @@ def create_app() -> FastAPI:
             tiers=list(ARMORY_TIERS),
         )
 
+    @app.get("/v1/user/profile", response_model=UserProfileView)
+    def get_user_profile(
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> UserProfileView:
+        user = _profile_user(session, principal)
+        return UserProfileView(id=user.id, display_name=user.display_name)
+
+    @app.patch("/v1/user/profile", response_model=UserProfileView)
+    def update_user_profile(
+        body: UserProfileUpdate,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> UserProfileView:
+        user = _profile_user(session, principal)
+        user.display_name = body.display_name
+        session.commit()
+        return UserProfileView(id=user.id, display_name=user.display_name)
+
+    @app.get("/v1/plans", response_model=list[PlanView])
+    def get_plans(
+        _principal: Principal = Depends(require_principal),
+    ) -> list[PlanView]:
+        return [
+            PlanView(
+                id=policy.plan_id,
+                label=policy.display_name,
+                price_inr=policy.price_inr,
+                everyday_limit=policy.everyday_limit,
+                daily_token_limit=policy.daily_token_limit,
+                input_tokens=policy.input_tokens,
+                output_tokens=policy.output_tokens,
+                request_cost_cap_micro=policy.request_cost_cap_micro,
+                period_cost_cap_micro=policy.period_cost_cap_micro,
+                model_classes=list(policy.model_classes),
+                min_class=policy.min_class,
+            )
+            for policy in SYNTHETIC_POLICIES.values()
+        ]
+
+    @app.post("/v1/bug-reports", response_model=BugReportCreatedView)
+    def submit_bug_report(
+        body: BugReportCreate,
+        response: Response,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> BugReportCreatedView:
+        report, is_replay = create_bug_report(session, principal, body)
+        if not is_replay:
+            response.status_code = status.HTTP_201_CREATED
+        else:
+            response.status_code = status.HTTP_200_OK
+        return BugReportCreatedView(
+            id=report.id,
+            ticket=report.ticket,
+            status=report.status,
+            created_at=as_utc(report.created_at).isoformat(),
+        )
+
+    @app.get("/v1/bug-reports/{report_id}", response_model=BugReportDetailView)
+    def read_bug_report(
+        report_id: str,
+        principal: Principal = Depends(require_principal),
+        session: Session = Depends(get_session),
+    ) -> BugReportDetailView:
+        report = get_bug_report(session, principal, report_id)
+        return BugReportDetailView(
+            id=report.id,
+            ticket=report.ticket,
+            category=report.category,
+            description=report.description,
+            diagnostics=report.diagnostics,
+            status=report.status,
+            has_screenshot=report.screenshot is not None,
+            created_at=as_utc(report.created_at).isoformat(),
+            updated_at=as_utc(report.updated_at).isoformat(),
+        )
+
     @app.get("/v1/tasks", response_model=list[TaskView])
     def list_tasks(
         principal: Principal = Depends(require_principal),
@@ -304,6 +407,8 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> TaskView:
+        _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.title, policy)
         try:
             task = create_task_idempotent(
                 session,
@@ -356,6 +461,8 @@ def create_app() -> FastAPI:
         principal: Principal = Depends(require_principal),
         session: Session = Depends(get_session),
     ) -> dict[str, object]:
+        _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.text, policy)
         if body.due_at.tzinfo is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -421,8 +528,11 @@ def create_app() -> FastAPI:
                 response=existing.response_text or "",
                 route=_route_for(session, existing.id),
                 previous_run_id=existing.previous_run_id,
+                model=existing.served_model,
+                debug=run_debug_view(existing) if principal.tester else None,
             )
         _subscription, policy = policy_for(session, principal.account_id)
+        ensure_input_fits(body.text, policy)
         amount = estimate_request_cost_micro(policy, settings)
         # Earlier turns are client-supplied and never stored; only what fits the plan's input
         # budget is sent, and it counts toward the token hold like the message itself.
@@ -467,7 +577,11 @@ def create_app() -> FastAPI:
             session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={"code": "ALLOWANCE_EXHAUSTED", "message": str(exc), "reset_at": exc.reset_at.isoformat()},
+                detail={
+                    "code": "ALLOWANCE_EXHAUSTED",
+                    "message": str(exc),
+                    "reset_at": exc.reset_at.isoformat(),
+                },
             ) from exc
         except ReservationInFlight as exc:
             session.rollback()
@@ -511,6 +625,9 @@ def create_app() -> FastAPI:
                 request_hash=request_hash,
                 previous_run_id=previous_run_id,
                 regenerate_reason=regenerate_reason,
+                served=served_debug(
+                    result.provider_calls, attempts=result.attempts, latency_ms=timing.latency_ms
+                ),
             )
             record_routing_evidence(
                 session,
@@ -563,6 +680,8 @@ def create_app() -> FastAPI:
                 response=recovered.response_text or "",
                 route=_route_for(session, recovered.id),
                 previous_run_id=recovered.previous_run_id,
+                model=recovered.served_model,
+                debug=run_debug_view(recovered) if principal.tester else None,
             )
         except Exception:
             session.rollback()
@@ -580,6 +699,8 @@ def create_app() -> FastAPI:
             response=result.response,
             route=result.route,
             previous_run_id=run.previous_run_id,
+            model=run.served_model,
+            debug=run_debug_view(run) if principal.tester else None,
         )
 
     @app.post("/v1/messages", response_model=MessageView)
@@ -592,18 +713,6 @@ def create_app() -> FastAPI:
     ) -> MessageView:
         return execute_message(body, principal, session, settings, gateway)
 
-    def own_run(session: Session, principal: Principal, run_id: str) -> Run:
-        run = session.scalar(
-            select(Run).where(
-                Run.id == run_id,
-                Run.account_id == principal.account_id,
-                Run.user_id == principal.user_id,
-            )
-        )
-        if run is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="reply not found")
-        return run
-
     @app.post("/v1/access-code", response_model=AccessCodeView)
     def redeem_access_code(
         body: AccessCodeRedeem,
@@ -612,9 +721,9 @@ def create_app() -> FastAPI:
         settings: Settings = Depends(get_settings),
     ) -> AccessCodeView:
         """Unlock a higher beta tier with a secret code. Never downgrades; guesses are throttled."""
-        guesses: SlidingWindowLimiter | None = getattr(app.state, "code_limiter", None)
+        guesses: RateLimiter | None = getattr(app.state, "code_limiter", None)
         if guesses is None:
-            guesses = SlidingWindowLimiter(limit=5)
+            guesses = build_limiter(settings, name="code", limit=5)
             app.state.code_limiter = guesses
         retry_after = guesses.check(principal.user_id)
         if retry_after is not None:
@@ -635,11 +744,16 @@ def create_app() -> FastAPI:
         if changed:
             subscription.plan_id = plan_id
             subscription.policy_version = "beta-access-code-v1"
+            subscription.tier_expires_at = None
+            subscription.revert_plan_id = None
             sync_account_progression(session, principal.account_id)
+            rebase_usage_window(session, principal.account_id, SYNTHETIC_POLICIES[plan_id])
             session.commit()
             logger.info("access code upgraded account %s to %s", principal.account_id, plan_id)
         policy = SYNTHETIC_POLICIES[subscription.plan_id]
-        return AccessCodeView(plan_id=policy.plan_id, plan_label=policy.display_name, changed=changed)
+        return AccessCodeView(
+            plan_id=policy.plan_id, plan_label=policy.display_name, changed=changed
+        )
 
     @app.post("/v1/runs/{run_id}/feedback", response_model=FeedbackView)
     def rate_reply(
@@ -796,10 +910,9 @@ def create_app() -> FastAPI:
         if not stale:
             subscription.event_version = payload["version"]
             subscription.plan_id = payload["plan_id"]
-            subscription.status = (
-                "cancelled" if payload["type"] == "cancelled" else "active"
-            )
+            subscription.status = "cancelled" if payload["type"] == "cancelled" else "active"
             sync_account_progression(session, payload["account_id"])
+            rebase_usage_window(session, payload["account_id"], plan_policy(subscription))
         try:
             session.commit()
         except IntegrityError:
@@ -811,11 +924,22 @@ def create_app() -> FastAPI:
     def index() -> HTMLResponse:
         return HTMLResponse(render_shell())
 
+    @app.get("/admin", include_in_schema=False)
+    def admin_page(settings: Settings = Depends(get_settings)) -> HTMLResponse:
+        if not settings.admin_ui_enabled:
+            raise HTTPException(status_code=404, detail="Not found")
+        return HTMLResponse(
+            render_admin_page(publishable_key=settings.clerk_publishable_key),
+            headers=admin_page_headers(publishable_key=settings.clerk_publishable_key),
+        )
+
     @app.get("/static/{path:path}", include_in_schema=False)
-    def static_file(path: str) -> FileResponse:
+    def static_file(path: str, settings: Settings = Depends(get_settings)) -> FileResponse:
         static_dir = (Path(__file__).resolve().parent / "web" / "static").resolve()
         target = (static_dir / path).resolve()
         if not target.is_file() or not target.is_relative_to(static_dir):
+            raise HTTPException(status_code=404, detail="File not found")
+        if not settings.admin_ui_enabled and target.name.startswith("admin."):
             raise HTTPException(status_code=404, detail="File not found")
         return FileResponse(target)
 
@@ -826,6 +950,7 @@ def create_app() -> FastAPI:
             content=json.dumps(data, indent=2),
             media_type="application/manifest+json",
         )
+
     return app
 
 

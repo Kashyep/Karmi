@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:karmi_app/api/karmi_api.dart';
 
 import '../support/fake_backend.dart';
@@ -277,7 +279,18 @@ void main() {
       expect(KarmiApi().timeout, const Duration(seconds: 60));
     });
 
-    test('timeout throws Network', () async {
+    test('socket exception throws Network (offline), not ApiTimeout', () async {
+      final offline = KarmiApi(
+        baseUrl: 'http://karmi.test',
+        client: MockClient((_) async => throw const SocketException('offline')),
+      );
+      await expectLater(
+        offline.sendMessage('hi', idempotencyKey: 'key-12345678'),
+        throwsA(isA<NetworkException>()),
+      );
+    });
+
+    test('timeout throws ApiTimeout, not Network', () async {
       final slow = KarmiApi(
         baseUrl: 'http://karmi.test',
         client: backend.client,
@@ -290,7 +303,7 @@ void main() {
       );
       await expectLater(
         slow.sendMessage('hi', idempotencyKey: 'key-12345678'),
-        throwsA(isA<NetworkException>()),
+        throwsA(isA<ApiTimeoutException>()),
       );
     });
 
@@ -489,6 +502,36 @@ void main() {
       expect(FeedbackRating.fromWire('down'), FeedbackRating.down);
       expect(FeedbackRating.fromWire('invalid'), isNull);
       expect(FeedbackRating.fromWire(null), isNull);
+    });
+  });
+
+  group('PlanView', () {
+    test('parses price_inr and plan metadata from server payload', () {
+      final json = {
+        'id': 'yanta',
+        'label': 'Yanta',
+        'price_inr': 149,
+        'everyday_limit': 100,
+        'daily_token_limit': 300000,
+        'input_tokens': 8000,
+        'output_tokens': 4096,
+        'request_cost_cap_micro': 4000,
+        'period_cost_cap_micro': 80000,
+        'model_classes': ['economy', 'balanced'],
+        'min_class': 'economy',
+      };
+
+      final plan = PlanView.fromJson(json);
+      expect(plan.id, 'yanta');
+      expect(plan.label, 'Yanta');
+      expect(plan.priceInr, 149);
+      expect(plan.everydayLimit, 100);
+      expect(plan.dailyTokenLimit, 300000);
+      expect(plan.modelClasses, ['economy', 'balanced']);
+
+      final back = plan.toJson();
+      expect(back['price_inr'], 149);
+      expect(back['id'], 'yanta');
     });
   });
 }

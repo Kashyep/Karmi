@@ -66,3 +66,62 @@ class ProviderError(RuntimeError):
         super().__init__(message)
         self.kind = kind
         self.retry_after_seconds = retry_after_seconds
+
+
+@dataclass(frozen=True)
+class StreamDelta:
+    text: str
+
+
+@dataclass(frozen=True)
+class StreamChunk:
+    text: str = ""
+    finish_reason: str | None = None
+    call: ProviderCall | None = None
+
+
+class GatewayStreamError(Exception):
+    """Base class for streaming gateway errors carrying category and retryable flag."""
+
+    def __init__(
+        self,
+        category: str,
+        *,
+        retryable: bool,
+        message: str = "",
+        retry_after_s: int | None = None,
+    ) -> None:
+        super().__init__(message or category)
+        self.category = category
+        self.retryable = retryable
+        self.retry_after_s = retry_after_s
+
+
+class ProviderUnavailableError(GatewayStreamError):
+    def __init__(self, message: str = "provider unavailable", retry_after_s: int | None = None) -> None:
+        super().__init__("provider_unavailable", retryable=True, message=message, retry_after_s=retry_after_s)
+
+
+class QuotaExhaustedError(GatewayStreamError):
+    def __init__(self, message: str = "quota exhausted") -> None:
+        super().__init__("quota_exhausted", retryable=False, message=message)
+
+
+class CapacityFullError(GatewayStreamError):
+    def __init__(self, message: str = "capacity full", retry_after_s: int | None = None) -> None:
+        super().__init__("capacity_full", retryable=True, message=message, retry_after_s=retry_after_s)
+
+
+class ValidationFailedError(GatewayStreamError):
+    def __init__(self, message: str = "validation failed") -> None:
+        super().__init__("validation_failed", retryable=True, message=message)
+
+
+class UnauthorizedError(GatewayStreamError):
+    def __init__(self, message: str = "unauthorized") -> None:
+        super().__init__("unauthorized", retryable=False, message=message)
+
+
+class ResumeUnavailableError(GatewayStreamError):
+    def __init__(self, message: str = "resume unavailable") -> None:
+        super().__init__("resume_unavailable", retryable=False, message=message)

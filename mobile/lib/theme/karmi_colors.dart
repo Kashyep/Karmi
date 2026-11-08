@@ -83,6 +83,70 @@ class KarmiColors extends ThemeExtension<KarmiColors> {
   static KarmiColors of(BuildContext context) =>
       Theme.of(context).extension<KarmiColors>()!;
 
+  /// Light or dark variant, derived from [background]: the generated tier
+  /// tokens carry no brightness flag of their own.
+  Brightness get brightness =>
+      background.computeLuminance() < 0.5 ? Brightness.dark : Brightness.light;
+
+  /// Recessed navigation rail. Darker than [background] in both modes; in dark
+  /// mode it is the obsidian step below the canvas (§5.4 `--bg-sidebar`).
+  Color get sidebarSurface => brightness == Brightness.dark
+      ? Color.lerp(background, Colors.black, 0.4)!
+      : Color.lerp(background, foreground, 0.03)!;
+
+  /// Fenced code block body. A step off the canvas (§5.4 `--bg-code`), never
+  /// translucent: code is content, not chrome.
+  Color get codeSurface => brightness == Brightness.dark
+      ? Color.lerp(background, card, 0.6)!
+      : Color.lerp(background, foreground, 0.035)!;
+
+  /// Code block header bar, one step above [codeSurface].
+  Color get codeHeaderSurface => brightness == Brightness.dark
+      ? card
+      : Color.lerp(background, foreground, 0.07)!;
+
+  /// Top-lit 1px specular rim for floating glass (composer, header). 22% white
+  /// in dark mode (§5.5); light mode uses [glassHighlight].
+  Color get glassSpecularRim =>
+      brightness == Brightness.dark ? const Color(0x38FFFFFF) : glassHighlight;
+
+  /// Rim while the composer is focused: 38% white in dark mode, otherwise the
+  /// same as [glassSpecularRim].
+  Color get glassSpecularRimFocused =>
+      brightness == Brightness.dark ? const Color(0x61FFFFFF) : glassHighlight;
+
+  /// Ambient under-glow behind the floating composer (brand green, low alpha;
+  /// §5.5 `--accent-glow`). Non-interactive; it is never text or a boundary.
+  Color get ambientGlow => brightness == Brightness.dark
+      ? primary.withValues(alpha: 0.22)
+      : primary.withValues(alpha: 0.12);
+
+  /// Right-aligned user prompt pill: a subtle brand-tinted fill. Text on it is
+  /// [foreground] and meets 4.5:1 in both modes.
+  Color get userBubble => brightness == Brightness.dark
+      ? Color.lerp(background, primary, 0.2)!
+      : Color.lerp(background, primary, 0.25)!;
+
+  /// Action-toolbar icons under assistant and user turns. Deliberately quiet
+  /// (§3.1 "persistent low-contrast action row"); the ink is [mutedForeground],
+  /// which meets 4.5:1 on the canvas, rail and card, so icons clear 3:1.
+  Color get actionIcon => mutedForeground;
+
+  /// Hairline divider: a translucent rule for separators inside a surface.
+  Color get hairline => brightness == Brightness.dark
+      ? Colors.white.withValues(alpha: 0.08)
+      : Colors.black.withValues(alpha: 0.08);
+
+  /// Warning card surface (inline banners, quota notices). Text is [foreground].
+  Color get warningSurface => brightness == Brightness.dark
+      ? Color.lerp(card, warning, 0.18)!
+      : Color.lerp(card, warning, 0.12)!;
+
+  /// Error card surface (failed turn, retry banner). Text is [foreground].
+  Color get errorSurface => brightness == Brightness.dark
+      ? Color.lerp(card, destructive, 0.2)!
+      : Color.lerp(card, destructive, 0.1)!;
+
   @override
   KarmiColors copyWith({
     Color? background,

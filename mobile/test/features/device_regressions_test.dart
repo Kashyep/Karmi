@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:karmi_app/theme/karmi_tier.dart';
 import 'package:karmi_app/theme/karmi_colors.dart';
 import 'package:karmi_app/theme/karmi_glass.dart';
@@ -50,7 +51,7 @@ void main() {
       await _type(tester, 'hi');
       final icon = tester.widget<RichText>(
         find.descendant(
-          of: find.byIcon(Icons.send),
+          of: find.byIcon(Icons.arrow_upward),
           matching: find.byType(RichText),
         ),
       );
@@ -75,6 +76,8 @@ void main() {
     testWidgets('glass app bar has a tint platter at the legibility floor '
         '(${brightness.name})', (tester) async {
       await pumpApp(tester, env: Env(brightness: brightness));
+      // The Chat tab owns its integrated header; other tabs keep the bar.
+      await openTab(tester, 'Settings');
       final bar = tester.widget<GlassAppBar>(find.byType(GlassAppBar));
       final floor = brightness == Brightness.light
           ? KarmiGlass.lightTintAlpha
@@ -97,23 +100,33 @@ void main() {
       backend: FakeBackend.healthy()
         ..on(
           'POST',
-          '/v1/messages',
-          (_) => jsonResponse(messageJson('ACCEPT', response: 'Kept reply')),
+          '/v1/chat/stream',
+          (_) => http.Response(
+            'event: run.started\n'
+            'data: {"run_id":"run-1","conversation_id":"conv-1","user_message_id":"msg-u","assistant_message_id":"msg-a","seq":0}\n\n'
+            'id: 1\n'
+            'event: message.delta\n'
+            'data: {"text":"Kept reply"}\n\n'
+            'event: run.finished\n'
+            'data: {"finish_reason":"stop","outcome":"success"}\n\n',
+            200,
+            headers: {'content-type': 'text/event-stream'},
+          ),
         ),
     );
     await _send(tester, 'Keep me');
-    expect(find.text('Kept reply'), findsOneWidget);
+    expect(find.textContaining('Kept reply'), findsOneWidget);
 
     await app.settings.setReduceTransparency(true);
     await settle(tester);
-    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(GlassTabBar), findsOneWidget);
     expect(find.text('Keep me'), findsOneWidget);
-    expect(find.text('Kept reply'), findsOneWidget);
+    expect(find.textContaining('Kept reply'), findsOneWidget);
 
     await app.settings.setReduceTransparency(false);
     await settle(tester);
     expect(find.byType(GlassTabBar), findsOneWidget);
-    expect(find.text('Kept reply'), findsOneWidget);
+    expect(find.textContaining('Kept reply'), findsOneWidget);
   });
 
   // Device (TalkBack): the Licences tile merged into its Card's semantics node,
@@ -153,29 +166,27 @@ void main() {
   // Device (TalkBack / uiautomator): with the glass overflow menu open, its
   // items were missing from the accessibility tree, so screen-reader users
   // could not reach Plans or Licences.
-  testWidgets('overflow menu items are reachable by screen readers', (
-    tester,
-  ) async {
+  testWidgets('Settings reaches Armory, Plans, Licences', (tester) async {
     final handle = tester.ensureSemantics();
     await pumpApp(tester);
-    await tester.tap(find.byTooltip('More options'));
+    await openTab(tester, 'Settings');
     await settle(tester);
-    for (final label in ['Plans', 'Licences']) {
-      // Search the real semantics tree (what TalkBack sees), not widgets.
-      // Offstage tabs (e.g. the Usage "Plans" heading) are not in the tree.
+    for (final label in ['Armory', 'Plans and access code', 'Licences']) {
+      // Tiles merge their section heading and subtitle into one multi-line
+      // semantics label, so match the requested tile anywhere in that label.
       final nodes = find.semantics
-          .byLabel(label)
+          .byLabel(RegExp(RegExp.escape(label)))
           .evaluate()
           .where((n) => n.getSemanticsData().hasAction(SemanticsAction.tap));
       expect(nodes, isNotEmpty, reason: '$label not in the semantics tree');
     }
-    await tester.tap(find.text('Plans').last);
+    await tester.tap(find.text('Plans and access code').last);
     await settle(tester);
     expect(
       find.text(
         'Compare plans. Purchases are unavailable in this beta. '
-        'Every plan uses free models; higher plans get more usage and '
-        'stronger model classes.',
+        'Every plan is powered by Karmi; higher plans get more usage '
+        'and stronger Karmi models.',
       ),
       findsOneWidget,
     );

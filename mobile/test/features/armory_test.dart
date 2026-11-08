@@ -38,8 +38,7 @@ Future<void> tapInArmory(WidgetTester tester, Finder target) async {
 }
 
 Future<void> openArmory(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('More options'));
-  await settle(tester);
+  await openTab(tester, 'Settings');
   await tester.tap(find.text('Armory').last);
   await settle(tester);
 }
@@ -193,17 +192,18 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(ChatScreen),
-          matching: find.text('Completed'),
+          matching: find.text('Remind me at 9'),
         ),
-        findsOneWidget,
+        findsAtLeastNWidgets(1),
         reason: tier.label,
       );
       final post = backend.requests.singleWhere(
-        (r) => r.url.path == '/v1/messages',
+        (r) => r.url.path == '/v1/chat/stream',
       );
       final body = jsonDecode(post.body) as Map;
       bodies.add(body['text']);
-      expect(body.keys, unorderedEquals(['text', 'idempotency_key']));
+      expect(body['text'], 'Remind me at 9');
+      expect(body['client_message_id'], isNotNull);
     }
     expect(bodies.toSet(), {'Remind me at 9'});
   });

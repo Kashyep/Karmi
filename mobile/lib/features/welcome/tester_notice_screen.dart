@@ -32,7 +32,7 @@ class TesterNoticeScreen extends StatelessWidget {
                   header: true,
                   child: Text(
                     kTesterNoticeTitle,
-                    style: text.headlineMedium,
+                    style: text.headlineSmall,
                     textAlign: TextAlign.center,
                   ),
                 ),

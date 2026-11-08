@@ -10,9 +10,12 @@ Policy (all bounded, nothing hidden):
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import logging
 import re
-from collections.abc import Callable, Mapping, Sequence
+import threading
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -21,7 +24,17 @@ from daily_agent.gateway.adapters import ChatProvider
 from daily_agent.gateway.health import HealthTracker
 from daily_agent.gateway.registry import ModelRegistry, RegistryModel
 from daily_agent.gateway.router import RouteRequest, eligible_models
-from daily_agent.gateway.types import ChatRequest, ModelClass, ProviderError, TaskType
+from daily_agent.gateway.types import (
+    CapacityFullError,
+    ChatRequest,
+    ModelClass,
+    ProviderError,
+    ProviderUnavailableError,
+    StreamChunk,
+    TaskType,
+    UnauthorizedError,
+    ValidationFailedError,
+)
 from daily_agent.plans import PlanPolicy
 from daily_agent.providers import ProviderCall
 
@@ -35,7 +48,7 @@ BASE_SYSTEM_PROMPT = (
     "You are Karmi, a patient study and productivity assistant for students in India. Give "
     "correct, concise answers. Reply in the language the user wrote in (Hindi, English, or a "
     "Hindi-English mix). Show working for maths and keep code runnable. Use the earlier "
-    "conversation: a short reply such as a place name or \"yes\" usually answers your previous "
+    'conversation: a short reply such as a place name or "yes" usually answers your previous '
     "question. The current date and time are given below; when the user names another place or "
     "timezone, convert from IST. Use simple Markdown (bold, lists, code blocks) only when it "
     "helps; no tables. Never claim that a task, reminder or message was saved, sent or changed; "
@@ -59,10 +72,7 @@ def build_system_prompt(now: datetime) -> str:
     """Base prompt plus the current IST date/time (``now`` must be timezone-aware)."""
     local = now.astimezone(HOME_ZONE)
     stamp = f"{local:%A}, {local.day} {local:%B %Y, %H:%M}"
-    return (
-        f"{BASE_SYSTEM_PROMPT}\nCurrent date and time: {stamp} IST "
-        "(Asia/Kolkata, UTC+05:30)."
-    )
+    return f"{BASE_SYSTEM_PROMPT}\nCurrent date and time: {stamp} IST (Asia/Kolkata, UTC+05:30)."
 
 
 # Upper bound for the built prompt: Wednesday + September are the longest names.
@@ -226,3 +236,219 @@ class Gateway:
             return None, rejection
         calls.append(result.call)
         return result.text, None
+
+    async def stream(
+        self,
+        *,
+        plan: PlanPolicy,
+        text: str,
+        task_type: TaskType,
+        max_output_tokens: int,
+        messages: tuple[dict[str, str], ...] | None = None,
+        history: Sequence[Mapping[str, str]] = (),
+    ) -> AsyncIterator[StreamChunk]:
+        if not self.live:
+            raise ProviderUnavailableError("gateway is disabled or no configured models")
+        system_prompt = build_system_prompt(self._clock())
+        history_bytes = sum(len(turn["content"].encode("utf-8")) for turn in history)
+        request = RouteRequest(
+            plan=plan,
+            task_type=task_type,
+            prompt_tokens=max(
+                1, (len(text.encode("utf-8")) + len(system_prompt) + history_bytes) // 4
+            ),
+            max_output_tokens=max_output_tokens,
+        )
+        pool = eligible_models(self.registry, request, is_available=self._available)
+        if not pool:
+            raise ProviderUnavailableError("no eligible model available")
+        model = pool[0]
+        provider = self._providers[model.provider]
+        self.health.begin_call(model.provider)
+        if messages is None:
+            chat_messages: tuple[dict[str, str], ...] = (
+                {"role": "system", "content": system_prompt},
+                *({"role": turn["role"], "content": turn["content"]} for turn in history),
+                {"role": "user", "content": text},
+            )
+        else:
+            chat_messages = messages
+        chat_req = ChatRequest(
+            model_id=model.model_id,
+            messages=chat_messages,
+            max_output_tokens=max_output_tokens,
+        )
+        try:
+            stream_gen = provider.stream(chat_req, model)
+        except ProviderError as exc:
+            self.health.record_failure(model.provider, model.model_id, exc)
+            if exc.kind in (ProviderError.TIMEOUT, ProviderError.SERVER):
+                raise ProviderUnavailableError(str(exc)) from exc
+            if exc.kind == ProviderError.AUTH:
+                raise UnauthorizedError(str(exc)) from exc
+            if exc.kind == ProviderError.RATE_LIMITED:
+                retry_s = int(exc.retry_after_seconds) if exc.retry_after_seconds else None
+                raise CapacityFullError(str(exc), retry_after_s=retry_s) from exc
+            raise ProviderUnavailableError(str(exc)) from exc
+        except Exception as exc:
+            self.health.record_failure(
+                model.provider, model.model_id, ProviderError(ProviderError.SERVER, str(exc))
+            )
+            raise ProviderUnavailableError(str(exc)) from exc
+
+        full_text = ""
+        final_finish_reason: str | None = None
+        final_call: ProviderCall | None = None
+
+        chunks = _stream_with_timeouts(stream_gen, first_timeout=20.0, gap_timeout=30.0)
+        try:
+            async for chunk in chunks:
+                if chunk.text:
+                    full_text += chunk.text
+                    yield chunk
+                if chunk.finish_reason is not None:
+                    final_finish_reason = chunk.finish_reason
+                if chunk.call is not None:
+                    final_call = chunk.call
+        except TimeoutError as exc:
+            self.health.record_failure(
+                model.provider, model.model_id, ProviderError(ProviderError.TIMEOUT, "timeout")
+            )
+            raise ProviderUnavailableError("provider timed out during streaming") from exc
+        except ProviderError as exc:
+            self.health.record_failure(model.provider, model.model_id, exc)
+            if exc.kind in (ProviderError.TIMEOUT, ProviderError.SERVER):
+                raise ProviderUnavailableError(str(exc)) from exc
+            if exc.kind == ProviderError.AUTH:
+                raise UnauthorizedError(str(exc)) from exc
+            if exc.kind == ProviderError.RATE_LIMITED:
+                retry_s = int(exc.retry_after_seconds) if exc.retry_after_seconds else None
+                raise CapacityFullError(str(exc), retry_after_s=retry_s) from exc
+            raise ProviderUnavailableError(str(exc)) from exc
+        except Exception as exc:
+            self.health.record_failure(
+                model.provider, model.model_id, ProviderError(ProviderError.SERVER, str(exc))
+            )
+            raise ProviderUnavailableError(str(exc)) from exc
+        finally:
+            await chunks.aclose()
+
+        self.health.record_success(model.provider)
+        rejection = validate_output(full_text, final_finish_reason, task_type)
+        if rejection is not None:
+            logger.warning("stream output rejected model=%s reason=%s", model.action, rejection)
+            raise ValidationFailedError(f"validation failed: {rejection}")
+
+        # Map finish reason
+        if final_finish_reason == "length":
+            mapped_reason = "length"
+        elif final_finish_reason == "content_filter":
+            mapped_reason = "content_filter"
+        elif final_finish_reason == "error":
+            mapped_reason = "error"
+        else:
+            mapped_reason = "stop"
+
+        if final_call is None:
+            final_call = ProviderCall(
+                provider=model.provider,
+                model_id=model.model_id,
+                operation="generate",
+                input_tokens=None,
+                output_tokens=None,
+                cost_micro=0,
+                measurement=FREE_MEASUREMENT,
+                rate_version=f"registry-{model.snapshot_date}",
+            )
+        yield StreamChunk(text="", finish_reason=mapped_reason, call=final_call)
+
+
+_SYNC_HANDOFF_SLOTS = 8
+
+
+async def _aclose_quietly(stream_obj: object) -> None:
+    aclose = getattr(stream_obj, "aclose", None)
+    if aclose is None:
+        return
+    try:
+        await aclose()
+    except Exception:
+        logger.debug("upstream async stream close failed", exc_info=True)
+
+
+def _close_quietly(stream_obj: object) -> None:
+    close = getattr(stream_obj, "close", None)
+    if close is None:
+        return
+    try:
+        close()
+    except Exception:
+        logger.debug("upstream stream close failed", exc_info=True)
+
+
+async def _stream_with_timeouts(
+    stream_obj: Iterator[StreamChunk] | AsyncIterator[StreamChunk],
+    first_timeout: float = 20.0,
+    gap_timeout: float = 30.0,
+) -> AsyncGenerator[StreamChunk, None]:
+    if inspect.isasyncgen(stream_obj) or hasattr(stream_obj, "__anext__"):
+        first = True
+        anext_fn = stream_obj.__anext__
+        try:
+            while True:
+                timeout = first_timeout if first else gap_timeout
+                try:
+                    chunk = await asyncio.wait_for(anext_fn(), timeout=timeout)
+                except StopAsyncIteration:
+                    break
+                first = False
+                yield chunk
+        finally:
+            await _aclose_quietly(stream_obj)
+        return
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[tuple[StreamChunk | None, Exception | None]] = asyncio.Queue()
+    # Bounds how far the worker thread may run ahead of the consumer.
+    slots = threading.BoundedSemaphore(_SYNC_HANDOFF_SLOTS)
+    stop = threading.Event()
+
+    def _deliver(payload: tuple[StreamChunk | None, Exception | None]) -> bool:
+        while not stop.is_set():
+            if not slots.acquire(timeout=0.5):
+                continue
+            try:
+                loop.call_soon_threadsafe(queue.put_nowait, payload)
+            except RuntimeError:  # event loop closed: nobody will consume
+                return False
+            return True
+        return False
+
+    def _worker() -> None:
+        try:
+            for item in stream_obj:
+                if not _deliver((item, None)):
+                    return
+            _deliver((None, None))
+        except Exception as exc:
+            _deliver((None, exc))
+        finally:
+            # Closed on the thread that drives the iterator, never concurrently with next().
+            _close_quietly(stream_obj)
+
+    threading.Thread(target=_worker, name="gateway-sync-stream", daemon=True).start()
+    first = True
+    try:
+        while True:
+            timeout = first_timeout if first else gap_timeout
+            item, exc = await asyncio.wait_for(queue.get(), timeout=timeout)
+            slots.release()
+            first = False
+            if exc is not None:
+                raise exc
+            if item is None:
+                break
+            yield item
+    finally:
+        # Lets the worker stop at its next hand-off and close the upstream stream.
+        stop.set()

@@ -4,6 +4,7 @@ import '../../api/karmi_api.dart';
 import '../../theme/karmi_colors.dart';
 import '../../widgets/feedback.dart';
 import '../../widgets/karmi_card.dart';
+import '../../widgets/usage_warning_pill.dart';
 import '../chat/status_chip.dart';
 import '../plans/plan_catalog.dart';
 
@@ -146,18 +147,8 @@ class UsageMeter extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final fraction = limit > 0 ? (used / limit).clamp(0.0, 1.0) : 1.0;
     final left = (limit - used).clamp(0, limit);
-    final status = used >= limit
-        ? const StatusChip(
-            label: 'Allowance reached',
-            icon: Icons.block,
-            tone: StatusTone.danger,
-          )
-        : fraction >= 0.8
-        ? const StatusChip(
-            label: 'Near limit',
-            icon: Icons.warning_amber,
-            tone: StatusTone.warning,
-          )
+    final status = fraction >= 0.8
+        ? UsageWarningPill(fraction: fraction)
         : const StatusChip(
             label: 'Available',
             icon: Icons.check_circle_outline,

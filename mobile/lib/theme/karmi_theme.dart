@@ -54,6 +54,21 @@ abstract final class KarmiTypography {
   /// Proza Libre 400 italic, for helper/aside text.
   static TextStyle emphasis() =>
       _proza(FontWeight.w400, 16, 1.55, style: FontStyle.italic);
+
+  /// Empty-state greeting: Exo display 28px / 1.2, 600, -0.025em (§5.2 `--text-2xl`).
+  static TextStyle greeting() =>
+      _exo(FontWeight.w600, 28, 1.2).copyWith(letterSpacing: -0.7);
+
+  /// Speaker/model name in a message header: Exo 600 14px (§3.1 assistant header).
+  static TextStyle messageHeaderName() => _exo(FontWeight.w600, 14, 1.43);
+
+  /// Toolbar caption: Proza Libre 400 12px (Medium is not bundled) / 1.35, +0.01em, tabular figures
+  /// (§5.2 `--text-xs`).
+  static TextStyle toolbarCaption() =>
+      _proza(FontWeight.w400, 12, 1.35).copyWith(
+        letterSpacing: 0.12,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      );
 }
 
 /// Styles outside the M3 slots.
@@ -92,6 +107,33 @@ class KarmiShape extends ThemeExtension<KarmiShape> {
   static const controlRadius = 10.0;
   static const cardRadius = 14.0;
   static const minTapTarget = 48.0;
+
+  /// Reading measure for assistant prose and the composer (68ch; §3.1, §5.3).
+  static const readableColumnMaxWidth = 720.0;
+
+  /// Right-aligned user prompt pill: 18px 18px 4px 18px (top-left, top-right,
+  /// bottom-right, bottom-left), so the tail sits on the bottom-right corner.
+  static const userPillRadius = BorderRadius.only(
+    topLeft: Radius.circular(18),
+    topRight: Radius.circular(18),
+    bottomRight: Radius.circular(4),
+    bottomLeft: Radius.circular(18),
+  );
+
+  /// Floating prompt composer corner radius (§3.1 / §5.3).
+  static const composerRadius = 20.0;
+
+  /// Desktop left history rail width; collapses to 0 (§3.1).
+  static const historyRailWidth = 260.0;
+
+  /// Layout breakpoints (logical px): below [tabletBreakpoint] is mobile,
+  /// [tabletBreakpoint]–[desktopBreakpoint] is tablet, at or above
+  /// [desktopBreakpoint] is desktop (§3.1).
+  static const tabletBreakpoint = 768.0;
+  static const desktopBreakpoint = 1024.0;
+
+  /// Gap between the "Jump to latest" pill and the top of the composer (§3.1).
+  static const jumpPillGap = 16.0;
 
   final double focusRingWidth;
   final bool highContrast;
@@ -184,6 +226,12 @@ abstract final class KarmiTheme {
       onTertiary: colors.accentForeground,
       error: colors.destructive,
       onError: colors.destructiveForeground,
+      errorContainer: brightness == Brightness.light
+          ? const Color(0xFFFDE8E8)
+          : const Color(0xFF4A0E14),
+      onErrorContainer: brightness == Brightness.light
+          ? const Color(0xFF7A141E)
+          : const Color(0xFFFFDAD6),
       surface: colors.card,
       onSurface: colors.foreground,
       onSurfaceVariant: colors.mutedForeground,

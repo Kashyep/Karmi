@@ -2,6 +2,7 @@
 library;
 
 import '../theme/karmi_tier.dart';
+import 'debug_meta.dart';
 
 /// `schemas.Outcome`. Unknown wire values parse to [Outcome.unknown] instead of throwing.
 enum Outcome {
@@ -85,6 +86,8 @@ class MessageView {
     required this.response,
     this.route,
     this.previousRunId,
+    this.debug,
+    this.model,
   });
 
   factory MessageView.fromJson(Map<String, dynamic> json) => MessageView(
@@ -94,6 +97,8 @@ class MessageView {
     response: json['response'] as String,
     route: json['route'] as String?,
     previousRunId: json['previous_run_id'] as String?,
+    debug: DebugMeta.fromJson(json['debug']),
+    model: json['model'] as String?,
   );
 
   final String runId;
@@ -102,6 +107,10 @@ class MessageView {
   final String response;
   final String? route;
   final String? previousRunId;
+  final DebugMeta? debug;
+
+  /// Model id that answered, for the short display nickname.
+  final String? model;
 }
 
 class UsageView {
@@ -204,4 +213,80 @@ class AccessCodeResult {
   final String planId;
   final String planLabel;
   final bool changed;
+}
+
+/// User profile information (`GET /v1/user/profile`, `PATCH /v1/user/profile`).
+class UserProfileView {
+  const UserProfileView({required this.id, required this.displayName});
+
+  factory UserProfileView.fromJson(Map<String, dynamic> json) =>
+      UserProfileView(
+        id: json['id'] as String,
+        displayName: json['display_name'] as String,
+      );
+
+  final String id;
+  final String displayName;
+}
+
+/// A customer plan (`GET /v1/plans`).
+class PlanView {
+  const PlanView({
+    required this.id,
+    required this.label,
+    required this.priceInr,
+    required this.everydayLimit,
+    this.dailyTokenLimit,
+    this.inputTokens,
+    this.outputTokens,
+    this.requestCostCapMicro,
+    this.periodCostCapMicro,
+    this.modelClasses = const [],
+    this.minClass,
+  });
+
+  factory PlanView.fromJson(Map<String, dynamic> json) => PlanView(
+    id: json['id'] as String,
+    label: json['label'] as String,
+    priceInr: json['price_inr'] as int,
+    everydayLimit: json['everyday_limit'] as int,
+    dailyTokenLimit: json['daily_token_limit'] as int?,
+    inputTokens: json['input_tokens'] as int?,
+    outputTokens: json['output_tokens'] as int?,
+    requestCostCapMicro: json['request_cost_cap_micro'] as int?,
+    periodCostCapMicro: json['period_cost_cap_micro'] as int?,
+    modelClasses:
+        (json['model_classes'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList() ??
+        const [],
+    minClass: json['min_class'] as String?,
+  );
+
+  final String id;
+  final String label;
+  final int priceInr;
+  final int everydayLimit;
+  final int? dailyTokenLimit;
+  final int? inputTokens;
+  final int? outputTokens;
+  final int? requestCostCapMicro;
+  final int? periodCostCapMicro;
+  final List<String> modelClasses;
+  final String? minClass;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'label': label,
+    'price_inr': priceInr,
+    'everyday_limit': everydayLimit,
+    if (dailyTokenLimit != null) 'daily_token_limit': dailyTokenLimit,
+    if (inputTokens != null) 'input_tokens': inputTokens,
+    if (outputTokens != null) 'output_tokens': outputTokens,
+    if (requestCostCapMicro != null)
+      'request_cost_cap_micro': requestCostCapMicro,
+    if (periodCostCapMicro != null) 'period_cost_cap_micro': periodCostCapMicro,
+    'model_classes': modelClasses,
+    if (minClass != null) 'min_class': minClass,
+  };
 }

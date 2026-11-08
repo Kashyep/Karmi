@@ -450,6 +450,10 @@ def deploy() -> int:
         )
     if not clerk_verification_config_valid(clerk_issuer, clerk_jwt_key):
         return die("Invalid Clerk verification configuration in .env.clerk")
+    # The admin allowlist must survive every deploy (deploy replaces all env vars).
+    admin_ids = (clerk.get("DAILY_AGENT_ADMIN_CLERK_USER_IDS") or "").strip()
+    if not admin_ids:
+        return die("Missing DAILY_AGENT_ADMIN_CLERK_USER_IDS in .env.clerk (admin allowlist)")
 
     openrouter = dotenv_values(ROOT / ".env.openrouter", interpolate=False)
     openrouter_api_key = openrouter.get("OPEN_ROUTER_KEY") or openrouter.get(
@@ -507,6 +511,8 @@ def deploy() -> int:
         f"DAILY_AGENT_PRODUCTION_PERIOD_BUDGET_MICRO={PRODUCTION_BUDGET_MICRO}",
         f"DAILY_AGENT_GLOBAL_DAILY_BUDGET_MICRO={GLOBAL_BUDGET_MICRO}",
         f"DAILY_AGENT_MODEL_REGISTRY_PATH={REGISTRY_IN_IMAGE}",
+        f"DAILY_AGENT_ADMIN_CLERK_USER_IDS={admin_ids}",
+        f"DAILY_AGENT_CLERK_PUBLISHABLE_KEY={clerk.get('DAILY_AGENT_CLERK_PUBLISHABLE_KEY') or ''}",
     ]
     secret_env_vars = [
         "DAILY_AGENT_DATABASE_URL=secretref:database-url",
@@ -697,6 +703,7 @@ def deploy() -> int:
         "DAILY_AGENT_ALLOW_DEVELOPMENT_AUTH": "false",
         "DAILY_AGENT_CLERK_ISSUER": clerk_issuer,
         "DAILY_AGENT_CLERK_JWT_PUBLIC_KEY_B64": clerk_jwt_key,
+        "DAILY_AGENT_ADMIN_CLERK_USER_IDS": admin_ids,
         "DAILY_AGENT_OPENROUTER_ENABLED": "true",
         "DAILY_AGENT_OPENROUTER_API_KEY": openrouter_api_key,
         "DAILY_AGENT_GATEWAY_KILL_SWITCH": "false",

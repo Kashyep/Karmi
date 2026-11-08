@@ -1,0 +1,300 @@
+{
+  "timestamp": "2026-10-23T23:05:09.390884+00:00",
+  "base_url": "https://karmi-beta.gentlepebble-6595a0fa.eastasia.azurecontainerapps.io",
+  "is_local": false,
+  "total_tests": 12,
+  "passed_tests": 12,
+  "failed_tests": 0,
+  "all_passed": true,
+  "live_ai_calls": 3,
+  "ai_pace_secs": 4.0,
+  "max_live_ai_calls": 6,
+  "cases": {
+    "health_and_ready": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Both /health and /ready returned 200",
+      "expected": {
+        "health": 200,
+        "ready": 200
+      },
+      "actual": {
+        "health": 200,
+        "ready": 200,
+        "health_body": {
+          "status": "alive"
+        },
+        "ready_body": {
+          "status": "ready",
+          "database": "ok",
+          "live_models": false,
+          "paid_checkout": false,
+          "whatsapp": "policy_disabled"
+        }
+      }
+    },
+    "auth_required_401": {
+      "passed": true,
+      "status": "PASS",
+      "message": "GET /v1/usage without token \u2192 401",
+      "expected": 401,
+      "actual": 401
+    },
+    "usage_get_200": {
+      "passed": true,
+      "status": "PASS",
+      "message": "GET /v1/usage \u2192 200; required keys present=True",
+      "expected": {
+        "status": 200,
+        "keys": [
+          "everyday_limit",
+          "everyday_used",
+          "plan_id",
+          "tokens_limit",
+          "tokens_used"
+        ]
+      },
+      "actual": {
+        "status": 200,
+        "keys": [
+          "everyday_limit",
+          "everyday_used",
+          "period_reset_at",
+          "plan_id",
+          "plan_label",
+          "policy_version",
+          "reserved_micro",
+          "reset_at",
+          "settled_micro",
+          "spend_limit_micro",
+          "synthetic",
+          "tokens_limit",
+          "tokens_used"
+        ]
+      },
+      "details": {
+        "body": {
+          "plan_id": "ananta",
+          "plan_label": "Ananta",
+          "everyday_used": 4,
+          "everyday_limit": 20,
+          "tokens_used": 4191,
+          "tokens_limit": 40000,
+          "reserved_micro": 0,
+          "settled_micro": 0,
+          "spend_limit_micro": 20000,
+          "reset_at": "2026-10-24T00:00:00Z",
+          "period_reset_at": "2026-11-23T00:00:00Z",
+          "policy_version": "synthetic-dev-v1",
+          "synthetic": true
+        }
+      }
+    },
+    "admin_non_admin_forbidden": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Non-admin: /v1/admin/users=403, /v1/admin/monitor=403",
+      "expected": {
+        "admin_users": 403,
+        "admin_monitor": 403
+      },
+      "actual": {
+        "admin_users": 403,
+        "admin_users_body": {
+          "detail": {
+            "code": "ADMIN_FORBIDDEN",
+            "message": "admin access denied"
+          }
+        },
+        "admin_monitor": 403,
+        "admin_monitor_body": {
+          "detail": {
+            "code": "ADMIN_FORBIDDEN",
+            "message": "admin access denied"
+          }
+        }
+      }
+    },
+    "oversize_input_rejected": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Oversize text \u2192 422",
+      "expected": "413 or 422",
+      "actual": 422,
+      "details": {
+        "response_snippet": "{\"detail\":[{\"type\":\"string_too_long\",\"loc\":[\"body\",\"text\"],\"msg\":\"String should have at most 100000 characters\",\"input\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    "budget_limit_error_shape": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Budget/usage shape valid=True",
+      "expected": {
+        "required_keys": [
+          "everyday_limit",
+          "everyday_used",
+          "plan_id",
+          "tokens_limit",
+          "tokens_used"
+        ]
+      },
+      "actual": {
+        "present_keys": [
+          "everyday_limit",
+          "everyday_used",
+          "period_reset_at",
+          "plan_id",
+          "plan_label",
+          "policy_version",
+          "reserved_micro",
+          "reset_at",
+          "settled_micro",
+          "spend_limit_micro",
+          "synthetic",
+          "tokens_limit",
+          "tokens_used"
+        ],
+        "missing_keys": [],
+        "body": {
+          "plan_id": "ananta",
+          "plan_label": "Ananta",
+          "everyday_used": 4,
+          "everyday_limit": 20,
+          "tokens_used": 4191,
+          "tokens_limit": 40000,
+          "reserved_micro": 0,
+          "settled_micro": 0,
+          "spend_limit_micro": 20000,
+          "reset_at": "2026-10-24T00:00:00Z",
+          "period_reset_at": "2026-11-23T00:00:00Z",
+          "policy_version": "synthetic-dev-v1",
+          "synthetic": true
+        }
+      }
+    },
+    "gzip_json_response": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Gzip: status=200, Content-Encoding='', body_valid=True",
+      "expected": {
+        "status": 200,
+        "gzip_or_valid_json": true
+      },
+      "actual": {
+        "status": 200,
+        "content_encoding": "",
+        "content_type": "application/json",
+        "body_valid_json": true
+      }
+    },
+    "user_profile_get_patch": {
+      "passed": true,
+      "status": "PASS",
+      "message": "profile not provisioned (404); PATCH blank \u2192 404 (expected 422 if fix landed, else 404)",
+      "expected": {
+        "get_status": 200,
+        "patch_blank_status": 422
+      },
+      "actual": {
+        "get_status": 404,
+        "get_body": {
+          "detail": "Not Found"
+        },
+        "patch_blank_status": 404,
+        "patch_blank_body": {
+          "detail": "Not Found"
+        },
+        "note": "profile_not_provisioned"
+      }
+    },
+    "chat_stream_sse": {
+      "passed": true,
+      "status": "PASS",
+      "message": "SSE stream: 2 deltas, terminal='run.finished', ai_calls_so_far=1",
+      "expected": {
+        "status": 200,
+        "has_deltas": true,
+        "has_terminal_event": true,
+        "live_ai_calls_le": 6
+      },
+      "actual": {
+        "status": 200,
+        "delta_count": 2,
+        "terminal_event": "run.finished",
+        "events_seen": [
+          "run.started",
+          "message.delta",
+          "message.delta",
+          "run.finished"
+        ],
+        "live_ai_calls": 1
+      }
+    },
+    "conversations_lifecycle": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Conversation lifecycle: create/list/search/rename/delete/404 all passed",
+      "expected": {
+        "list": 200,
+        "in_list": true,
+        "search": 200,
+        "rename": 200,
+        "delete": "2xx",
+        "after_delete": 404
+      },
+      "actual": {
+        "list": 200,
+        "in_list": true,
+        "search": 200,
+        "rename": 200,
+        "delete": 204,
+        "after_delete": 404,
+        "conversation_id": "conv_9537c4156a4a4428a7ca0f9fd06112fe"
+      }
+    },
+    "idempotent_retry_no_double_reserve": {
+      "passed": true,
+      "status": "PASS",
+      "message": "Idempotent retry: everyday_delta=1, stream1=200, replay=200",
+      "expected": {
+        "stream1_status": 200,
+        "replay_status": 200,
+        "everyday_delta_le": 1
+      },
+      "actual": {
+        "stream1_status": 200,
+        "replay_status": 200,
+        "replay_events": [
+          "run.started",
+          "message.delta",
+          "message.delta",
+          "message.delta",
+          "message.delta",
+          "message.delta",
+          "message.delta",
+          "message.delta",
+          "run.finished"
+        ],
+        "tokens_before": 5884,
+        "tokens_after": 6811,
+        "everyday_before": 6,
+        "everyday_after": 7,
+        "everyday_delta": 1
+      }
+    },
+    "concurrency_50_usage": {
+      "passed": true,
+      "status": "PASS",
+      "message": "50 concurrent GET /v1/usage: 0 errors",
+      "expected": {
+        "errors": 0,
+        "total": 50
+      },
+      "actual": {
+        "errors": 0,
+        "total": 50,
+        "non_200_sample": []
+      }
+    }
+  }
+}

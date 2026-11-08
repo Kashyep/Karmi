@@ -10,6 +10,8 @@ dist/
 build/
 *.egg-info/
 .env
+.env.*
+!.env.example
 data/*.db
 data/policy_bundles/
 reports/
@@ -26,3 +28,17 @@ gh_2.55.0_linux_amd64.tar.gz
 .env.openrouter
 .env.azure
 .env.azure.prod
+.env.testauth
+.env.testusers
+
+# flutter golden failures
+mobile/test/**/failures/
+**/failures/*_testImage.png
+tests/quality_corpus/results/
+release-artifacts/
+docs/release1/onboarding-ref/
+
+# local-only artifacts (db dumps, test scratch, local admin db)
+.pytest-tmp/
+.admin-local/
+backups/

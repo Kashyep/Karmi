@@ -3,6 +3,7 @@ from enum import StrEnum
 from uuid import uuid4
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -12,9 +13,11 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
+    event,
     func,
     text,
 )
@@ -26,6 +29,13 @@ from daily_agent.db import Base
 def uuid_str() -> str:
     return str(uuid4())
 
+
+def conversation_id_str() -> str:
+    return f"conv_{uuid4().hex}"
+
+
+def chat_message_id_str() -> str:
+    return f"msg_{uuid4().hex}"
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -75,6 +85,23 @@ class User(Base):
     clerk_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     unlocked_tier: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     active_theme: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    tester: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    tester_label: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Billing/admin temporary entitlement override and the plan to restore on expiry.
+    # Admin suspension: a disabled user's tokens are rejected on every request.
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.current_timestamp()
+    )
+    last_active_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    # Tokens issued at or before this instant are rejected (admin "revoke sessions").
+    sessions_revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     account: Mapped[Account] = relationship(back_populates="users")
 
 
@@ -87,6 +114,8 @@ class Subscription(Base):
     policy_version: Mapped[str] = mapped_column(String(40), default="synthetic-dev-v1")
     status: Mapped[str] = mapped_column(String(20), default="active")
     event_version: Mapped[int] = mapped_column(BigInteger, default=0)
+    tier_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revert_plan_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Billing periods are monthly anniversaries of this anchor date.
     period_anchor: Mapped[date] = mapped_column(
         Date,
@@ -129,6 +158,7 @@ class UsagePeriod(Base):
     account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     period_key: Mapped[str] = mapped_column(String(40))
     spend_limit_micro: Mapped[int] = mapped_column(BigInteger)
+    credit_adjust_micro: Mapped[int | None] = mapped_column(BigInteger, nullable=True, default=0)
     reserved_micro: Mapped[int] = mapped_column(BigInteger, default=0)
     settled_micro: Mapped[int] = mapped_column(BigInteger, default=0)
     reset_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -154,7 +184,10 @@ class GatewayRequestDay(Base):
 
 class BudgetReservation(Base):
     __tablename__ = "budget_reservations"
-    __table_args__ = (UniqueConstraint("account_id", "logical_request_id", "stage"),)
+    __table_args__ = (
+        UniqueConstraint("account_id", "logical_request_id", "stage"),
+        Index("ix_budget_reservations_status_created", "status", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
     logical_request_id: Mapped[str] = mapped_column(String(160), index=True)
@@ -243,6 +276,25 @@ class Run(Base):
         ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True
     )
     regenerate_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    finish_reason: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    partial_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    continuation_of_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    served_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    served_provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    attempt_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fallback_used: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    harness_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.current_timestamp(),
+        index=True,
+    )
 
 
 class MessageFeedback(Base):
@@ -379,3 +431,196 @@ class PolicyBundleEvent(Base):
     actor: Mapped[str] = mapped_column(String(120))
     reason: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    __table_args__ = (
+        Index("ix_conversations_user_deleted_updated", "user_id", "deleted_at", "updated_at"),
+        # PostgreSQL-only trigram GIN index (pg_trgm) backing case-insensitive title search.
+        Index(
+            "ix_conversations_title_trgm",
+            "title",
+            postgresql_using="gin",
+            postgresql_ops={"title": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=conversation_id_str)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    title_source: Mapped[str] = mapped_column(String(8), default="auto", server_default="auto")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    account: Mapped[Account] = relationship()
+    user: Mapped[User] = relationship()
+    messages: Mapped[list["ChatMessage"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="ChatMessage.created_at"
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id", "client_message_id", name="uq_chat_messages_conversation_client_message_id"
+        ),
+        Index("ix_chat_messages_conversation_created", "conversation_id", "created_at"),
+        Index("ix_chat_messages_account_id", "account_id"),
+        Index("ix_chat_messages_run_id", "run_id"),
+        Index("ix_chat_messages_parent_message_id", "parent_message_id"),
+        Index("ix_chat_messages_client_message_id", "client_message_id"),
+        # PostgreSQL-only trigram GIN index (pg_trgm) backing case-insensitive substring search.
+        Index(
+            "ix_chat_messages_content_trgm",
+            "content",
+            postgresql_using="gin",
+            postgresql_ops={"content": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
+    )
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=chat_message_id_str)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String(12))
+    status: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text, default="", server_default="")
+    finish_reason: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    parent_message_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    variant_index: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    client_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")
+    account: Mapped[Account] = relationship()
+
+
+class AdminCredential(Base):
+    """One developer's personal admin code (salted scrypt hash) and its lockout state."""
+
+    __tablename__ = "admin_credentials"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(255))
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ErasedClerkSubject(Base):
+    """Tombstone for an erased account: SHA-256 of its Clerk subject, never the subject itself.
+
+    A Clerk sign-in whose subject hashes to a row here is refused instead of provisioning a
+    fresh free account. No foreign keys: the erased user row is gone by design.
+    """
+
+    __tablename__ = "erased_clerk_subjects"
+
+    subject_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    erased_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AdminSession(Base):
+    """Server-side admin session; only the SHA-256 of the bearer token is stored."""
+
+    __tablename__ = "admin_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AdminAuditLog(Base):
+    """Append-only record of every admin mutation (and per-user read).
+
+    No foreign keys: rows must outlive erased users. UPDATE/DELETE are refused by an ORM
+    guard (``daily_agent.admin_service``) and by database triggers created in the migration.
+    """
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    admin_user_id: Mapped[str] = mapped_column(String(36), index=True)
+    action: Mapped[str] = mapped_column(String(40))
+    target_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+
+
+def _refuse_audit_mutation(*_args: object) -> None:
+    raise RuntimeError("admin_audit_log is append-only")
+
+
+event.listen(AdminAuditLog, "before_update", _refuse_audit_mutation)
+event.listen(AdminAuditLog, "before_delete", _refuse_audit_mutation)
+
+
+class BugReport(Base):
+    __tablename__ = "bug_reports"
+    __table_args__ = (
+        UniqueConstraint("ticket_number", name="uq_bug_reports_ticket_number"),
+        UniqueConstraint("user_id", "client_report_id", name="uq_bug_reports_user_client_report_id"),
+        CheckConstraint(
+            "category IN ('crash', 'chat', 'ui', 'account', 'other')",
+            name="check_bug_reports_category",
+        ),
+        CheckConstraint(
+            "status IN ('new', 'triaged', 'in_progress', 'fixed', 'closed', 'duplicate', 'wontfix')",
+            name="check_bug_reports_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    ticket_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    client_report_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    diagnostics: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    screenshot: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    screenshot_content_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="new", server_default="new", nullable=False)
+    admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.current_timestamp(),
+        index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        server_default=func.current_timestamp(),
+        onupdate=utcnow,
+    )
+    triaged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    account: Mapped[Account] = relationship()
+    user: Mapped["User"] = relationship()
+
+    @property
+    def ticket(self) -> str:
+        return f"KARMI-{self.ticket_number:04d}"

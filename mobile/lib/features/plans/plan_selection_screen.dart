@@ -26,11 +26,36 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
   String? _currentPlanId;
   String? _message;
   bool _busy = false;
+  List<PlanInfo> _plans = kPlans;
 
   @override
   void initState() {
     super.initState();
     _currentPlanId = widget.currentPlanId;
+    if (widget.api != null) {
+      _loadPlans();
+    }
+  }
+
+  Future<void> _loadPlans() async {
+    try {
+      final serverPlans = await widget.api!.getPlans();
+      if (!mounted) return;
+      final planMap = {for (final p in serverPlans) p.id: p};
+      setState(() {
+        _plans = kPlans.map((k) {
+          final s = planMap[k.id] ?? (k.id == 'part' ? planMap['parth'] : null);
+          return PlanInfo(
+            k.id,
+            k.label,
+            s?.everydayLimit ?? k.everydayLimit,
+            priceInr: s?.priceInr,
+          );
+        }).toList();
+      });
+    } catch (_) {
+      // Fall back gracefully to kPlans without prices
+    }
   }
 
   @override
@@ -81,8 +106,8 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
           children: [
             Text(
               'Compare plans. Purchases are unavailable in this beta. '
-              'Every plan uses free models; higher plans get more usage and '
-              'stronger model classes.',
+              'Every plan is powered by Karmi; higher plans get more usage '
+              'and stronger Karmi models.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 16),
@@ -124,7 +149,7 @@ class _PlanSelectionScreenState extends State<PlanSelectionScreen> {
                 ),
               const SizedBox(height: 16),
             ],
-            for (final plan in kPlans) ...[
+            for (final plan in _plans) ...[
               PlanCard(plan: plan, isCurrent: plan.id == _currentPlanId),
               const SizedBox(height: 12),
             ],

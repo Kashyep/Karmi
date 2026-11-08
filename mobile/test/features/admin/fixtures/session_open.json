@@ -1,0 +1,7 @@
+{
+  "status": 200,
+  "body": {
+    "admin_session_token": "PLACEHOLDER_ADMIN_SESSION_TOKEN",
+    "expires_at": "2026-10-24T06:48:04.248034+00:00"
+  }
+}

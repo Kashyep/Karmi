@@ -44,6 +44,10 @@ class ProviderCall:
     cost_micro: int | None
     measurement: str
     rate_version: str | None
+    # Model/provider the upstream reports having served (may differ from ``model_id``); None
+    # when the provider did not say.
+    served_model: str | None = None
+    served_provider: str | None = None
 
 
 def _cost_micro(input_tokens: int | None, output_tokens: int | None) -> int | None:

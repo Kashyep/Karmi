@@ -3,6 +3,7 @@ from dataclasses import dataclass
 # Budget accounting unit: every *_micro amount is millionths of one Indian rupee (INR). The
 # free-model gateway settles zero-cost calls, but the labels stay so paid models can be added.
 BUDGET_UNIT = "INR_MICRO"
+MICRO_PER_INR = 1_000_000
 
 
 @dataclass(frozen=True)

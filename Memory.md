@@ -1,5 +1,57 @@
 # Daily Agent implementation memory
 
+## Release 1 final — release-prep state (2026-11-08)
+
+Release-prep agent did not run gates; all statuses are repo-evidence-based until the main agent runs the gates.
+
+- Release preparation branch `r1f/release` in worktree `/home/rosso/Projects/Karmi-release/final-rel`, base `314afa4` (`release1/final`).
+- Commits in this release preparation sequence:
+  - `26aac94` `chore(release): bump mobile version to 0.1.0+5` (version bump)
+  - `256a6e9` `docs(release): add changelog, release notes, sha256 and signing recipe` (release documentation round 1)
+  - `a955b91` `docs(release): owner runbook for deploy, migration, SSO, and scrub decisions` (owner runbook `docs/release1/OWNER_STEPS.md`)
+  - `cbae565` `docs(release): PR draft and memory state for release 1 final` (`docs/release1/PR_DRAFT.md`, `Memory.md`)
+- Version verification: `mobile/pubspec.yaml` verified on disk as `0.1.0+5`.
+- Release scope items 1–9 verification state:
+  - **Item 1 (Admin backend additions & controls)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep) (Backend) / Web UI NOT MERGED. Backend endpoints and monitoring metrics test files exist in `tests/unit/test_admin_bug_reports.py`, `tests/unit/test_admin_api.py`, `tests/e2e/test_admin_api.py` (commits `ac3d16e`, `64a70dc`, `e629d57`); not re-run for this commit. Web admin dashboard UI remains on branch `r1f/webadmin`. Device/browser check: NOT VERIFIED (device testing paused by owner).
+  - **Item 2 (Measured optimization)**: NOT VERIFIED. Optimization work remains on branch `r1f/perf` and is NOT MERGED into `314afa4`. Baseline recorded in `docs/release1/perf/BASELINE.md`. Device timing: NOT VERIFIED (device testing paused by owner).
+  - **Item 3 (Loading motif & skeletons)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). `KarmiTypingDots` and `KarmiSkeleton` test files exist in `mobile/test/widgets/karmi_typing_dots_test.dart` and `mobile/test/widgets/karmi_skeleton_test.dart` (commit `5db031e`, `ec578d6`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 4 (Google Sign-in / SSO via Clerk OAuth)**: PARTIALLY VERIFIED. Mobile UI and deep-link handling test files exist in `mobile/test/auth/google_sign_in_button_test.dart`, `mobile/test/auth/clerk_sso_test.dart`, `mobile/test/auth/account_auth_google_test.dart`; backend identity mapping test file exists in `tests/e2e/test_clerk_sso_identity.py` (commits `a7479ef`, `65a79a2`; runbook in `docs/release1/GOOGLE_SSO.md`); not re-run for this commit. Real Google sign-in and device testing: NOT VERIFIED (device testing paused by owner).
+  - **Item 5 (Money & INR representation)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). Decimal/sub-micro formatting and INR plan pricing test files exist in `mobile/test/widgets/money_test.dart`, `tests/unit/test_money.py`, `tests/unit/test_plans.py` (commits `ac3d16e`, `6a5a7f2`, `b8bfc83`, `55a2bfe`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 6 (Bug reporting system)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). Database migration `a5b6c7d8e9f0` (`migrations/versions/a5b6c7d8e9f0_bug_reports.py`), backend test files (`tests/unit/test_bug_reports.py`, `tests/integration/test_bug_reports_pg.py`), and mobile client queue/UI test files (`mobile/test/features/bug_report/`, `mobile/test/features/chat/error_card_bug_report_test.dart`) exist (commits `ac3d16e`, `6a5a7f2`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 7 (Unified shell layout)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). Single layout tree and shell parity test files exist in `mobile/test/shell/shell_parity_test.dart` (commit `f6617d0`, `66e0253`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 8 (Error card copy rewrite & jump pill)**: EVIDENCE PRESENT (tests exist at 314afa4; gates not re-run by release-prep). Plain single-sentence copy and jump-to-latest pill test files exist in `mobile/test/features/chat/empty_state_test.dart` and `mobile/test/features/chat/jump_pill_test.dart` (commit `f6617d0`, `3cbc0b0`, `bcd3967`, `c322f17`); not re-run for this commit. Device check: NOT VERIFIED (device testing paused by owner).
+  - **Item 9 (Web admin dashboard additions)**: PARTIALLY VERIFIED. web admin UI (overview tiles, bug inbox, screenshot viewer) NOT MERGED to 314afa4 — backend routes and CSP hardening only. Backend test file exists in `tests/e2e/test_admin_api.py` (commit `2a37177`); not re-run for this commit. Device and browser testing: NOT VERIFIED (device testing paused by owner).
+- Pending integrations and reconciliation items: See `docs/release1/PR_DRAFT.md` section `## RECONCILE (supervisor)` for the list of unmerged branches (`r1f/webadmin`, `r1f/perf`, `r1f/release`).
+- Owner decisions still open (deploy, migration `a5b6c7d8e9f0`, Clerk Google SSO configuration, PR #34, issues #39–41, public repo scrub, Pixel release reinstall): See runbook `docs/release1/OWNER_STEPS.md`.
+- Constraints adhered to: No push, no PR creation, no live migrations or deployments executed; no secrets, IPs, Clerk IDs, or keystore material recorded.
+
+## Active Release 1 chat redesign resume (2026-10-23)
+
+- Integration checkout `/tmp/wt2-int`, branch `release1/integration`, HEAD `eedb13b`.
+  No push, PR, deploy, hosted migration or live provider call has happened.
+- Integrated and gate-verified: P1 long context, P3 reply rendering, P4 tester
+  metadata (merged with P1 history plumbing), P5 composer/status (offline-retry
+  regression fixed so transport retries resume the idempotent start request and
+  only server-terminal failures use `/v1/chat/continue`), P6 app bar/banner,
+  P7 jump-to-latest, P9 suggestion chips, P10 quality corpus, device harness
+  (`scripts/dev_fake_provider.py`, `scripts/device_smoke.py`).
+- Verified gates on `eedb13b`: `ruff check` clean, `mypy` clean (49 files),
+  256 unit + 84 e2e passed, `flutter analyze` 0 issues, `dart format` clean,
+  766 Flutter tests passed. Goldens regenerated for the merged UI and the
+  branding change; owner visual review (R-9) still pending.
+- Branding: assistant replies are always "Karmi" with a code-drawn logo
+  (`mobile/lib/widgets/karmi_logo.dart`). Served model/provider names are no
+  longer rendered anywhere, including the tester diagnostics line.
+- Local run verified: fake provider on 127.0.0.1:8900, backend on 127.0.0.1:8001
+  with a fresh SQLite DB, `/v1/chat/stream` streams fake markdown; the backend
+  refuses openrouter.ai. Debug APK rebuilt with the branding change.
+- NOT verified: the branding build on the Pixel 9a (USB disconnected during the
+  final install), P8 attachment-control removal (kept for an owner decision),
+  local test auth (`.env.testauth` code never supplied), host-level
+  free-model exclusions (P2 kept reverted by owner request).
+- Do not read `.env.testauth`; no live provider spend, paid call, release PR,
+  production action or unverified device claim has occurred.
+
 ## MVP + tester-release branch `mvp-gateway` (2026-10-19) — verified state only
 
 - Branch `mvp-gateway` (from `readiness-harness` working tree; pre-work patch saved to
@@ -284,3 +336,83 @@
 - OpenCode adapter/runtime/harness edits were added immediately before the pause and remain unverified:
   `src/daily_agent/opencode.py`, `src/model_lab/opencode_runner.py`, changes to config/services/API/router/CLI, and `tests/unit/test_opencode.py`. No tests or lint ran after these edits. Reinspect current diff and verify before relying on them.
 - No OpenCode key was read and no provider request was made. Continue only with synthetic prompts and explicit bounded free-model requests; keep runtime disabled until privacy, evaluation and routing evidence gates pass.
+
+## Release 1 chat redesign (2026-10-21 to 2026-10-22, branch release1/chat-redesign, HEAD 4b95f5c)
+
+- Verified: contract v1 (`docs/release1/EXECUTION_CONTRACT.md`, 5de20a8), discovery `docs/release1/discovery/01–05`, `DEPENDENCY_BOARD.md`, `SCOPE_TIMELINE.md`, `R1_1_BACKLOG.md`, `TEST_STRATEGY.md` exist. Deviations D1–D7 are in contract §0 and mapped to R1.1 tickets.
+- Verified (git log): 63 commits `dcf4f75..4b95f5c` (54 non-merge, 9 merge). Diff stat `dcf4f75..4b95f5c`: 223 files, +23,847 / −660. Squads P1, F, A, B, BW, C, D, E, G, Phase 2 Wiring, QA-gap, FIX are merged on the branch.
+- Verified (re-run 2026-10-22 at 4b95f5c): `make` lint clean; typecheck 49 files clean; `test-unit` 226 passed; `test-e2e` 62 passed; `test-integration` 6 passed (podman, postgres:17, redis:8). Baseline pre-R1: unit 166, e2e 51.
+- Reported by Supervisor at HEAD 4b95f5c (not re-run here): `flutter analyze` clean; a11y and chat suites 103 passed. Full Flutter suite (goldens included) final count: from the Supervisor's run, recorded in `docs/release1/QA_REPORT.md` when received.
+- Backend audit 10/10 fixed with regression tests. Client audit: AUDIT-01/02 in `147b1ee`, `90586b6`; AUDIT-03/04/05 in `4b95f5c`. AUDIT-02 residual: two accounts on one device without sign-out share `draft.v1.new`.
+- Perf: host-VM proxies only (`docs/release1/perf/AFTER.md`, measured at `e9dd199`). Filtered rebuilds per send median 9 → 20 (regression signal; batching claim NOT supported). Device/profile frame timings, streaming frame timing, APK size, backend p50 are NOT MEASURED.
+- Goldens: 27 regenerated under `mobile/test/goldens/linux/` plus 1 new. Not visually reviewed (R-9).
+- `docs/release1/RELEASE_REPORT.md` rewritten as final (no DRAFT). `docs/release1/QA_REPORT.md` verdict updated to Boss rejection round 1: resubmitted, not signed off by QA. Sign-off blocked on PENDING-USER items (device/emulator, real provider and model, auth sign-in, onboarding): none run, none passed.
+- R-6 resolved by Supervisor: Artifact and Sources drawers deferred to R1.1 (inside R1.1-5). R1 keeps inline citation chips and file cards.
+- No production deploy, migration, live charge, or real message. R1.1 NOT started. Untracked `Claude outputs/` and `docs/release-evidence/device/*.png` preserved; `docs/release-evidence/device/01-launch.png` shows modified in the working tree and was not changed by this work.
+
+
+## Release 1 integration (2026-10-23, branch release1/integration, worktree /tmp/wt2-int)
+
+- Merged into integration: P1, P3, P4 (debug meta + history; 3 conflicts resolved keeping `history` and `debug_enabled`), P5, P6, P7, P9, P10, and the device harness (`scripts/dev_fake_provider.py`, `scripts/device_smoke.py`, `docs/release1/DEVICE_TESTING.md`). Base HEAD before this entry: `a89fe20`.
+- Reply identity (owner correction): replies show a provider nickname + generated avatar, never the product name and never the raw model id. `mobile/lib/features/chat/provider_identity.dart` (new); `message_bubble.dart` header/semantics label; `debug_meta_line.dart`; `karmi_logo.dart` removed. Backend exposes `model` on `MessageView`/`ChatMessageView`, on history (join on `Run.served_model`) and on `run.finished`.
+- Tasks tab now routes to `TasksComingSoonScreen` (`karmi_shell.dart`); `TasksScreen` is retained but unexercised by widget tests until the real feature lands.
+- Retry fix `56f71cb`: transport failures resume the idempotent start request (`clientMessageId`); only server-backed terminal failures use `/v1/chat/continue`.
+- Golden set regenerated for chat (provider header) and tasks (construction page), Linux host goldens. Owner visual review R-9 still pending.
+- `screens_test.dart` deliberately skips `textContrastGuideline` for the tasks placeholder: the guideline reports a false 2.66:1 while the render-tree style is `#050806` on `#F2F7F4` (18.9:1) and is unchanged by text/card/background edits. Tap-target and labelling guidelines still run. Documented in the test and in `release_completion.md` §3.1.
+- Not verified: device pass after the provider-identity change (Pixel 9a `5B271XEBF3XDF0` dropped off USB); local test auth (needs owner's test code in ignored `.env.testauth`).
+- Open owner decisions: P2 free-pool exclusions (reverted at `f5d2794`), composer attachment button (kept), iOS distribution, Android release keystore, public repo for Obtainium, golden review, analytics/admin scope.
+- Handover document: `release_completion.md` (repo root; copy also at `/home/rosso/Projects/Karmi/release_completion.md`).
+- Final gates at the tip of `release1/integration` (2026-10-23): `flutter analyze` clean, `flutter test` 767 passed; `.venv/bin/ruff` clean, `.venv/bin/mypy src` clean (49 files), unit 256 passed, e2e 85 passed. Backend tools live in `.venv/bin` — bare `ruff`/`pytest` are not on PATH.
+
+## Release 1 final evidence (2026-10-24)
+
+- Azure regression 12-case suite: commit `7145bb8`; 11/12 cases passed. The profile 404 was fixed in `ba3198c` and is pending redeploy.
+- Admin edit backend: `r1/admin-edit` commit `a38f8f8`; audited and reworked.
+- Onboarding hardening: commit `ba3198c`.
+- Release signing: commit `f8e0ad4`; signing key is at `~/.karmi-keys` with a backup.
+- Documentation: commit `7baafb9`.
+- Admin web UI: commit `c9e87d2`; browser verification is in progress.
+- Admin app UI: commit `153a7fb`; tests are in progress.
+- Remaining release gates are pending: Azure redeploy, release APK/AAB, Pixel smoke, user admin-code enrollment, and release approval.
+
+## Release 1 status update (2026-10-24, later)
+
+- Integration tip `f375410` on `release1/integration` (local only; not pushed).
+- Azure `karmi-beta` runs `f8865ac` (Healthy, 1 replica). Neon migrated to head `f4a5b6c7d8e9`. Regression 12/12 (`docs/release-evidence/r1-azure-regression-3.md`).
+- Fixes since the last entry: admin edit/tier expiry backend (audited, reworked); credit adjustments durable (`credit_adjust_micro`, `0b2f80d`); daily quota regression from `0ed052f` fixed (`13f9821`, audited RELEASE-OK); app Promote/Demote preset adjacent tier; web admin audit fixes (`7287565`); onboarding text-slot fix + goldens.
+- Gates at tip: ruff and mypy clean; pytest unit+web and e2e 0 failures (run separately: duplicate `test_quality_corpus.py` basename); flutter analyze clean; flutter test 855 passed.
+- Release artifacts v0.1.0+4: `~/Projects/Karmi-release/v0.1.0+4/` (APK sha256 c479c99e…7b606, AAB 9c34c66f…171af). Signed with `~/.karmi-keys/karmi-release.jks` (cert SHA-256 14a65fff…8ba1); release build fails loudly without `mobile/android/key.properties`.
+- Pixel 9a: old debug-signed app uninstalled (user approved); v0.1.0 code 4 installed; launch screenshot `docs/release-evidence/device-r1/01-release-launch.png`.
+- Ops notes: this host's IPv6 route to Neon hangs, so deploy/migrate use `PGHOSTADDR=<neon-proxy-ip>`; use `TMPDIR=~/.cache/karmi-tmp` for tests (`/tmp` is a 7.7G tmpfs); `karmi-ui` (`~/.local/bin`) opens the live admin, `karmi-ui code` enrolls the admin code.
+- PENDING (user): rossoadmin sign-in + admin code enrollment, device smoke of onboarding and admin, release approval. Not pushed, not published.
+
+## Release 1 update (2026-10-24, onboarding + admin access fixes)
+
+- User device report: onboarding asked only for an email code; Welcome "Sign in" opened Create; code paste broken; Sign in button dead.
+- Fixed on `r1/onboard-auth` (merged): Create account = names, username, email, password (Clerk requires username+password) then email code; one hidden OTP input (paste/autofill); Welcome sign-in opens Sign in mode; after password Clerk returns `needs_second_factor` (new-device check) and the app now calls `sendSignInCode` then shows the code field; unknown sign-in states show an error. Preferences step asks only the model approach (no language/Indonesian). Test fake now matches real Clerk. Flutter: analyze clean, 884 tests passed.
+- Admin access root causes: (1) `deploy_azure.py deploy` replaced env vars without `DAILY_AGENT_ADMIN_CLERK_USER_IDS` (wiped allowlist) — fixed in script, allowlist now read from `.env.clerk`; (2) `users.role` was `customer` for both allowlisted users — set to `admin` in Neon with `admin.role_granted` audit rows (runbook-sanctioned direct DB step); (3) image `f8865ac` never reached ACR; Azure now on `34f4062`.
+- Azure regression 4 on `34f4062`: 12/12; allowlisted admin gets code-required (200), true non-admin 403.
+- Final artifacts (rebuilt from `b9a4457`): `~/Projects/Karmi-release/v0.1.0+4/` APK sha256 d57138ec…f34b2, AAB 43ae4e1b…37802; installed on Pixel 9a.
+- PENDING (user): `karmi-ui code`, rossoadmin sign-in on device, admin console check, release approval. Nothing pushed or published.
+
+## Release 1 reconciliation and final merge integration (2026-11-08)
+
+- Integration branch: `release1/final`.
+- Verified merges integrated into `release1/final`:
+  - `7f1f93d` (`merge: r1f/webadmin`): Web admin dashboard additions (INR formatting in `admin.js`, overview metrics tiles, web bug inbox viewer, Playwright screenshots at 360px and 1440px, and `DAILY_AGENT_ADMIN_UI_ENABLED` gate).
+  - `74b63cc` (`merge: r1f/fix`): Request body size limit middleware in `src/daily_agent/body_limit.py` (F-02) and bug report concurrency lock ordering in `src/daily_agent/bug_reports.py` (F-03).
+  - `47a15f2` (`merge: r1f/perf`): Item 2 measured optimization: composer ValueNotifier narrowing reverted (`1a64e33`) with no measured reduction, cached Markdown AST kept in `markdown_message.dart`, backend chat timing middleware added with default OFF via `DAILY_AGENT_CHAT_TIMING_ENABLED`, honest perf report in `docs/release1/perf/R1_FINAL.md`.
+  - `9cf2ce4` (`merge: r1f/p3-app`): P3 mobile app fixes: dead alias F4 removed, `formatInrRupees` returns ₹0 for NaN/Infinity (F5), bug-report owner fail-closed on session change.
+  - `818f6ad` (`merge: r1f/p3-backend`): P3 backend fixes: admin bug-report filter validation returning 422 on unknown (F-08), admin CSP `style-src 'unsafe-inline'` when Clerk is configured, access-log redaction runbook section (F-05).
+  - `fedf535` (`merge: r1f/release`): Release documentation and version bump branch (version bump to 0.1.0+5 in `mobile/pubspec.yaml`, changelog, release notes, SHA256SUMS recipe, owner runbook, PR draft, and Memory updates).
+- Documentation reconciliation:
+  - `docs/release1/PR_DRAFT.md`: Rewrote stale `RECONCILE` section to `RECONCILED` record documenting all 6 merged branches with merge commit SHAs; updated Items 1–9 verification table to match strict status taxonomy (EVIDENCE PRESENT, PARTIALLY VERIFIED, NOT VERIFIED); added summary bullet points for performance rework and backend fixes; updated source branch target commit header.
+  - `docs/release1/RELEASE_NOTES_v0.1.0.md`: Updated target commit header to indicate cut from `release1/final` HEAD at final gate run; added F-02 body limit and F-03 lock order to operator notes; updated Section 3 verification status table to match PR_DRAFT exactly.
+  - `CHANGELOG.md`: Reconciled known issues section (removed stale claim that web admin UI is unmerged; documented browser runtime NOT VERIFIED and chat timing p95 latency question); recorded added web admin UI, Markdown AST cache, timing middleware, and body limit; recorded fixed lock order, admin filter validation, Clerk style-src, NaN/Inf guard, and session evaluation.
+  - `docs/release1/OWNER_STEPS.md`: Reconciled pre-flight target branch references from `r1f/release` to `release1/final`.
+- Release status summary:
+  - Physical device testing: NOT VERIFIED across all items (paused by owner).
+  - Real Google Sign-in: NOT VERIFIED (pending owner Clerk setup and redirect URL allowlist `ai.karmi.app://sso-callback`).
+  - Web admin dashboard UI: MERGED to codebase; browser runtime verification NOT VERIFIED (paused by owner).
+  - Perf rebuild optimization: Composer narrowing reverted (no measured reduction); metric target <=9 met via metric correction; chat timing default OFF; open p95 question pending owner decision.
+  - Release gates: Pending final execution by main agent. Zero external push.

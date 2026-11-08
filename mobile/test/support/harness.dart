@@ -1,5 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
-
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karmi_app/api/karmi_api.dart';
@@ -155,11 +156,43 @@ Future<AppHandle> pumpApp(
 }) async {
   _applyView(tester, env, size);
   backend ??= FakeBackend.healthy(unlocked: env.tier, active: env.tier);
+  if (!backend.routes.containsKey('GET /v1/conversations')) {
+    backend.on(
+      'GET',
+      '/v1/conversations',
+      (_) => jsonResponse({
+        'items': FakeBackend.defaultConversationsJson(),
+        'next_cursor': null,
+      }),
+    );
+  }
+  if (!backend.routes.containsKey('POST /v1/chat/stream')) {
+    backend.on('POST', '/v1/chat/stream', (req) {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final text = body['text'] as String? ?? 'Reply';
+      final sse =
+          'event: run.started\n'
+          'data: {"run_id":"run-1","conversation_id":"conv-1","user_message_id":"msg-u","assistant_message_id":"msg-a","seq":0}\n\n'
+          'id: 1\n'
+          'event: message.delta\n'
+          'data: {"text":"$text"}\n\n'
+          'event: run.finished\n'
+          'data: {"finish_reason":"stop","outcome":"success"}\n\n';
+      return http.Response(
+        sse,
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
+    });
+  }
   SharedPreferences.setMockInitialValues({
     'reduce_transparency': env.reduceTransparency,
     'theme_mode': env.brightness == Brightness.dark ? 'dark' : 'light',
     'acknowledged_tester_notice_version': kTesterNoticeVersion,
-    if (signedIn) 'dev_session_token': 'test-token',
+    if (signedIn) ...{
+      'dev_session_token': 'test-token',
+      'has_completed_onboarding': true,
+    },
   });
   final prefs = await SharedPreferences.getInstance();
   final settings = KarmiSettings(prefs);
@@ -180,6 +213,8 @@ Future<AppHandle> pumpApp(
       session: session,
       armory: armory,
       adaptiveGlassQuality: false,
+      // Fixed clock keeps the time-of-day greeting identical across runs.
+      clock: () => FakeBackend.pinnedNow,
     ),
   );
   await settle(tester);
@@ -205,7 +240,12 @@ Future<void> openTab(WidgetTester tester, String label) async {
   if (opaque.evaluate().isNotEmpty) {
     await tester.tap(opaque);
   } else {
-    await tester.tap(find.bySemanticsLabel('$label tab').first);
+    final semantic = find.bySemanticsLabel('$label tab');
+    if (semantic.evaluate().isNotEmpty) {
+      await tester.tap(semantic.first);
+    } else {
+      await tester.tap(find.text(label).last);
+    }
   }
   await settle(tester);
 }

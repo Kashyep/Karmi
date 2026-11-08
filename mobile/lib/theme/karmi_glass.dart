@@ -4,6 +4,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'karmi_colors.dart';
 import 'karmi_motion.dart';
 import 'karmi_theme.dart';
+import 'karmi_tokens.dart';
 import 'karmi_tier.dart';
 
 /// Liquid Glass configuration and primitives (implementation_plan.md §1.3,
@@ -102,7 +103,7 @@ class _KarmiGlassSurfaceState extends State<KarmiGlassSurface> {
         position: DecorationPosition.foreground,
         decoration: BoxDecoration(
           borderRadius: radius,
-          border: Border.all(color: colors.glassBorder),
+          border: Border.all(color: _rimColor(context, colors)),
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.center,
@@ -152,5 +153,16 @@ class _KarmiGlassSurfaceState extends State<KarmiGlassSurface> {
         ),
       ),
     );
+  }
+
+  /// Rim stroke: dark mode uses the specular alpha from [KarmiTokens]; light
+  /// mode keeps the tier's `glassBorder` unchanged.
+  static Color _rimColor(BuildContext context, KarmiColors colors) {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark
+        ? colors.glassBorder.withValues(
+            alpha: KarmiTokens.specularBorderAlpha(brightness),
+          )
+        : colors.glassBorder;
   }
 }

@@ -1,0 +1,41 @@
+{
+  "case_id": "QC-V1-08",
+  "family_id": "quality-corpus-v1",
+  "split": "holdout",
+  "complexity_level": 1,
+  "domain": "quality_regression",
+  "title": "Identical strings bad answer fixture (2026-10-23)",
+  "description": "Recorded regression fixture where assistant echoed the exact prompt verbatim ('Hello, Karmi!' -> 'Hello, Karmi!') instead of providing a helpful response.",
+  "messages": [
+    {"role": "user", "content": "Hello, Karmi!"}
+  ],
+  "turns": [
+    {
+      "turn_index": 1,
+      "user_input": "Hello, Karmi!",
+      "history": [],
+      "mock_response": "Hello, Karmi!"
+    }
+  ],
+  "recorded_bad_answer": {
+    "date": "2026-10-23",
+    "prompt": "Hello, Karmi!",
+    "bad_response": "Hello, Karmi!",
+    "defect_kind": "identical_string_echo",
+    "notes": "Model verbatim echoed the user input string with zero assistance or greeting content. Recorded as a regression fixture."
+  },
+  "harness_expectations": {
+    "is_bad_answer_fixture": true,
+    "bad_answer_defect": "identical_string_echo",
+    "must_fail_quality_gate": true
+  },
+  "evaluation": {
+    "method": "rubric",
+    "reference_answer": "Hello! I am Karmi, your study and productivity assistant. How can I help you today?",
+    "rubric": [
+      {"criterion": "Provides helpful, polite greeting and offers assistance", "weight": 1},
+      {"criterion": "Does not merely echo the input string", "weight": 1}
+    ],
+    "critical_failures": ["Verbatim echo of the input string ('Hello, Karmi!')"]
+  }
+}
