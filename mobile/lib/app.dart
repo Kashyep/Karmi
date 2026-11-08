@@ -14,6 +14,7 @@ import 'features/onboarding/onboarding.dart';
 import 'features/plans/plan_selection_screen.dart';
 import 'features/welcome/tester_notice.dart';
 import 'features/welcome/tester_notice_screen.dart';
+import 'notifications/karmi_notifications.dart';
 import 'settings/karmi_settings.dart';
 import 'shell/karmi_shell.dart';
 import 'shell/chat_history_commands.dart';
@@ -236,6 +237,8 @@ class _KarmiAppState extends State<KarmiApp> {
                     key: const ValueKey('onboarding_flow'),
                     session: widget.session,
                     settings: widget.settings,
+                    requestNotificationPermission:
+                        KarmiNotifications.instance.requestPermission,
                     onComplete: (selectedPlanId) {
                       if (selectedPlanId != null &&
                           selectedPlanId != 'ananta') {
