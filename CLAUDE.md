@@ -21,7 +21,24 @@ src/daily_agent/
   security.py   dev tokens, principal/admin deps, HMAC webhook verification
   db.py         lazy engine (get_engine) + get_session dependency
   worker.py     delivery worker: leases queued outbox rows + due reminders -> local test adapter
+  routes/       routers included by create_app(): admin.py (/v1/admin/*), conversations.py
+                (/v1/conversations), stream.py (SSE chat, resume, stop, continue, regenerate)
+  streaming/    SSE framing, in-process run registry, background runner (flush + settlement),
+                optional Redis run state
+  conversations/ conversation persistence, pagination, search
+  schemas.py, schemas_chat.py  Pydantic request/response models
+  deps.py       FastAPI dependencies: gateway, rate-limited principal, own_run
+  admin_auth.py, admin_service.py, admin_metrics.py  admin identity/session, operations+audit, monitor
+  bug_reports.py, body_limit.py  in-app bug reports and request-body size limits
+  access_codes.py  beta access codes (hashed) that unlock a plan tier
+  ratelimit.py, redis_client.py, db_admission.py  rate limits, optional Redis, DB slot admission
+  retention.py, background.py  retention purge and reservation-sweep loops
+  clerk_backend.py, opencode.py, gzip_middleware.py, chat_timing.py  Clerk session revoke, OpenCode
+                adapter, SSE-safe gzip, optional chat timing logs
+  main.py       `daily-agent` console entry point (uvicorn on 127.0.0.1:8000)
   web/shell.py  inline HTML/JS shell served at /
+  web/admin_page.py  server-rendered operator dashboard at /admin (static admin.js/css beside it)
+  web/manifest.py   dynamic PWA manifest per tier theme
   parakh/       Parakh exchange: routing evidence + TelemetryBatchV1 export, PolicyBundleV1
                 verification and received/staged/shadow/retired slots, `karmi-parakh` CLI
                 (see docs/contracts/parakh/README.md). Shadow never changes the live route.
