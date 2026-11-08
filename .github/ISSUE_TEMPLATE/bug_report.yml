@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a problem with Karmi
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not post personal data.** Remove emails, sign-in codes, phone numbers, server
+        addresses, and any personal screenshots before submitting. For a security problem, do
+        not use this form: see SECURITY.md.
+
+        The in-app report is the preferred route for bugs: Settings → Report a bug attaches
+        diagnostics automatically.
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown under "Diagnostics to be sent" in Settings → Report a bug (app_version and build_number). If it shows 0.1.0 with build "unknown", the build did not set its version, so say which build you installed.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android
+        - iOS (experimental, untested on device)
+        - Backend or web shell
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version and device
+      description: For example Android 15 on a Pixel model. Do not include your name or device identifiers.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Logs or screenshots, with personal data removed.
