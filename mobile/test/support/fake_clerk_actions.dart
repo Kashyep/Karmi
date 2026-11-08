@@ -33,6 +33,46 @@ class FakeClerkEmailCodeActions implements ClerkEmailCodeActions {
   String? lastSignInIdentifier;
   String? lastPassword;
   String? lastCode;
+  String? lastResetEmail;
+  String? lastResetCode;
+  String? lastResetPassword;
+
+  /// After a successful reset Clerk asks for a second factor instead of
+  /// signing in (mirrors [requireSecondFactor] for password sign-in).
+  bool resetRequiresSecondFactor = false;
+  bool _passwordResetAwaitingCode = false;
+
+  @override
+  bool get passwordResetAwaitingCode => _passwordResetAwaitingCode;
+
+  @override
+  Future<void> startPasswordReset({
+    required String email,
+    required ClerkFlowErrorHandler onError,
+  }) async {
+    calls.add('startPasswordReset');
+    lastResetEmail = email;
+    if (nextError != null) return _maybeFail(onError);
+    _passwordResetAwaitingCode = true;
+  }
+
+  @override
+  Future<void> completePasswordReset({
+    required String code,
+    required String newPassword,
+    required ClerkFlowErrorHandler onError,
+  }) async {
+    calls.add('completePasswordReset');
+    lastResetCode = code;
+    lastResetPassword = newPassword;
+    if (nextError != null) return _maybeFail(onError);
+    _passwordResetAwaitingCode = false;
+    if (resetRequiresSecondFactor) {
+      _signInNeedsSecondFactor = true;
+    } else {
+      isSignedIn = true;
+    }
+  }
 
   @override
   bool get signUpAwaitingCode => _signUpAwaitingCode;

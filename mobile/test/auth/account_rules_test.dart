@@ -136,6 +136,21 @@ void main() {
       expect(issue.offerSignIn, isFalse);
     });
 
+    test('reset-unavailable detects unknown accounts and invalid strategy', () {
+      expect(
+        isResetUnavailableError(_clerkError('form_identifier_not_found')),
+        isTrue,
+      );
+      expect(
+        isResetUnavailableError(_clerkError('strategy_for_user_invalid')),
+        isTrue,
+      );
+      expect(
+        isResetUnavailableError(_clerkError('form_code_incorrect')),
+        isFalse,
+      );
+    });
+
     test('username taken maps to username', () {
       final issue = issueFromClerkError(_clerkError('form_username_exists'));
       expect(issue.field, AccountField.username);

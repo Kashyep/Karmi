@@ -20,6 +20,10 @@ class AccountDetails {
 
 enum _Mode { create, signIn }
 
+/// Forgot-password sub-flow of the sign-in form: ask for the email, then the
+/// emailed code together with the new password.
+enum _ResetStep { none, email, code }
+
 /// Account step: create an account (names, username, email, password, then an
 /// emailed code) or sign in with email or username and password. Clerk asks
 /// for an email code only when it requires a second factor.
@@ -64,9 +68,14 @@ class AccountAuthStepState extends State<AccountAuthStep> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
+  final _newPassword = TextEditingController();
+  final _confirmPassword = TextEditingController();
 
   late _Mode _mode = widget.startInSignIn ? _Mode.signIn : _Mode.create;
   bool _awaitingCode = false;
+  _ResetStep _resetStep = _ResetStep.none;
+  String? _confirmError;
+  bool _resetUnknown = false;
   bool _busy = false;
   bool _showPassword = false;
   bool _googleLoading = false;
@@ -80,7 +89,16 @@ class AccountAuthStepState extends State<AccountAuthStep> {
   @override
   void dispose() {
     _cooldownTimer?.cancel();
-    for (final c in [_first, _last, _username, _email, _password, _code]) {
+    for (final c in [
+      _first,
+      _last,
+      _username,
+      _email,
+      _password,
+      _code,
+      _newPassword,
+      _confirmPassword,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -98,6 +116,7 @@ class AccountAuthStepState extends State<AccountAuthStep> {
 
   void _clearErrors() {
     _errors.clear();
+    _confirmError = null;
     _offerSignIn = false;
     _offerCreate = false;
   }
@@ -181,6 +200,7 @@ class AccountAuthStepState extends State<AccountAuthStep> {
       });
       return;
     }
+    if (_resetStep != _ResetStep.none) return _submitReset(actions);
     if (_awaitingCode) return _verifyCode();
 
     final email = _email.text.trim();
@@ -203,22 +223,7 @@ class AccountAuthStepState extends State<AccountAuthStep> {
         ),
       );
       if (!mounted || _errors.isNotEmpty || actions.isSignedIn) return;
-      // Clerk accepted the password but needs an email code (e.g. new device):
-      // ask Clerk to send it, then show the code field.
-      if (actions.signInNeedsSecondFactor) {
-        await _run((a) => a.sendSignInCode(_onClerkError));
-        if (!mounted || _errors.isNotEmpty || actions.isSignedIn) return;
-      }
-      if (actions.signInAwaitingCode) {
-        setState(() => _awaitingCode = true);
-        _startCooldown();
-        return;
-      }
-      // Never leave the user on a button that silently does nothing.
-      setState(() {
-        _errors[AccountField.form] =
-            'Sign-in could not continue (${actions.signInStatus ?? 'unknown state'}). Try again.';
-      });
+      await _continueAfterPassword(actions);
       return;
     }
 
@@ -309,6 +314,151 @@ class AccountAuthStepState extends State<AccountAuthStep> {
     });
   }
 
+  /// After Clerk accepted the credentials (password or reset) without opening
+  /// a session: send the second-factor email code and show the code step.
+  Future<void> _continueAfterPassword(ClerkEmailCodeActions actions) async {
+    if (actions.signInNeedsSecondFactor) {
+      await _run((a) => a.sendSignInCode(_onClerkError));
+      if (!mounted || _errors.isNotEmpty || actions.isSignedIn) return;
+    }
+    if (actions.signInAwaitingCode) {
+      setState(() => _awaitingCode = true);
+      _startCooldown();
+      return;
+    }
+    // Never leave the user on a button that silently does nothing.
+    setState(() {
+      _errors[AccountField.form] =
+          'Sign-in could not continue (${actions.signInStatus ?? 'unknown state'}). Try again.';
+    });
+  }
+
+  void _openReset() {
+    if (_busy) return;
+    setState(() {
+      _clearErrors();
+      _resetStep = _ResetStep.email;
+    });
+  }
+
+  void _exitReset() {
+    if (_busy) return;
+    setState(() {
+      _resetStep = _ResetStep.none;
+      _resetUnknown = false;
+      _code.clear();
+      _newPassword.clear();
+      _confirmPassword.clear();
+      _clearErrors();
+      _cooldownTimer?.cancel();
+      _cooldown = 0;
+    });
+  }
+
+  Future<void> _submitReset(ClerkEmailCodeActions actions) {
+    return _resetStep == _ResetStep.email
+        ? _sendResetCode(actions)
+        : _completeReset(actions);
+  }
+
+  Future<void> _sendResetCode(ClerkEmailCodeActions actions) async {
+    if (_busy) return;
+    final email = _email.text.trim();
+    if (!isValidEmail(email)) {
+      setState(() {
+        _clearErrors();
+        _errors[AccountField.email] = 'Enter a valid email address.';
+      });
+      return;
+    }
+    var unavailable = false;
+    await _run(
+      (a) => a.startPasswordReset(
+        email: email,
+        onError: (error) {
+          if (isResetUnavailableError(error)) {
+            unavailable = true;
+            return;
+          }
+          _onClerkError(error);
+        },
+      ),
+    );
+    if (!mounted || _errors.isNotEmpty) return;
+    if (unavailable || actions.passwordResetAwaitingCode) {
+      // An unknown account looks identical to a sent code on purpose.
+      setState(() {
+        _resetUnknown = unavailable;
+        _resetStep = _ResetStep.code;
+        _code.clear();
+      });
+      _startCooldown();
+      return;
+    }
+    setState(() {
+      _errors[AccountField.form] = 'Could not send a reset code. Try again.';
+    });
+  }
+
+  Future<void> _resendResetCode() async {
+    final actions = widget.actions;
+    if (actions == null || _busy || _cooldown > 0) return;
+    await _sendResetCode(actions);
+  }
+
+  Future<void> _completeReset(ClerkEmailCodeActions actions) async {
+    if (_busy) return;
+    final code = _code.text;
+    final password = _newPassword.text;
+    final problems = passwordProblems(
+      password,
+      minLength: actions.passwordMinLength,
+    );
+    setState(() {
+      _clearErrors();
+      if (code.length != 6) {
+        _errors[AccountField.code] = 'Enter the 6-digit code.';
+      }
+      if (problems.isNotEmpty) {
+        _errors[AccountField.password] =
+            'Password needs ${problems.join(', ')}.';
+      }
+      if (_confirmPassword.text != password) {
+        _confirmError = 'Passwords do not match.';
+      }
+    });
+    if (_errors.isNotEmpty || _confirmError != null) return;
+
+    if (_resetUnknown) {
+      // No reset was started (unknown account or reset unavailable). Answer
+      // exactly like a wrong code so the form never reveals which emails
+      // have accounts.
+      setState(
+        () => _errors[AccountField.code] = 'Code is incorrect or expired.',
+      );
+      return;
+    }
+
+    await _run(
+      (a) => a.completePasswordReset(
+        code: code,
+        newPassword: password,
+        onError: _onClerkError,
+      ),
+    );
+    if (!mounted || _errors.isNotEmpty || actions.isSignedIn) return;
+    // Clerk accepted the reset but wants a second factor before the session.
+    setState(() {
+      _resetStep = _ResetStep.none;
+      _code.clear();
+      _newPassword.clear();
+      _confirmPassword.clear();
+      _cooldownTimer?.cancel();
+      _cooldown = 0;
+    });
+    await _continueAfterPassword(actions);
+  }
+
   @visibleForTesting
   Future<void> verifyCodeForTesting() => _verifyCode();
 
@@ -318,6 +468,7 @@ class AccountAuthStepState extends State<AccountAuthStep> {
   void _switchMode(_Mode mode) {
     setState(() {
       _mode = mode;
+      _resetStep = _ResetStep.none;
       _clearErrors();
     });
   }
@@ -330,12 +481,21 @@ class AccountAuthStepState extends State<AccountAuthStep> {
     final email = _email.text.trim();
     final actions = widget.actions;
 
-    final title = _awaitingCode
+    final resetting = _resetStep != _ResetStep.none;
+    final title = resetting
+        ? (_resetStep == _ResetStep.email
+              ? 'Reset your password'
+              : 'Choose a new password')
+        : _awaitingCode
         ? 'Enter verification code'
         : isCreate
         ? 'Create your account'
         : 'Welcome back';
-    final subtitle = _awaitingCode
+    final subtitle = resetting
+        ? (_resetStep == _ResetStep.email
+              ? 'Enter your account email and we will send you a 6-digit code.'
+              : 'If an account exists for $email, we sent a 6-digit code. Enter it with your new password.')
+        : _awaitingCode
         ? 'We sent a 6-digit code to $email. Use the newest email from Clerk.'
         : isCreate
         ? 'Choose a username and password. We will email you a code to confirm your address.'
@@ -344,13 +504,19 @@ class AccountAuthStepState extends State<AccountAuthStep> {
     return OnboardingScaffold(
       currentStep: widget.currentStep,
       totalSteps: widget.totalSteps,
-      onBack: _busy ? null : (_awaitingCode ? _changeDetails : widget.onBack),
+      onBack: _busy
+          ? null
+          : (resetting
+                ? _exitReset
+                : (_awaitingCode ? _changeDetails : widget.onBack)),
       title: title,
       subtitle: subtitle,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_awaitingCode) ...[
+          if (resetting)
+            ..._resetBody(context)
+          else if (_awaitingCode) ...[
             IgnorePointer(
               key: const ValueKey('onboarding_otp_ignore'),
               ignoring: _busy,
@@ -473,6 +639,15 @@ class AccountAuthStepState extends State<AccountAuthStep> {
               ),
               onSubmitted: _busy ? null : (_) => _submit(),
             ),
+            if (!isCreate)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  key: const ValueKey('onboarding_forgot_password'),
+                  onPressed: _busy ? null : _openReset,
+                  child: const Text('Forgot password?'),
+                ),
+              ),
           ],
           if (!_awaitingCode && _errors[AccountField.form] != null) ...[
             _ErrorText(_errors[AccountField.form]!),
@@ -493,7 +668,7 @@ class AccountAuthStepState extends State<AccountAuthStep> {
               child: const Text('Create an account'),
             ),
           ],
-          if (!_awaitingCode) ...[
+          if (!_awaitingCode && !resetting) ...[
             const SizedBox(height: 12),
             TextButton(
               key: const ValueKey('onboarding_toggle_mode'),
@@ -518,7 +693,11 @@ class AccountAuthStepState extends State<AccountAuthStep> {
         children: [
           PillCta(
             key: const ValueKey('onboarding_auth_continue'),
-            label: _awaitingCode
+            label: resetting
+                ? (_resetStep == _ResetStep.email
+                      ? 'Send reset code'
+                      : 'Reset password')
+                : _awaitingCode
                 ? 'Verify & Continue'
                 : isCreate
                 ? 'Create account'
@@ -536,6 +715,113 @@ class AccountAuthStepState extends State<AccountAuthStep> {
           ],
         ],
       ),
+    );
+  }
+
+  List<Widget> _resetBody(BuildContext context) {
+    final backButton = TextButton(
+      key: const ValueKey('onboarding_reset_back'),
+      onPressed: _busy ? null : _exitReset,
+      child: const Text('Back to sign in'),
+    );
+    if (_resetStep == _ResetStep.email) {
+      return [
+        _field(
+          key: 'onboarding_reset_email_field',
+          controller: _email,
+          label: 'Email address',
+          hint: 'name@example.com',
+          keyboardType: TextInputType.emailAddress,
+          error: _errors[AccountField.email],
+          autofocus: true,
+        ),
+        Align(alignment: Alignment.centerLeft, child: backButton),
+      ];
+    }
+    return [
+      IgnorePointer(
+        key: const ValueKey('onboarding_reset_otp_ignore'),
+        ignoring: _busy,
+        child: OtpField(
+          key: const ValueKey('onboarding_reset_otp_field'),
+          controller: _code,
+          hasError: _errors[AccountField.code] != null,
+        ),
+      ),
+      if (_errors[AccountField.code] != null)
+        _ErrorText(_errors[AccountField.code]!),
+      if (_errors[AccountField.email] != null)
+        _ErrorText(_errors[AccountField.email]!),
+      const SizedBox(height: 12),
+      _resetPasswordField(
+        key: 'onboarding_reset_new_password_field',
+        controller: _newPassword,
+        label: 'New password',
+        helper:
+            '8+ characters with uppercase, lowercase, a number and a symbol.',
+        error: _errors[AccountField.password],
+        showToggle: true,
+      ),
+      const SizedBox(height: 12),
+      _resetPasswordField(
+        key: 'onboarding_reset_confirm_password_field',
+        controller: _confirmPassword,
+        label: 'Confirm new password',
+        error: _confirmError,
+      ),
+      const SizedBox(height: 4),
+      Row(
+        children: [
+          TextButton(
+            key: const ValueKey('onboarding_reset_resend_code'),
+            onPressed: _cooldown > 0 || _busy ? null : _resendResetCode,
+            child: Text(
+              _cooldown > 0 ? 'Resend in ${_cooldown}s' : 'Resend code',
+            ),
+          ),
+          const Spacer(),
+          backButton,
+        ],
+      ),
+    ];
+  }
+
+  Widget _resetPasswordField({
+    required String key,
+    required TextEditingController controller,
+    required String label,
+    String? helper,
+    String? error,
+    bool showToggle = false,
+  }) {
+    return TextField(
+      key: ValueKey(key),
+      controller: controller,
+      enabled: !_busy,
+      obscureText: !_showPassword,
+      autocorrect: false,
+      enableSuggestions: false,
+      decoration: InputDecoration(
+        labelText: label,
+        helperText: helper,
+        helperStyle: _supportStyle(context),
+        helperMaxLines: 2,
+        errorText: error,
+        errorStyle: _supportStyle(context, error: true),
+        errorMaxLines: 3,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        suffixIcon: showToggle
+            ? IconButton(
+                key: const ValueKey('onboarding_reset_password_visibility'),
+                tooltip: _showPassword ? 'Hide password' : 'Show password',
+                icon: Icon(
+                  _showPassword ? Icons.visibility_off : Icons.visibility,
+                ),
+                onPressed: () => setState(() => _showPassword = !_showPassword),
+              )
+            : null,
+      ),
+      onSubmitted: _busy ? null : (_) => _submit(),
     );
   }
 
