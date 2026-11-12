@@ -14,7 +14,7 @@ anyio==4.15.1
     #   httpx2
     #   starlette
     #   watchfiles
-certifi==2026.7.22
+certifi==2026.10.23
     # via
     #   daily-agent (pyproject.toml)
     #   httpcore
@@ -61,7 +61,7 @@ iniconfig==2.3.0
     # via pytest
 librt==0.15.0 ; platform_python_implementation != 'PyPy'
     # via mypy
-mako==1.4.1
+mako==1.4.3
     # via alembic
 markdown-it-py==4.2.0
     # via rich
