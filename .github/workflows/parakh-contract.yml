@@ -32,8 +32,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Parakh PR #5 head (pin current Karmi). TODO: bump to the merge commit on Parakh main once #5 merges, then bump deliberately after review.
-  PARAKH_REF: 95b143a028c38c1b9c92317fdb0c6a45d9978ec0
+  # Parakh main after Ruud-en-Blauw/Parakh#5 and #6. Bump deliberately after reviewing Parakh changes.
+  PARAKH_REF: 9c05257cb68ce8d30036246dea408b03cc5cbb57
 
 jobs:
   contract:

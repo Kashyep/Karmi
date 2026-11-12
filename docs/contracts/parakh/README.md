@@ -1,7 +1,7 @@
 # Parakh exchange (TelemetryBatchV1 out, PolicyBundleV1 in)
 
 Parakh is the offline optimization lab. Karmi never imports Parakh code: the JSON schemas in this
-directory are copied from Parakh `contracts/`, byte-identical to Parakh main 6ef18fc (checked with cmp);
+directory are copied from Parakh `contracts/`, byte-identical to Parakh main 9c05257 (checked with cmp, 2026-11-13);
 `src/daily_agent/parakh/` holds Karmi's side. Nothing here changes which route serves a request.
 
 ## Telemetry out
