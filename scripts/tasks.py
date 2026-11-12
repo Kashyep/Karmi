@@ -157,11 +157,14 @@ def main() -> None:
             "benchmark-demo",
             "test-smoke",
             "test-release",
+            "parakh-contract",
         ],
     )
     task = parser.parse_args().task
     if task == "doctor":
         doctor()
+    elif task == "parakh-contract":
+        run([str(PYTHON), "scripts/parakh_contract.py"])
     elif task == "dev":
         run([str(PYTHON), "-m", "uvicorn", "daily_agent.api:app", "--host", "127.0.0.1", "--port", "8000"])
     elif task == "worker":
