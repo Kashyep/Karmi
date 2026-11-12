@@ -1,0 +1,72 @@
+name: parakh-contract
+
+on:
+  pull_request:
+    paths:
+      - src/daily_agent/parakh/**
+      - src/daily_agent/gateway/**
+      - src/daily_agent/models.py
+      - migrations/**
+      - docs/contracts/parakh/**
+      - tests/parakh_helpers.py
+      - scripts/parakh_contract.py
+      - .github/workflows/parakh-contract.yml
+  push:
+    branches: [main]
+    paths:
+      - src/daily_agent/parakh/**
+      - src/daily_agent/gateway/**
+      - src/daily_agent/models.py
+      - migrations/**
+      - docs/contracts/parakh/**
+      - tests/parakh_helpers.py
+      - scripts/parakh_contract.py
+      - .github/workflows/parakh-contract.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: parakh-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Parakh main after Ruud-en-Blauw/Parakh#5 and #6. Bump deliberately after reviewing Parakh changes.
+  PARAKH_REF: 9c05257cb68ce8d30036246dea408b03cc5cbb57
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Karmi
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Checkout Parakh
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Ruud-en-Blauw/Parakh
+          ref: ${{ env.PARAKH_REF }}
+          path: parakh
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: pip install -c requirements.lock -e '.[dev]'
+
+      - name: Run Parakh contract check
+        env:
+          PARAKH_DIR: parakh
+          DAILY_AGENT_LIVE_MODELS_ENABLED: "false"
+          DAILY_AGENT_OPENROUTER_ENABLED: "false"
+          DAILY_AGENT_OPENCODE_ENABLED: "false"
+          DAILY_AGENT_WHATSAPP_ENABLED: "false"
+          DAILY_AGENT_PAID_CHECKOUT_ENABLED: "false"
+        run: python scripts/tasks.py parakh-contract
